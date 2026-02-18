@@ -4,15 +4,15 @@
 
 ---
 
-## Current Phase: Phase 1 Complete — Ready for Phase 2
+## Current Phase: Phase 2 Complete — Ready for Phase 3
 
 ### Overall Progress
 
 | Phase | Status | Notes |
 |---|---|---|
 | Phase 1 — Database + Backend API | **Complete** | All models, schemas, services, routers, Alembic, Docker |
-| Phase 2 — Admin Panel | Not Started | Next up |
-| Phase 3 — Kiosk UI | Not Started | |
+| Phase 2 — Admin Panel | **Complete** | Full admin UI with all pages, auth, charts, settings |
+| Phase 3 — Kiosk UI | Not Started | Next up |
 | Phase 4 — Payment + Cash + PIN | **Partially Done** | PIN service, cash flow, stub adapter built in Phase 1 |
 | Phase 5 — Recurring Billing + Saved Cards | Not Started | Saved card model + kiosk endpoints exist |
 | Phase 6 — Docker + Nginx | **Complete** | docker-compose.yml, Dockerfiles, nginx.conf done |
@@ -59,19 +59,29 @@
 - [x] All admin endpoints: full CRUD for members/plans/memberships, transaction management, reports with CSV export, settings management
 - [x] Activity logging on all admin mutations
 
-### Frontend
+### Frontend — Admin Panel
 
-- [ ] Project structure and dependencies
-- [ ] API client layer
-- [ ] Shared components
-- [ ] Admin layout (sidebar, header)
-- [ ] Admin login page
-- [ ] Admin dashboard
-- [ ] Admin members pages
-- [ ] Admin plans pages
-- [ ] Admin transactions page
-- [ ] Admin reports pages
-- [ ] Admin settings page
+- [x] React + Vite + Tailwind CSS project setup
+- [x] Inter font, custom brand color palette, @tailwindcss/forms plugin
+- [x] **API client layer** with Axios, JWT interceptor, auto-refresh, 8 API modules (auth, members, plans, checkins, payments, reports, settings, auth)
+- [x] **Auth context** with login/logout state management
+- [x] **useApi hook** for data fetching with loading/error states
+- [x] **11 shared components:** Button (4 variants, 4 sizes, loading state), Modal (keyboard dismiss, backdrop blur), Table (pagination, loading, empty state), Badge (6 colors), Card + CardHeader, Input (with error/help text), Select, StatCard (5 color themes), EmptyState, PageHeader, ConfirmDialog
+- [x] **Admin layout:** Sidebar with icon navigation (desktop fixed + mobile overlay), Header with user menu + logout, responsive design with mobile hamburger menu
+- [x] **Login page:** Gradient background, branded card, form validation, JWT token storage, auto-redirect
+- [x] **Dashboard:** 5 stat cards (check-ins, swimmers, revenue, memberships, guests), quick action links, system status panel
+- [x] **Members list:** Search by name/phone/email, paginated table with avatar initials, status badges, click-to-detail
+- [x] **Member detail:** Info card, RFID cards list with deactivate, activity log timeline, credit adjustment modal, deactivate confirmation dialog, edit/back navigation
+- [x] **Member form:** Create + edit mode, all fields, PIN on create, textarea for notes, validation
+- [x] **Plans list:** Card grid layout with type badges, pricing display, inline edit/deactivate, modal form for create/edit with plan-type-aware fields
+- [x] **Transactions list:** Filterable by type/method/date range, paginated table, color-coded badges, CSV export button, clear filters
+- [x] **Revenue report:** Date range + grouping selectors, stacked bar chart (Recharts) for cash/card/credit breakdown, stat cards, membership breakdown with progress bars
+- [x] **Swim report:** Date range selector, stat cards, donut pie chart for check-in types
+- [x] **Settings page:** 6 grouped sections (Kiosk, Timer, PIN, Fees, Features, Notifications), toggle switches, sticky save bar with unsaved changes indicator
+- [x] **App routing:** Protected routes, nested admin layout, all page routes wired
+
+### Frontend — Kiosk UI
+
 - [ ] Kiosk idle screen
 - [ ] Kiosk member screen
 - [ ] Kiosk check-in screen
@@ -102,6 +112,9 @@ _None yet._
 - Added `friendly_name` field on `SavedCard` model for card naming feature
 - Payment split endpoint uses a simplified flow (processes as single cash transaction when cash covers full amount)
 - The `credit` model from the design was not created as a separate model — credit is tracked as `credit_balance` on `Member` and as `Transaction` records
+- Admin panel uses Recharts for charts (bar charts for revenue, pie charts for swim types)
+- Settings page uses toggle switches for boolean settings and a sticky bottom save bar
+- Toast notifications use react-hot-toast with custom branded styles
 
 ---
 
