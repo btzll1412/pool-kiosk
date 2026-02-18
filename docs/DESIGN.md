@@ -509,17 +509,18 @@ pool-management/
       - Split (cash + card)
 
 [SPLIT PAYMENT SCREEN]
-  → Shows total amount due
-  → "How much cash are you putting in?" → numpad
-  → Remainder automatically shown as card charge
-  → Cash portion follows normal cash flow (exact/overpay/change)
-  → Card portion charged to saved card or new card
+  → Shows total amount due with live cash/card split display
+  → "Enter Cash Amount" → numpad, remainder auto-calculated for card
+  → Select saved card for remainder (or use new card)
+  → Confirm → records cash transaction + charges card → creates membership
+  → If cash covers full amount, falls back to regular cash flow
 
 [CASH SCREEN]
   → Numpad to enter amount
   → If exact → "Place $X in the cash box. Thank you!"
-  → If overpaid → extra added to account credit, shown on screen
-  → If needs change → [CHANGE SCREEN]
+  → If overpaid → two buttons shown:
+      - "Add $X to Credit" → adds to account balance
+      - "I Need $X Change" → [CHANGE SCREEN] + staff notification
 
 [CHANGE SCREEN]
   → "Place your cash in the box. Someone will bring your change shortly"
@@ -782,6 +783,7 @@ Every webhook POST sends:
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-02-18 | Bug fixes: split payment (frontend + backend), cash change_due flow, test suite (38 tests), bcrypt compat, JSONB→JSON | — |
 | 2026-02-18 | Phase 7: Added webhook notification system (8 events), scheduled jobs, admin webhook config UI, payload docs | — |
 | 2026-02-18 | Phase 5: Added tokenize_card/charge_saved_card to payment adapter, updated recurring/auto-charge section | — |
 | 2026-02-18 | Initial design document created from planning session | — |

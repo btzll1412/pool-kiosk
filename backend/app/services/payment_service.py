@@ -30,6 +30,7 @@ def process_cash_payment(
     member_id: uuid.UUID,
     plan_id: uuid.UUID,
     amount_tendered: Decimal,
+    wants_change: bool = False,
 ) -> tuple[Transaction, Decimal, Decimal]:
     member = db.query(Member).filter(Member.id == member_id).first()
     if not member:
@@ -50,8 +51,11 @@ def process_cash_payment(
     credit_added = Decimal("0.00")
 
     if overpayment > 0:
-        credit_added = overpayment
-        member.credit_balance += credit_added
+        if wants_change:
+            change_due = overpayment
+        else:
+            credit_added = overpayment
+            member.credit_balance += credit_added
 
     membership = create_membership(db, member_id, plan_id)
 

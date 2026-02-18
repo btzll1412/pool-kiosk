@@ -18,6 +18,7 @@ import FreezeScreen from "./screens/FreezeScreen";
 import SavedCardsScreen from "./screens/SavedCardsScreen";
 import AddCardScreen from "./screens/AddCardScreen";
 import AutoChargeScreen from "./screens/AutoChargeScreen";
+import SplitPaymentScreen from "./screens/SplitPaymentScreen";
 import { scanCard } from "../api/kiosk";
 
 const SCREENS = {
@@ -27,6 +28,7 @@ const SCREENS = {
   payment: PaymentScreen,
   cash: CashScreen,
   card: CardPaymentScreen,
+  split: SplitPaymentScreen,
   search: SearchScreen,
   change: ChangeScreen,
   status: StatusScreen,
