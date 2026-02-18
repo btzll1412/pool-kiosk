@@ -1,5 +1,9 @@
+import logging
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.checkin import Checkin

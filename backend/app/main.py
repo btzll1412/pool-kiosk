@@ -1,6 +1,15 @@
 import logging
+import sys
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
+
+# Configure logging format for the entire application
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    stream=sys.stdout,
+)
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
@@ -120,26 +129,28 @@ def run_daily_summary():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    db = SessionLocal()
-    try:
-        create_default_admin(db)
-        seed_default_settings(db)
-    finally:
-        db.close()
+    if not getattr(app.state, "testing", False):
+        db = SessionLocal()
+        try:
+            create_default_admin(db)
+            seed_default_settings(db)
+        finally:
+            db.close()
 
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(run_auto_charge_job, "cron", hour=6, minute=0, id="auto_charge_daily")
-    scheduler.add_job(run_membership_expiry_check, "cron", hour=7, minute=0, id="membership_expiry_check")
-    scheduler.add_job(run_daily_summary, "cron", hour=21, minute=0, id="daily_summary")
-    scheduler.start()
-    logger.info(
-        "APScheduler started — 3 jobs scheduled: auto-charge 06:00, expiry check 07:00, daily summary 21:00"
-    )
+        scheduler = BackgroundScheduler()
+        scheduler.add_job(run_auto_charge_job, "cron", hour=6, minute=0, id="auto_charge_daily")
+        scheduler.add_job(run_membership_expiry_check, "cron", hour=7, minute=0, id="membership_expiry_check")
+        scheduler.add_job(run_daily_summary, "cron", hour=21, minute=0, id="daily_summary")
+        scheduler.start()
+        logger.info(
+            "APScheduler started — 3 jobs scheduled: auto-charge 06:00, expiry check 07:00, daily summary 21:00"
+        )
 
     yield
 
-    scheduler.shutdown(wait=False)
-    logger.info("APScheduler shut down")
+    if not getattr(app.state, "testing", False):
+        scheduler.shutdown(wait=False)
+        logger.info("APScheduler shut down")
 
 
 app = FastAPI(

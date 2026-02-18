@@ -53,6 +53,7 @@ class CashPaymentRequest(BaseModel):
     plan_id: uuid.UUID
     amount_tendered: Decimal
     pin: str
+    wants_change: bool = False
 
 
 class CardPaymentRequest(BaseModel):

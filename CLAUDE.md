@@ -51,6 +51,7 @@ These are the source of truth for this project. Do not guess or assume — read 
 - Develop on branch: `claude/pool-management-system-gxRaW`
 - Write clear, descriptive commit messages
 - Commit logically grouped changes — not everything in one giant commit
+- **CRITICAL: Before every commit**, run the full test suite (`pytest backend/tests/ -v`) and fix any failures. Never commit code that breaks existing tests. New features must include or pass all existing tests to ensure the new code works with the entire system.
 
 ---
 

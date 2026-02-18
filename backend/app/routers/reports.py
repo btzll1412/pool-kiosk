@@ -1,10 +1,13 @@
 import csv
 import io
+import logging
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.user import User
@@ -90,6 +93,7 @@ def export_csv(
             tx.notes or "",
         ])
 
+    logger.info("CSV export: %d transactions, range=%s to %s", len(transactions), start_date, end_date)
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),

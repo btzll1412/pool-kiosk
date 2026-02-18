@@ -25,12 +25,13 @@ export async function getPlans() {
   return data;
 }
 
-export async function payCash(member_id, plan_id, amount_tendered, pin) {
+export async function payCash(member_id, plan_id, amount_tendered, pin, wants_change = false) {
   const { data } = await kiosk.post("/pay/cash", {
     member_id,
     plan_id,
     amount_tendered: String(amount_tendered),
     pin,
+    wants_change,
   });
   return data;
 }

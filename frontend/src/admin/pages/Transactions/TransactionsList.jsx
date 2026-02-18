@@ -30,6 +30,7 @@ export default function TransactionsList() {
 
     getTransactions(params)
       .then(setData)
+      .catch((err) => toast.error(err.response?.data?.detail || "Failed to load transactions"))
       .finally(() => setLoading(false));
   };
 
@@ -50,8 +51,8 @@ export default function TransactionsList() {
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Export downloaded");
-    } catch {
-      toast.error("Failed to export");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to export CSV");
     }
   };
 

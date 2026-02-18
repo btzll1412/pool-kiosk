@@ -4,7 +4,7 @@
 
 ---
 
-## Current Phase: Phase 7 Complete — Ready for Phase 8
+## Current Phase: Logging & Error Handling Complete — Ready for Phase 8
 
 ### Overall Progress
 
@@ -45,7 +45,7 @@
 - [x] **Member service:** CRUD, search, credit adjustments, card management
 - [x] **Checkin service:** Membership-aware check-in with swim pass deduction
 - [x] **Membership service:** Create, update, swim adjustment, freeze/unfreeze
-- [x] **Payment service:** Cash processing (with overpay-to-credit), card (stub), credit balance
+- [x] **Payment service:** Cash processing (with overpay-to-credit or change-due), card (stub), credit balance, split payment (cash + card)
 - [x] **Report service:** Dashboard stats, revenue by period, swim stats, membership breakdown
 - [x] **Settings service:** Default settings, DB-backed overrides
 - [x] **Activity logging service:** Before/after snapshots for admin audit trail
@@ -64,6 +64,9 @@
 - [x] **Webhook test endpoint** `POST /api/settings/webhook-test?event_type=<type>` for admin testing
 - [x] **Membership expiry check** scheduled job fires `membership_expiring` and `membership_expired` webhooks
 - [x] **Daily summary** scheduled job fires stats webhook at 21:00
+- [x] **Test suite** — 38 pytest tests covering auth, kiosk scan/search/checkin, cash/card/split payments, PIN verification + lockout
+- [x] **Consistent logging** — Every service, router, and payment adapter uses `logging.getLogger(__name__)` with structured key=value messages
+- [x] **Global log format** configured in main.py: `%(asctime)s [%(levelname)s] %(name)s: %(message)s`
 
 ### Frontend — Admin Panel
 
@@ -98,7 +101,7 @@
   - InactivityTimer — Global inactivity detection with configurable timeout, "Still Here?" overlay with countdown progress bar
   - KioskButton — Large touch-target button with 5 variants, 3 sizes, loading state, active scale animation
   - AutoReturnBar — Countdown progress bar for auto-return to idle after actions
-- [x] **16 kiosk screens:**
+- [x] **17 kiosk screens:**
   - IdleScreen — Welcome screen with pool name, RFID scan prompt, "Search Account" and "Guest Visit" buttons
   - MemberScreen — Member info card, Check In button (active plan), purchase prompt (no plan), unfreeze option (frozen), manage account
   - CheckinScreen — Guest count selector (+/- buttons, max from settings), success state with auto-return
@@ -115,7 +118,9 @@
   - SavedCardsScreen — List all saved cards with rename/delete/set-default/auto-charge actions, add new card button
   - AddCardScreen — Simulates card read (stub mode), card brand selection, friendly name entry, tokenize + save
   - AutoChargeScreen — Card info display, monthly plan selection grid, enable/disable auto-charge with next charge date
+  - SplitPaymentScreen — Cash amount numpad + saved card selector, live cash/card split display, submits to split payment endpoint
 - [x] **Route wiring:** `/kiosk` route added to App.jsx, default redirect changed to `/kiosk`
+- [x] **Consistent error handling** — All API calls use `.catch()` with `err.response?.data?.detail` extraction, no silent failures
 
 ### DevOps
 
@@ -129,7 +134,16 @@
 
 ## Known Issues
 
-_None yet._
+_None._
+
+---
+
+## Bug Fixes (2026-02-18)
+
+1. **Split payment was broken** — PaymentScreen "Split Payment" button navigated to CashScreen instead of a split flow; backend calculated card remainder but never charged it. Fixed by creating SplitPaymentScreen and rewriting the backend to process both cash and card transactions.
+2. **`change_due` always returned 0** — Cash overpayment was silently added to credit with no option for physical change. Added `wants_change` flag to cash payment; CashScreen now shows two options when overpaying: "Add to Credit" or "I Need Change" (which triggers staff notification).
+3. **`JSONB` → `JSON` in ActivityLog** — Switched from PostgreSQL-specific `JSONB` to generic `JSON` for cross-database test compatibility. No functional difference (column only stores audit snapshots, never queried).
+4. **bcrypt 5.0 incompatible with passlib 1.7.4** — Pinned `bcrypt==4.0.1` in requirements.txt to fix password hashing errors.
 
 ---
 
@@ -137,7 +151,8 @@ _None yet._
 
 - Added `pin_hash` field directly on the `Member` model (not a separate table) for simplicity
 - Added `friendly_name` field on `SavedCard` model for card naming feature
-- Payment split endpoint uses a simplified flow (processes as single cash transaction when cash covers full amount)
+- Split payment creates two separate transactions (cash + card) and a single membership; if cash covers the full amount, falls back to regular cash payment
+- Cash payment supports `wants_change` flag: when false, overpayment goes to credit; when true, overpayment returned as `change_due` and staff is notified
 - The `credit` model from the design was not created as a separate model — credit is tracked as `credit_balance` on `Member` and as `Transaction` records
 - Admin panel uses Recharts for charts (bar charts for revenue, pie charts for swim types)
 - Settings page uses toggle switches for boolean settings and a sticky bottom save bar
@@ -153,4 +168,34 @@ _None yet._
 
 ---
 
-## Last Updated: 2026-02-18 (Phase 7)
+## Logging & Error Handling (2026-02-18)
+
+### Backend Logging Added
+
+All 10 services, 11 routers, and 2 payment adapters now use consistent structured logging:
+
+- **payment_service.py** — Cash/card/credit payment lifecycle, overpayment handling, low balance alerts
+- **checkin_service.py** — Check-in success/failure, swim pass deduction, membership validation
+- **membership_service.py** — Create, update, swim adjust, freeze/unfreeze
+- **member_service.py** — Create, update, deactivate, credit adjust, card assign/deactivate
+- **pin_service.py** — PIN verification, failed attempts, account lockouts (security audit trail)
+- **auth_service.py** — Token decode failures, user not found, admin access denied
+- **activity_service.py** — Debug-level activity log entries
+- **settings_service.py** — Settings update with key count
+- **seed.py** — Admin creation and settings seeding
+- **All routers** — Request-level logging for key operations (login, kiosk actions, settings, reports)
+- **Payment adapters** — Stub payment initiation/tokenization, cash adapter unsupported operation warnings
+
+### Frontend Error Handling Fixed
+
+- **Dashboard, MembersList, MemberForm, RevenueReport, SwimReport** — Added missing `.catch()` on data load
+- **MemberDetail** — Fixed 3 empty catch blocks + added `.catch()` to initial data load
+- **Settings** — Added `.catch()` to settings load, fixed save/test webhook catch blocks
+- **Login** — Fixed catch block to extract server error detail
+- **SavedCardsScreen** — Fixed 3 empty catch blocks with specific error messages
+- **SplitPaymentScreen** — Added `console.warn` for background card loading failure
+- **API client** — Added `console.warn` for token refresh failures
+
+---
+
+## Last Updated: 2026-02-18 (Logging & Error Handling)

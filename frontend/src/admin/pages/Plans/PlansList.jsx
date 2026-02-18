@@ -20,6 +20,7 @@ export default function PlansList() {
     setLoading(true);
     getPlans()
       .then(setPlans)
+      .catch((err) => toast.error(err.response?.data?.detail || "Failed to load plans"))
       .finally(() => setLoading(false));
   };
 
@@ -33,8 +34,8 @@ export default function PlansList() {
       toast.success("Plan deactivated");
       setDeleteTarget(null);
       load();
-    } catch {
-      toast.error("Failed to deactivate plan");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to deactivate plan");
     }
   };
 

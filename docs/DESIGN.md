@@ -509,17 +509,18 @@ pool-management/
       - Split (cash + card)
 
 [SPLIT PAYMENT SCREEN]
-  → Shows total amount due
-  → "How much cash are you putting in?" → numpad
-  → Remainder automatically shown as card charge
-  → Cash portion follows normal cash flow (exact/overpay/change)
-  → Card portion charged to saved card or new card
+  → Shows total amount due with live cash/card split display
+  → "Enter Cash Amount" → numpad, remainder auto-calculated for card
+  → Select saved card for remainder (or use new card)
+  → Confirm → records cash transaction + charges card → creates membership
+  → If cash covers full amount, falls back to regular cash flow
 
 [CASH SCREEN]
   → Numpad to enter amount
   → If exact → "Place $X in the cash box. Thank you!"
-  → If overpaid → extra added to account credit, shown on screen
-  → If needs change → [CHANGE SCREEN]
+  → If overpaid → two buttons shown:
+      - "Add $X to Credit" → adds to account balance
+      - "I Need $X Change" → [CHANGE SCREEN] + staff notification
 
 [CHANGE SCREEN]
   → "Place your cash in the box. Someone will bring your change shortly"
@@ -754,6 +755,80 @@ Every webhook POST sends:
 
 ---
 
+## Logging & Error Handling Standards
+
+### Backend Logging
+
+Every Python module (services, routers, payment adapters) must include a module-level logger:
+
+```python
+import logging
+logger = logging.getLogger(__name__)
+```
+
+**Global format** (configured in `app/main.py`):
+
+```
+%(asctime)s [%(levelname)s] %(name)s: %(message)s
+```
+
+Example output: `2026-02-18 14:32:01 [INFO] app.services.payment_service: Cash payment completed: member=abc123, plan=Monthly, amount=$45.00, tx=tx789`
+
+**Log level guidelines:**
+
+| Level | When to Use | Examples |
+|---|---|---|
+| `logger.info()` | Successful operations, state changes | Payment completed, member created, check-in recorded |
+| `logger.warning()` | Rejected requests, failed attempts, degraded state | Insufficient balance, PIN lockout, invalid card |
+| `logger.debug()` | Low-priority or high-frequency events | Activity log entries, PIN verification success |
+| `logger.exception()` | Caught exceptions where traceback is needed | Unexpected DB errors, webhook delivery failures |
+
+**Structured messages** use key=value pairs for easy parsing:
+
+```python
+logger.info("Cash payment completed: member=%s, plan=%s, amount=$%s, tx=%s", member_id, plan.name, plan.price, tx.id)
+logger.warning("PIN attempt on locked account: member=%s, locked_until=%s", member_id, lockout.locked_until)
+```
+
+### Frontend Error Handling
+
+**All API `.catch()` blocks** must extract the FastAPI error detail:
+
+```javascript
+.catch((err) => toast.error(err.response?.data?.detail || "Fallback message"))
+```
+
+**Rules:**
+
+- Every promise chain or `async/await` must have a `.catch()` or `try/catch` — no silent failures
+- Error toasts use `react-hot-toast` and show the server's `detail` message when available
+- Fallback messages must be specific to the operation (e.g., "Failed to load members" not "Something went wrong")
+- `console.warn()` is acceptable for non-user-facing failures (e.g., loading saved cards in background)
+
+**Pattern for admin pages (data loading in useEffect):**
+
+```javascript
+useEffect(() => {
+  getData()
+    .then(setData)
+    .catch((err) => toast.error(err.response?.data?.detail || "Failed to load data"))
+    .finally(() => setLoading(false));
+}, []);
+```
+
+**Pattern for action handlers:**
+
+```javascript
+try {
+  await performAction(payload);
+  toast.success("Action completed");
+} catch (err) {
+  toast.error(err.response?.data?.detail || "Action failed");
+}
+```
+
+---
+
 ## Future Integrations (placeholders ready)
 
 - **Home Assistant:** Full webhook integration complete (8 event types)
@@ -782,6 +857,8 @@ Every webhook POST sends:
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-02-18 | Added Logging & Error Handling Standards section; consistent logging across all backend modules; frontend error handling audit | — |
+| 2026-02-18 | Bug fixes: split payment (frontend + backend), cash change_due flow, test suite (38 tests), bcrypt compat, JSONB→JSON | — |
 | 2026-02-18 | Phase 7: Added webhook notification system (8 events), scheduled jobs, admin webhook config UI, payload docs | — |
 | 2026-02-18 | Phase 5: Added tokenize_card/charge_saved_card to payment adapter, updated recurring/auto-charge section | — |
 | 2026-02-18 | Initial design document created from planning session | — |

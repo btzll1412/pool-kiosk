@@ -17,7 +17,7 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
   const isOver = amountNum > price;
   const overpay = isOver ? (amountNum - price).toFixed(2) : "0.00";
 
-  async function handlePay() {
+  async function handlePay(wantsChange = false) {
     if (amountNum <= 0) {
       toast.error("Enter the amount");
       return;
@@ -29,7 +29,7 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
 
     setLoading(true);
     try {
-      const data = await payCash(member.member_id, plan.id, amountNum, pin);
+      const data = await payCash(member.member_id, plan.id, amountNum, pin, wantsChange);
 
       if (data.change_due > 0) {
         try {
@@ -105,17 +105,40 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
             </p>
           )}
 
-          <KioskButton
-            variant="success"
-            size="xl"
-            icon={Banknote}
-            loading={loading}
-            disabled={amountNum < price}
-            onClick={handlePay}
-            className="mt-4 w-full"
-          >
-            Confirm Payment
-          </KioskButton>
+          {isOver ? (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <KioskButton
+                variant="success"
+                size="xl"
+                icon={Banknote}
+                loading={loading}
+                onClick={() => handlePay(false)}
+              >
+                Add {settings.currency}{overpay} to Credit
+              </KioskButton>
+              <KioskButton
+                variant="secondary"
+                size="xl"
+                icon={Banknote}
+                loading={loading}
+                onClick={() => handlePay(true)}
+              >
+                I Need {settings.currency}{overpay} Change
+              </KioskButton>
+            </div>
+          ) : (
+            <KioskButton
+              variant="success"
+              size="xl"
+              icon={Banknote}
+              loading={loading}
+              disabled={amountNum < price}
+              onClick={() => handlePay(false)}
+              className="mt-4 w-full"
+            >
+              Confirm Payment
+            </KioskButton>
+          )}
         </div>
       </div>
     </div>

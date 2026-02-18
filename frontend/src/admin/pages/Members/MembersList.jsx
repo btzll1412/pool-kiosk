@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Search } from "lucide-react";
+import toast from "react-hot-toast";
 import { getMembers } from "../../../api/members";
 import Badge from "../../../shared/Badge";
 import Button from "../../../shared/Button";
@@ -19,6 +20,7 @@ export default function MembersList() {
     setLoading(true);
     getMembers({ search: search || undefined, page, per_page: perPage })
       .then(setData)
+      .catch((err) => toast.error(err.response?.data?.detail || "Failed to load members"))
       .finally(() => setLoading(false));
   }, [search, page]);
 

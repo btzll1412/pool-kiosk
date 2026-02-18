@@ -53,6 +53,7 @@ export default function MemberDetail() {
         setHistory(h);
         setSavedCards(sc);
       })
+      .catch((err) => toast.error(err.response?.data?.detail || "Failed to load member details"))
       .finally(() => setLoading(false));
   };
 
@@ -84,8 +85,8 @@ export default function MemberDetail() {
       await deactivateMember(id);
       toast.success("Member deactivated");
       navigate("/admin/members");
-    } catch {
-      toast.error("Failed to deactivate member");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to deactivate member");
     }
   };
 
@@ -94,8 +95,8 @@ export default function MemberDetail() {
       await deactivateCard(id, cardId);
       toast.success("Card deactivated");
       load();
-    } catch {
-      toast.error("Failed to deactivate card");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to deactivate card");
     }
   };
 
@@ -104,8 +105,8 @@ export default function MemberDetail() {
       await deleteMemberSavedCard(id, cardId);
       toast.success("Saved card removed");
       load();
-    } catch {
-      toast.error("Failed to remove saved card");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to remove saved card");
     }
   };
 

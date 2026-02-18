@@ -1,5 +1,9 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.user import User
@@ -32,6 +36,7 @@ def update_settings_endpoint(
         db, user_id=current_user.id, action="settings.update",
         entity_type="settings", before=before, after=result,
     )
+    logger.info("Settings updated by user=%s, keys=%s", current_user.username, list(data.settings.keys()))
     return result
 
 
@@ -50,5 +55,7 @@ def test_webhook(
         )
     success = fire_test_webhook(db, event)
     if success:
+        logger.info("Webhook test sent: event=%s, by_user=%s", event_type, current_user.username)
         return {"success": True, "message": f"Test webhook sent for '{event_type}'"}
+    logger.info("Webhook test skipped — no URL configured: event=%s", event_type)
     return {"success": False, "message": f"No webhook URL configured for '{event_type}'"}

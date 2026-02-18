@@ -1,9 +1,12 @@
+import logging
 import uuid
 from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.models.card import Card
 from app.models.member import Member
@@ -59,6 +62,7 @@ def create_member(db: Session, data: MemberCreate) -> Member:
     db.add(member)
     db.commit()
     db.refresh(member)
+    logger.info("Member created: id=%s, name=%s %s", member.id, member.first_name, member.last_name)
     return member
 
 
@@ -86,6 +90,7 @@ def update_member(
         "is_active": member.is_active,
     }
     log_activity(db, user_id=user_id, action="member.update", entity_type="member", entity_id=member.id, before=before, after=after)
+    logger.info("Member updated: id=%s, by_user=%s", member_id, user_id)
     return member
 
 
@@ -95,6 +100,7 @@ def deactivate_member(db: Session, member_id: uuid.UUID, user_id: uuid.UUID | No
     db.commit()
     db.refresh(member)
     log_activity(db, user_id=user_id, action="member.deactivate", entity_type="member", entity_id=member.id)
+    logger.info("Member deactivated: id=%s, by_user=%s", member_id, user_id)
     return member
 
 
@@ -105,6 +111,7 @@ def adjust_credit(
     before_balance = member.credit_balance
     member.credit_balance += data.amount
     if member.credit_balance < 0:
+        logger.warning("Credit adjustment rejected — would go negative: member=%s, current=$%s, adjustment=$%s", member_id, before_balance, data.amount)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Credit balance cannot go negative")
     tx_type = TransactionType.credit_add if data.amount > 0 else TransactionType.manual_adjustment
     tx = Transaction(
@@ -128,6 +135,7 @@ def adjust_credit(
         after={"credit_balance": str(member.credit_balance)},
         note=data.notes,
     )
+    logger.info("Credit adjusted: member=%s, before=$%s, after=$%s, by_user=%s", member_id, before_balance, member.credit_balance, user_id)
     return member
 
 
@@ -140,12 +148,14 @@ def assign_card(db: Session, member_id: uuid.UUID, rfid_uid: str, user_id: uuid.
     get_member(db, member_id)
     existing = db.query(Card).filter(Card.rfid_uid == rfid_uid, Card.is_active.is_(True)).first()
     if existing:
+        logger.warning("Card assignment failed — already in use: rfid=%s, existing_member=%s", rfid_uid, existing.member_id)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card already assigned to a member")
     card = Card(member_id=member_id, rfid_uid=rfid_uid)
     db.add(card)
     db.commit()
     db.refresh(card)
     log_activity(db, user_id=user_id, action="card.assign", entity_type="card", entity_id=card.id, after={"member_id": str(member_id), "rfid_uid": rfid_uid})
+    logger.info("RFID card assigned: card=%s, rfid=%s, member=%s", card.id, rfid_uid, member_id)
     return card
 
 
@@ -157,4 +167,5 @@ def deactivate_card(db: Session, member_id: uuid.UUID, card_id: uuid.UUID, user_
     db.commit()
     db.refresh(card)
     log_activity(db, user_id=user_id, action="card.deactivate", entity_type="card", entity_id=card.id)
+    logger.info("RFID card deactivated: card=%s, member=%s", card_id, member_id)
     return card

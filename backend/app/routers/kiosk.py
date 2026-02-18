@@ -1,9 +1,12 @@
+import logging
 import uuid
 from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.card import Card
@@ -13,7 +16,7 @@ from app.models.membership import Membership
 from app.models.membership_freeze import MembershipFreeze
 from app.models.plan import Plan, PlanType
 from app.models.saved_card import SavedCard
-from app.models.transaction import PaymentMethod
+from app.models.transaction import PaymentMethod, Transaction, TransactionType
 from app.schemas.kiosk import (
     AutoChargeDisableRequest,
     AutoChargeRequest,
@@ -44,7 +47,7 @@ from app.services.auto_charge_service import (
     enable_auto_charge,
 )
 from app.services.checkin_service import perform_checkin
-from app.services.membership_service import freeze_membership, unfreeze_membership
+from app.services.membership_service import create_membership, freeze_membership, unfreeze_membership
 from app.services.notification_service import notify_checkin, send_change_notification
 from app.services.payment_service import get_payment_adapter, process_card_payment, process_cash_payment
 from app.services.pin_service import verify_member_pin
@@ -59,10 +62,13 @@ router = APIRouter()
 def scan_card(data: ScanRequest, request: Request, db: Session = Depends(get_db)):
     card = db.query(Card).filter(Card.rfid_uid == data.rfid_uid, Card.is_active.is_(True)).first()
     if not card:
+        logger.info("Card scan — unrecognized: rfid=%s", data.rfid_uid)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not recognized")
     member = db.query(Member).filter(Member.id == card.member_id, Member.is_active.is_(True)).first()
     if not member:
+        logger.warning("Card scan — member inactive: rfid=%s, member=%s", data.rfid_uid, card.member_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found or inactive")
+    logger.info("Card scanned: rfid=%s, member=%s %s", data.rfid_uid, member.first_name, member.last_name)
     return _build_member_status(db, member)
 
 
@@ -109,6 +115,7 @@ def kiosk_checkin(data: KioskCheckinRequest, request: Request, db: Session = Dep
         )
 
     guests_msg = f" + {checkin.guest_count} guest(s)" if checkin.guest_count > 0 else ""
+    logger.info("Kiosk check-in: member=%s, guests=%d", data.member_id, checkin.guest_count)
     return KioskCheckinResponse(
         checkin_id=checkin.id,
         checkin_type=checkin.checkin_type,
@@ -142,15 +149,18 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
-    needs_change = data.amount_tendered > plan.price and (data.amount_tendered - plan.price) > Decimal("0.00")
+    tx, change_due, credit_added = process_cash_payment(
+        db, data.member_id, data.plan_id, data.amount_tendered, wants_change=data.wants_change
+    )
 
-    tx, change_due, credit_added = process_cash_payment(db, data.member_id, data.plan_id, data.amount_tendered)
-
-    if needs_change and credit_added > 0:
+    if change_due > 0:
+        msg = f"Payment recorded. ${change_due} change due."
+    elif credit_added > 0:
         msg = f"Payment recorded. ${credit_added} added to your account credit."
     else:
         msg = "Payment recorded successfully."
 
+    logger.info("Kiosk cash payment: member=%s, plan=%s, amount=$%s", data.member_id, data.plan_id, data.amount_tendered)
     return PaymentResponse(
         success=True,
         transaction_id=tx.id,
@@ -191,6 +201,7 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
         db.add(card)
         db.commit()
 
+    logger.info("Kiosk card payment: member=%s, plan=%s, saved_card=%s", data.member_id, data.plan_id, data.saved_card_id or "new")
     return PaymentResponse(
         success=True,
         transaction_id=tx.id,
@@ -212,6 +223,10 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
+    member = db.query(Member).filter(Member.id == data.member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
     if data.cash_amount >= plan.price:
         tx, change_due, credit_added = process_cash_payment(db, data.member_id, data.plan_id, data.cash_amount)
         return PaymentResponse(
@@ -222,12 +237,74 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
             message="Full amount covered by cash.",
         )
 
+    if data.cash_amount <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cash amount must be greater than zero for split payment",
+        )
+
     card_amount = plan.price - data.cash_amount
-    tx, _, _ = process_cash_payment(db, data.member_id, data.plan_id, plan.price)
+
+    # Charge the card portion
+    adapter = get_payment_adapter()
+    if data.saved_card_id:
+        saved_card = db.query(SavedCard).filter(
+            SavedCard.id == data.saved_card_id, SavedCard.member_id == data.member_id
+        ).first()
+        if not saved_card:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved card not found")
+        charge_result = adapter.charge_saved_card(
+            token=saved_card.processor_token,
+            amount=card_amount,
+            member_id=str(data.member_id),
+            description=f"Split payment (card portion): {plan.name}",
+        )
+        if not charge_result.success:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=charge_result.message or "Card charge failed",
+            )
+        card_reference = charge_result.reference_id
+    else:
+        session = adapter.initiate_payment(card_amount, str(data.member_id), f"Split payment (card portion): {plan.name}")
+        card_reference = session.session_id
+
+    # Create the membership once
+    membership = create_membership(db, data.member_id, data.plan_id)
+
+    # Record cash transaction
+    cash_tx = Transaction(
+        member_id=data.member_id,
+        transaction_type=TransactionType.payment,
+        payment_method=PaymentMethod.cash,
+        amount=data.cash_amount,
+        plan_id=data.plan_id,
+        membership_id=membership.id,
+        notes="Split payment (cash portion)",
+    )
+    db.add(cash_tx)
+
+    # Record card transaction
+    card_tx = Transaction(
+        member_id=data.member_id,
+        transaction_type=TransactionType.payment,
+        payment_method=PaymentMethod.card,
+        amount=card_amount,
+        plan_id=data.plan_id,
+        membership_id=membership.id,
+        reference_id=card_reference,
+        notes="Split payment (card portion)",
+    )
+    db.add(card_tx)
+
+    db.commit()
+    db.refresh(cash_tx)
+
+    logger.info("Kiosk split payment: member=%s, plan=%s, cash=$%s, card=$%s", data.member_id, data.plan_id, data.cash_amount, card_amount)
     return PaymentResponse(
         success=True,
-        transaction_id=tx.id,
-        membership_id=tx.membership_id,
+        transaction_id=cash_tx.id,
+        membership_id=membership.id,
         message=f"Split payment: ${data.cash_amount} cash + ${card_amount} card.",
     )
 
@@ -441,6 +518,7 @@ def guest_visit(data: GuestVisitRequest, request: Request, db: Session = Depends
     db.add(visit)
     db.commit()
     db.refresh(visit)
+    logger.info("Guest visit: name=%s, plan=%s, amount=$%s", data.name, plan.name, plan.price)
     return GuestVisitResponse(visit_id=visit.id, amount_paid=plan.price, message=f"Welcome, {data.name}! Enjoy your swim.")
 
 

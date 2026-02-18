@@ -37,6 +37,7 @@ export default function MemberForm() {
             notes: m.notes || "",
           })
         )
+        .catch((err) => toast.error(err.response?.data?.detail || "Failed to load member"))
         .finally(() => setFetching(false));
     }
   }, [id, isEdit]);

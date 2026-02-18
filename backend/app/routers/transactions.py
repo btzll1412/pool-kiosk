@@ -1,8 +1,11 @@
+import logging
 import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.transaction import PaymentMethod, Transaction, TransactionType
@@ -73,6 +76,7 @@ def create_manual_transaction(
         entity_type="transaction", entity_id=tx.id,
         after={"amount": str(tx.amount), "type": tx.transaction_type.value},
     )
+    logger.info("Manual transaction created: tx=%s, type=%s, amount=$%s, by_user=%s", tx.id, tx.transaction_type.value, tx.amount, current_user.username)
     return tx
 
 

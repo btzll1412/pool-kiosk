@@ -1,8 +1,11 @@
+import logging
 import uuid
 from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.config import settings
 from app.models.member import Member
@@ -22,6 +25,7 @@ def get_payment_adapter() -> BasePaymentAdapter:
         "cash": CashPaymentAdapter,
     }
     adapter_cls = adapters.get(settings.payment_adapter, StubPaymentAdapter)
+    logger.debug("Using payment adapter: %s", adapter_cls.__name__)
     return adapter_cls()
 
 
@@ -30,6 +34,7 @@ def process_cash_payment(
     member_id: uuid.UUID,
     plan_id: uuid.UUID,
     amount_tendered: Decimal,
+    wants_change: bool = False,
 ) -> tuple[Transaction, Decimal, Decimal]:
     member = db.query(Member).filter(Member.id == member_id).first()
     if not member:
@@ -40,6 +45,7 @@ def process_cash_payment(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
     if amount_tendered < plan.price:
+        logger.warning("Cash payment insufficient: member=%s, plan=%s, tendered=$%s, required=$%s", member_id, plan_id, amount_tendered, plan.price)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Insufficient amount. Plan costs ${plan.price}, received ${amount_tendered}",
@@ -50,8 +56,13 @@ def process_cash_payment(
     credit_added = Decimal("0.00")
 
     if overpayment > 0:
-        credit_added = overpayment
-        member.credit_balance += credit_added
+        if wants_change:
+            change_due = overpayment
+            logger.info("Cash payment overpay — change due: member=%s, change=$%s", member_id, change_due)
+        else:
+            credit_added = overpayment
+            member.credit_balance += credit_added
+            logger.info("Cash payment overpay — added to credit: member=%s, credit=$%s, new_balance=$%s", member_id, credit_added, member.credit_balance)
 
     membership = create_membership(db, member_id, plan_id)
 
@@ -77,6 +88,7 @@ def process_cash_payment(
 
     db.commit()
     db.refresh(tx)
+    logger.info("Cash payment completed: member=%s, plan=%s, amount=$%s, tx=%s", member_id, plan.name, plan.price, tx.id)
     return tx, change_due, credit_added
 
 
@@ -95,6 +107,7 @@ def process_card_payment(
 
     adapter = get_payment_adapter()
     session = adapter.initiate_payment(plan.price, str(member_id), f"Purchase: {plan.name}")
+    logger.info("Card payment initiated: member=%s, plan=%s, amount=$%s, session=%s", member_id, plan.name, plan.price, session.session_id)
 
     membership = create_membership(db, member_id, plan_id)
 
@@ -110,6 +123,7 @@ def process_card_payment(
     db.add(tx)
     db.commit()
     db.refresh(tx)
+    logger.info("Card payment completed: member=%s, plan=%s, amount=$%s, tx=%s", member_id, plan.name, plan.price, tx.id)
     return tx
 
 
@@ -127,6 +141,7 @@ def process_credit_payment(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
     if member.credit_balance < plan.price:
+        logger.info("Credit payment rejected — insufficient balance: member=%s, balance=$%s, required=$%s", member_id, member.credit_balance, plan.price)
         return None
 
     member.credit_balance -= plan.price
@@ -143,9 +158,11 @@ def process_credit_payment(
     db.add(tx)
     db.commit()
     db.refresh(tx)
+    logger.info("Credit payment completed: member=%s, plan=%s, amount=$%s, remaining=$%s", member_id, plan.name, plan.price, member.credit_balance)
 
     threshold = Decimal(get_setting(db, "low_balance_threshold", "5.00"))
     if member.credit_balance < threshold:
+        logger.info("Low balance alert: member=%s, balance=$%s, threshold=$%s", member_id, member.credit_balance, threshold)
         notify_low_balance(
             db,
             member_name=f"{member.first_name} {member.last_name}",

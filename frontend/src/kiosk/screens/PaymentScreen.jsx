@@ -105,7 +105,7 @@ export default function PaymentScreen({ member, goTo, context, settings }) {
                         variant="secondary"
                         size="xl"
                         icon={Split}
-                        onClick={() => goPayMethod("cash")}
+                        onClick={() => goPayMethod("split")}
                         className="flex-col gap-1 py-6"
                       >
                         Split Payment
