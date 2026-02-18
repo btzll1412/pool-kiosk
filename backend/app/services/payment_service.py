@@ -12,6 +12,8 @@ from app.payments.base import BasePaymentAdapter
 from app.payments.cash import CashPaymentAdapter
 from app.payments.stub import StubPaymentAdapter
 from app.services.membership_service import create_membership
+from app.services.notification_service import notify_low_balance
+from app.services.settings_service import get_setting
 
 
 def get_payment_adapter() -> BasePaymentAdapter:
@@ -141,4 +143,15 @@ def process_credit_payment(
     db.add(tx)
     db.commit()
     db.refresh(tx)
+
+    threshold = Decimal(get_setting(db, "low_balance_threshold", "5.00"))
+    if member.credit_balance < threshold:
+        notify_low_balance(
+            db,
+            member_name=f"{member.first_name} {member.last_name}",
+            member_id=str(member.id),
+            balance=str(member.credit_balance),
+            threshold=str(threshold),
+        )
+
     return tx

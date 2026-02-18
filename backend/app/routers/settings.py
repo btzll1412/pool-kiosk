@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -6,6 +6,7 @@ from app.models.user import User
 from app.schemas.settings import SettingsUpdateRequest
 from app.services.activity_service import log_activity
 from app.services.auth_service import get_current_user
+from app.services.notification_service import WebhookEvent, fire_test_webhook
 from app.services.settings_service import get_all_settings, update_settings
 
 router = APIRouter()
@@ -32,3 +33,22 @@ def update_settings_endpoint(
         entity_type="settings", before=before, after=result,
     )
     return result
+
+
+@router.post("/webhook-test")
+def test_webhook(
+    event_type: str = Query(..., description="Webhook event type to test"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        event = WebhookEvent(event_type)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid event type: {event_type}. Valid types: {[e.value for e in WebhookEvent]}",
+        )
+    success = fire_test_webhook(db, event)
+    if success:
+        return {"success": True, "message": f"Test webhook sent for '{event_type}'"}
+    return {"success": False, "message": f"No webhook URL configured for '{event_type}'"}

@@ -10,6 +10,7 @@ from app.models.plan import Plan, PlanType
 from app.models.saved_card import SavedCard
 from app.models.transaction import PaymentMethod, Transaction, TransactionType
 from app.services.membership_service import create_membership
+from app.services.notification_service import notify_auto_charge_failed, notify_auto_charge_success
 from app.services.payment_service import get_payment_adapter
 
 logger = logging.getLogger(__name__)
@@ -36,12 +37,24 @@ def process_due_charges(db: Session) -> dict:
         plan = db.query(Plan).filter(Plan.id == card.auto_charge_plan_id).first()
         if not plan:
             logger.warning("Auto-charge skipped: plan %s not found for card %s", card.auto_charge_plan_id, card.id)
+            member = db.query(Member).filter(Member.id == card.member_id).first()
+            if member:
+                notify_auto_charge_failed(
+                    db, member_name=f"{member.first_name} {member.last_name}",
+                    member_id=str(card.member_id), plan_name="Unknown",
+                    amount="0.00", card_last4=card.card_last4 or "", reason="Plan not found",
+                )
             results["failed"] += 1
             continue
 
         member = db.query(Member).filter(Member.id == card.member_id, Member.is_active.is_(True)).first()
         if not member:
             logger.warning("Auto-charge skipped: member %s inactive for card %s", card.member_id, card.id)
+            notify_auto_charge_failed(
+                db, member_name=str(card.member_id),
+                member_id=str(card.member_id), plan_name=plan.name,
+                amount=str(plan.price), card_last4=card.card_last4 or "", reason="Member inactive",
+            )
             results["failed"] += 1
             continue
 
@@ -54,6 +67,12 @@ def process_due_charges(db: Session) -> dict:
 
         if not charge_result.success:
             logger.warning("Auto-charge failed for card %s: %s", card.id, charge_result.message)
+            notify_auto_charge_failed(
+                db, member_name=f"{member.first_name} {member.last_name}",
+                member_id=str(card.member_id), plan_name=plan.name,
+                amount=str(plan.price), card_last4=card.card_last4 or "",
+                reason=charge_result.message or "Charge declined",
+            )
             results["failed"] += 1
             continue
 
@@ -75,6 +94,11 @@ def process_due_charges(db: Session) -> dict:
         db.commit()
 
         logger.info("Auto-charge succeeded for member %s, plan %s", card.member_id, plan.name)
+        notify_auto_charge_success(
+            db, member_name=f"{member.first_name} {member.last_name}",
+            member_id=str(card.member_id), plan_name=plan.name,
+            amount=str(plan.price), card_last4=card.card_last4 or "",
+        )
         results["succeeded"] += 1
 
     return results

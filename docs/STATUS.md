@@ -4,7 +4,7 @@
 
 ---
 
-## Current Phase: Phase 5 Complete — Ready for Phase 7
+## Current Phase: Phase 7 Complete — Ready for Phase 8
 
 ### Overall Progress
 
@@ -16,7 +16,7 @@
 | Phase 4 — Payment + Cash + PIN | **Complete** | PIN service, cash flow, stub adapter built in Phase 1; kiosk payment screens built in Phase 3 |
 | Phase 5 — Recurring Billing + Saved Cards | **Complete** | Auto-charge service, saved card management, APScheduler, kiosk + admin UI |
 | Phase 6 — Docker + Nginx | **Complete** | docker-compose.yml, Dockerfiles, nginx.conf done |
-| Phase 7 — HA/Notification Hooks | Not Started | Notification service placeholder ready |
+| Phase 7 — HA/Notification Hooks | **Complete** | 8 webhook events, scheduled expiry check + daily summary, admin webhook config UI |
 | Phase 8 — Real Payment Processor | Not Started | Adapter interface ready |
 
 ---
@@ -49,17 +49,21 @@
 - [x] **Report service:** Dashboard stats, revenue by period, swim stats, membership breakdown
 - [x] **Settings service:** Default settings, DB-backed overrides
 - [x] **Activity logging service:** Before/after snapshots for admin audit trail
-- [x] **Notification service:** Webhook placeholder for HA integration
+- [x] **Notification service:** Full webhook system with 8 event types, per-event URL configuration, fire-and-forget delivery
 - [x] **Seed service:** Auto-creates default admin and default settings on startup
 - [x] **Rate limiter:** slowapi-based per-IP limiting on kiosk endpoints
 - [x] **Payment adapters:** Base interface with tokenize/charge_saved_card methods, Stub adapter (always succeeds), Cash adapter (rejects card ops)
 - [x] **Auto-charge service** (`services/auto_charge_service.py`): process_due_charges (daily scheduler), enable/disable auto-charge, on-demand saved card charging
-- [x] **APScheduler** integrated in app lifespan — daily 06:00 job for auto-charge processing
+- [x] **APScheduler** integrated in app lifespan — 3 daily jobs: auto-charge (06:00), membership expiry check (07:00), daily summary (21:00)
 - [x] **10 Pydantic schema modules:** auth, member, card, plan, membership, checkin, transaction, kiosk, settings, report
 - [x] **11 API routers:** auth, members, cards, plans, memberships, checkins, payments, transactions, reports, settings, kiosk
 - [x] All kiosk endpoints: scan, search, checkin, plans, pay/cash, pay/card (with saved card support + save-after-payment), pay/split, freeze, unfreeze, saved-cards CRUD, tokenize, set-default, auto-charge enable/disable, guest visit, change notification
 - [x] All admin endpoints: full CRUD for members/plans/memberships, transaction management, reports with CSV export, settings management, member saved cards view + delete
 - [x] Activity logging on all admin mutations
+- [x] **Webhook events** fired from: kiosk checkin, credit payment (low balance), auto-charge success/failure
+- [x] **Webhook test endpoint** `POST /api/settings/webhook-test?event_type=<type>` for admin testing
+- [x] **Membership expiry check** scheduled job fires `membership_expiring` and `membership_expired` webhooks
+- [x] **Daily summary** scheduled job fires stats webhook at 21:00
 
 ### Frontend — Admin Panel
 
@@ -79,7 +83,7 @@
 - [x] **Transactions list:** Filterable by type/method/date range, paginated table, color-coded badges, CSV export button, clear filters
 - [x] **Revenue report:** Date range + grouping selectors, stacked bar chart (Recharts) for cash/card/credit breakdown, stat cards, membership breakdown with progress bars
 - [x] **Swim report:** Date range selector, stat cards, donut pie chart for check-in types
-- [x] **Settings page:** 6 grouped sections (Kiosk, Timer, PIN, Fees, Features, Notifications), toggle switches, sticky save bar with unsaved changes indicator
+- [x] **Settings page:** 6 grouped sections (Kiosk, Timer, PIN, Fees, Features, Notifications & Webhooks), toggle switches, webhook URL fields with inline "Test" buttons, sticky save bar with unsaved changes indicator
 - [x] **App routing:** Protected routes, nested admin layout, all page routes wired
 
 ### Frontend — Kiosk UI
@@ -149,4 +153,4 @@ _None yet._
 
 ---
 
-## Last Updated: 2026-02-18 (Phase 5)
+## Last Updated: 2026-02-18 (Phase 7)

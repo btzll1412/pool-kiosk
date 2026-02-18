@@ -21,6 +21,18 @@ DEFAULT_SETTINGS = {
     "auto_charge_enabled": "true",
     "guest_visit_enabled": "true",
     "split_payment_enabled": "true",
+    # Webhook URLs (Phase 7)
+    "webhook_change_needed": "",
+    "webhook_checkin": "",
+    "webhook_membership_expiring": "",
+    "webhook_membership_expired": "",
+    "webhook_low_balance": "",
+    "webhook_auto_charge_success": "",
+    "webhook_auto_charge_failed": "",
+    "webhook_daily_summary": "",
+    # Webhook thresholds
+    "low_balance_threshold": "5.00",
+    "membership_expiry_warning_days": "7",
 }
 
 
