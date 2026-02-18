@@ -29,3 +29,9 @@ export const assignCard = (id, data) =>
 
 export const deactivateCard = (memberId, cardId) =>
   client.delete(`/members/${memberId}/cards/${cardId}`).then((r) => r.data);
+
+export const getMemberSavedCards = (memberId) =>
+  client.get(`/members/${memberId}/saved-cards`).then((r) => r.data);
+
+export const deleteMemberSavedCard = (memberId, cardId) =>
+  client.delete(`/members/${memberId}/saved-cards/${cardId}`).then((r) => r.data);

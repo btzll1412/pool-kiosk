@@ -31,6 +31,12 @@ class RefundResult(BaseModel):
     message: str = ""
 
 
+class SavedCardChargeResult(BaseModel):
+    success: bool
+    reference_id: str | None = None
+    message: str = ""
+
+
 class BasePaymentAdapter(ABC):
     @abstractmethod
     def initiate_payment(self, amount: Decimal, member_id: str, description: str) -> PaymentSession:
@@ -42,4 +48,16 @@ class BasePaymentAdapter(ABC):
 
     @abstractmethod
     def refund(self, transaction_id: str, amount: Decimal) -> RefundResult:
+        ...
+
+    @abstractmethod
+    def tokenize_card(self, card_last4: str, card_brand: str, member_id: str) -> str:
+        """Return a processor token for a saved card."""
+        ...
+
+    @abstractmethod
+    def charge_saved_card(
+        self, token: str, amount: Decimal, member_id: str, description: str
+    ) -> SavedCardChargeResult:
+        """Charge a previously tokenized saved card."""
         ...

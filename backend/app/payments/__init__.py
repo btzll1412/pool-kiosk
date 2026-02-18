@@ -1,4 +1,10 @@
-from app.payments.base import BasePaymentAdapter, PaymentSession, PaymentStatus, RefundResult
+from app.payments.base import (
+    BasePaymentAdapter,
+    PaymentSession,
+    PaymentStatus,
+    RefundResult,
+    SavedCardChargeResult,
+)
 from app.payments.stub import StubPaymentAdapter
 from app.payments.cash import CashPaymentAdapter
 
@@ -7,6 +13,7 @@ __all__ = [
     "PaymentSession",
     "PaymentStatus",
     "RefundResult",
+    "SavedCardChargeResult",
     "StubPaymentAdapter",
     "CashPaymentAdapter",
 ]

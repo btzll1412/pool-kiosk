@@ -4,7 +4,7 @@
 
 ---
 
-## Current Phase: Phase 3 Complete — Ready for Phase 5
+## Current Phase: Phase 5 Complete — Ready for Phase 7
 
 ### Overall Progress
 
@@ -14,7 +14,7 @@
 | Phase 2 — Admin Panel | **Complete** | Full admin UI with all pages, auth, charts, settings |
 | Phase 3 — Kiosk UI | **Complete** | All screens, RFID listener, touch-optimized, inactivity timer |
 | Phase 4 — Payment + Cash + PIN | **Complete** | PIN service, cash flow, stub adapter built in Phase 1; kiosk payment screens built in Phase 3 |
-| Phase 5 — Recurring Billing + Saved Cards | Not Started | Saved card model + kiosk endpoints exist |
+| Phase 5 — Recurring Billing + Saved Cards | **Complete** | Auto-charge service, saved card management, APScheduler, kiosk + admin UI |
 | Phase 6 — Docker + Nginx | **Complete** | docker-compose.yml, Dockerfiles, nginx.conf done |
 | Phase 7 — HA/Notification Hooks | Not Started | Notification service placeholder ready |
 | Phase 8 — Real Payment Processor | Not Started | Adapter interface ready |
@@ -52,11 +52,13 @@
 - [x] **Notification service:** Webhook placeholder for HA integration
 - [x] **Seed service:** Auto-creates default admin and default settings on startup
 - [x] **Rate limiter:** slowapi-based per-IP limiting on kiosk endpoints
-- [x] **Payment adapters:** Base interface, Stub adapter, Cash adapter
+- [x] **Payment adapters:** Base interface with tokenize/charge_saved_card methods, Stub adapter (always succeeds), Cash adapter (rejects card ops)
+- [x] **Auto-charge service** (`services/auto_charge_service.py`): process_due_charges (daily scheduler), enable/disable auto-charge, on-demand saved card charging
+- [x] **APScheduler** integrated in app lifespan — daily 06:00 job for auto-charge processing
 - [x] **10 Pydantic schema modules:** auth, member, card, plan, membership, checkin, transaction, kiosk, settings, report
 - [x] **11 API routers:** auth, members, cards, plans, memberships, checkins, payments, transactions, reports, settings, kiosk
-- [x] All kiosk endpoints: scan, search, checkin, plans, pay/cash, pay/card, pay/split, freeze, unfreeze, saved-cards CRUD, guest visit, change notification
-- [x] All admin endpoints: full CRUD for members/plans/memberships, transaction management, reports with CSV export, settings management
+- [x] All kiosk endpoints: scan, search, checkin, plans, pay/cash, pay/card (with saved card support + save-after-payment), pay/split, freeze, unfreeze, saved-cards CRUD, tokenize, set-default, auto-charge enable/disable, guest visit, change notification
+- [x] All admin endpoints: full CRUD for members/plans/memberships, transaction management, reports with CSV export, settings management, member saved cards view + delete
 - [x] Activity logging on all admin mutations
 
 ### Frontend — Admin Panel
@@ -71,7 +73,7 @@
 - [x] **Login page:** Gradient background, branded card, form validation, JWT token storage, auto-redirect
 - [x] **Dashboard:** 5 stat cards (check-ins, swimmers, revenue, memberships, guests), quick action links, system status panel
 - [x] **Members list:** Search by name/phone/email, paginated table with avatar initials, status badges, click-to-detail
-- [x] **Member detail:** Info card, RFID cards list with deactivate, activity log timeline, credit adjustment modal, deactivate confirmation dialog, edit/back navigation
+- [x] **Member detail:** Info card, RFID cards list with deactivate, saved payment cards section with auto-charge status and admin delete, activity log timeline, credit adjustment modal, deactivate confirmation dialog, edit/back navigation
 - [x] **Member form:** Create + edit mode, all fields, PIN on create, textarea for notes, validation
 - [x] **Plans list:** Card grid layout with type badges, pricing display, inline edit/deactivate, modal form for create/edit with plan-type-aware fields
 - [x] **Transactions list:** Filterable by type/method/date range, paginated table, color-coded badges, CSV export button, clear filters
@@ -82,7 +84,7 @@
 
 ### Frontend — Kiosk UI
 
-- [x] **Kiosk API client** (`api/kiosk.js`) — 12 endpoint functions: scan, search, checkin, getPlans, payCash, payCard, paySplit, notifyChange, freeze, unfreeze, guestVisit, getSettings
+- [x] **Kiosk API client** (`api/kiosk.js`) — 19 endpoint functions: scan, search, checkin, getPlans, payCash, payCard (with save options), paySplit, notifyChange, freeze, unfreeze, guestVisit, getSettings, getSavedCards, tokenizeAndSaveCard, updateSavedCard, deleteSavedCard, setDefaultCard, enableAutoCharge, disableAutoCharge
 - [x] **KioskApp** (`kiosk/KioskApp.jsx`) — State-machine screen manager with RFID listener, inactivity timer, settings loading, and screen transitions
 - [x] **7 kiosk components:**
   - RFIDListener — Captures USB HID keyboard input from RFID reader, 200ms buffer timeout, Enter key triggers scan
@@ -92,7 +94,7 @@
   - InactivityTimer — Global inactivity detection with configurable timeout, "Still Here?" overlay with countdown progress bar
   - KioskButton — Large touch-target button with 5 variants, 3 sizes, loading state, active scale animation
   - AutoReturnBar — Countdown progress bar for auto-return to idle after actions
-- [x] **13 kiosk screens:**
+- [x] **16 kiosk screens:**
   - IdleScreen — Welcome screen with pool name, RFID scan prompt, "Search Account" and "Guest Visit" buttons
   - MemberScreen — Member info card, Check In button (active plan), purchase prompt (no plan), unfreeze option (frozen), manage account
   - CheckinScreen — Guest count selector (+/- buttons, max from settings), success state with auto-return
@@ -100,12 +102,15 @@
   - PinScreen — 4-digit PIN entry with numpad, dot indicators, routes to afterPin destination, handles unfreeze directly
   - PaymentScreen — Plan grid selection, payment method chooser (Cash / Card / Split)
   - CashScreen — Amount numpad with decimal, price display, overpay-to-credit messaging, change detection
-  - CardPaymentScreen — Card payment confirmation with stub processor, success routing
+  - CardPaymentScreen — Card payment with saved card selector, default card highlight, new card option with save toggle
   - ChangeScreen — "Someone will bring your change" notification with amount display, auto-return
   - StatusScreen — Configurable success/error/info display with icon, title, message, auto-return
   - GuestScreen — Two-step flow: name + phone entry, then plan selection + pay method
-  - ManageAccountScreen — Account overview with membership status, purchase/top-up, freeze membership
+  - ManageAccountScreen — Account overview with membership status, manage saved cards, purchase/top-up, freeze membership
   - FreezeScreen — Days-to-freeze numpad entry, PIN-verified freeze action
+  - SavedCardsScreen — List all saved cards with rename/delete/set-default/auto-charge actions, add new card button
+  - AddCardScreen — Simulates card read (stub mode), card brand selection, friendly name entry, tokenize + save
+  - AutoChargeScreen — Card info display, monthly plan selection grid, enable/disable auto-charge with next charge date
 - [x] **Route wiring:** `/kiosk` route added to App.jsx, default redirect changed to `/kiosk`
 
 ### DevOps
@@ -137,7 +142,11 @@ _None yet._
 - Default route (`/`) redirects to `/kiosk` (the kiosk is the primary interface), admin accessed at `/admin`
 - KioskApp manages its own Toaster instance positioned at top-center (vs admin's top-right)
 - Kiosk settings loaded from `/api/settings` endpoint on KioskApp mount (reuses admin settings endpoint without auth)
+- Auto-charge uses APScheduler (BackgroundScheduler) instead of Celery — appropriate for single-server kiosk deployment, no Redis needed
+- Auto-charge limited to monthly plans only — single swims and swim passes don't have fixed renewal cycles
+- Only one card per member can have auto-charge enabled (enabling on one card disables any other)
+- Stub adapter generates fake tokens and always succeeds for charge_saved_card — real processor integration deferred to Phase 8
 
 ---
 
-## Last Updated: 2026-02-18
+## Last Updated: 2026-02-18 (Phase 5)

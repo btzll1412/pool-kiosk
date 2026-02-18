@@ -542,9 +542,11 @@ class BasePaymentAdapter:
     def initiate_payment(self, amount: Decimal, member_id: str, description: str) -> PaymentSession
     def check_status(self, session_id: str) -> PaymentStatus
     def refund(self, transaction_id: str, amount: Decimal) -> RefundResult
+    def tokenize_card(self, card_last4: str, card_brand: str, member_id: str) -> str
+    def charge_saved_card(self, token: str, amount: Decimal, member_id: str, description: str) -> SavedCardChargeResult
 ```
 
-Any new payment processor just implements this interface. Drop in and configure via environment variable.
+Any new payment processor just implements this interface. Drop in and configure via environment variable. The `tokenize_card` and `charge_saved_card` methods were added in Phase 5 for recurring billing support.
 
 ---
 
@@ -688,11 +690,14 @@ Every action in the admin panel is logged with:
 ## Recurring / Auto-Charge
 
 - Member saves credit card on file after PIN verification
-- Selects a plan to auto-renew
-- System charges automatically on renewal date
-- Member receives notification before charge (if email/phone on file)
-- Member or admin can cancel anytime
-- All auto-charges logged as transactions with "auto" flag
+- Selects a monthly plan to auto-renew (auto-charge is limited to monthly plans)
+- System charges automatically on renewal date via APScheduler daily job at 06:00
+- Only one card per member can have auto-charge enabled at a time
+- Member or admin can cancel anytime from kiosk saved cards screen or admin panel
+- All auto-charges logged as transactions with saved card reference in notes
+- When auto-charge is enabled, `next_charge_date` is set to current date + plan duration
+- After each successful charge, `next_charge_date` advances by the plan's duration days
+- Members can also pay with saved cards on-demand at the kiosk (without auto-charge)
 
 ---
 
@@ -724,4 +729,5 @@ Every action in the admin panel is logged with:
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-02-18 | Phase 5: Added tokenize_card/charge_saved_card to payment adapter, updated recurring/auto-charge section | — |
 | 2026-02-18 | Initial design document created from planning session | — |

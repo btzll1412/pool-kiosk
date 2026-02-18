@@ -60,6 +60,10 @@ class CardPaymentRequest(BaseModel):
     plan_id: uuid.UUID
     saved_card_id: uuid.UUID | None = None
     pin: str
+    save_card: bool = False
+    card_last4: str | None = None
+    card_brand: str | None = None
+    friendly_name: str | None = None
 
 
 class SplitPaymentRequest(BaseModel):
@@ -109,8 +113,45 @@ class SavedCardResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SavedCardDetailResponse(BaseModel):
+    id: uuid.UUID
+    card_last4: str
+    card_brand: str | None
+    friendly_name: str | None
+    is_default: bool
+    auto_charge_enabled: bool
+    auto_charge_plan_name: str | None = None
+    next_charge_date: date | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class SavedCardUpdateRequest(BaseModel):
     friendly_name: str
+
+
+class TokenizeCardRequest(BaseModel):
+    card_last4: str
+    card_brand: str | None = None
+    friendly_name: str | None = None
+    member_id: uuid.UUID
+    pin: str
+
+
+class AutoChargeRequest(BaseModel):
+    plan_id: uuid.UUID
+    member_id: uuid.UUID
+    pin: str
+
+
+class AutoChargeDisableRequest(BaseModel):
+    member_id: uuid.UUID
+    pin: str
+
+
+class SetDefaultCardRequest(BaseModel):
+    member_id: uuid.UUID
+    pin: str
 
 
 class PinVerifyRequest(BaseModel):
