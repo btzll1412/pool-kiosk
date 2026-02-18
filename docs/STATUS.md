@@ -4,7 +4,7 @@
 
 ---
 
-## Current Phase: Phase 2 Complete — Ready for Phase 3
+## Current Phase: Phase 3 Complete — Ready for Phase 5
 
 ### Overall Progress
 
@@ -12,8 +12,8 @@
 |---|---|---|
 | Phase 1 — Database + Backend API | **Complete** | All models, schemas, services, routers, Alembic, Docker |
 | Phase 2 — Admin Panel | **Complete** | Full admin UI with all pages, auth, charts, settings |
-| Phase 3 — Kiosk UI | Not Started | Next up |
-| Phase 4 — Payment + Cash + PIN | **Partially Done** | PIN service, cash flow, stub adapter built in Phase 1 |
+| Phase 3 — Kiosk UI | **Complete** | All screens, RFID listener, touch-optimized, inactivity timer |
+| Phase 4 — Payment + Cash + PIN | **Complete** | PIN service, cash flow, stub adapter built in Phase 1; kiosk payment screens built in Phase 3 |
 | Phase 5 — Recurring Billing + Saved Cards | Not Started | Saved card model + kiosk endpoints exist |
 | Phase 6 — Docker + Nginx | **Complete** | docker-compose.yml, Dockerfiles, nginx.conf done |
 | Phase 7 — HA/Notification Hooks | Not Started | Notification service placeholder ready |
@@ -82,13 +82,31 @@
 
 ### Frontend — Kiosk UI
 
-- [ ] Kiosk idle screen
-- [ ] Kiosk member screen
-- [ ] Kiosk check-in screen
-- [ ] Kiosk payment screens
-- [ ] Kiosk search screen
-- [ ] Kiosk RFID listener
-- [ ] Inactivity timer system
+- [x] **Kiosk API client** (`api/kiosk.js`) — 12 endpoint functions: scan, search, checkin, getPlans, payCash, payCard, paySplit, notifyChange, freeze, unfreeze, guestVisit, getSettings
+- [x] **KioskApp** (`kiosk/KioskApp.jsx`) — State-machine screen manager with RFID listener, inactivity timer, settings loading, and screen transitions
+- [x] **7 kiosk components:**
+  - RFIDListener — Captures USB HID keyboard input from RFID reader, 200ms buffer timeout, Enter key triggers scan
+  - NumPad — Touch-friendly number pad with optional decimal point, backspace, clear
+  - MemberCard — Member info display with name, status indicator, plan details, credit balance, frozen state
+  - PlanCard — Plan option card with type icon, price, swim count / duration, selected state
+  - InactivityTimer — Global inactivity detection with configurable timeout, "Still Here?" overlay with countdown progress bar
+  - KioskButton — Large touch-target button with 5 variants, 3 sizes, loading state, active scale animation
+  - AutoReturnBar — Countdown progress bar for auto-return to idle after actions
+- [x] **13 kiosk screens:**
+  - IdleScreen — Welcome screen with pool name, RFID scan prompt, "Search Account" and "Guest Visit" buttons
+  - MemberScreen — Member info card, Check In button (active plan), purchase prompt (no plan), unfreeze option (frozen), manage account
+  - CheckinScreen — Guest count selector (+/- buttons, max from settings), success state with auto-return
+  - SearchScreen — Name/phone search input, results list with member cards, tap-to-select
+  - PinScreen — 4-digit PIN entry with numpad, dot indicators, routes to afterPin destination, handles unfreeze directly
+  - PaymentScreen — Plan grid selection, payment method chooser (Cash / Card / Split)
+  - CashScreen — Amount numpad with decimal, price display, overpay-to-credit messaging, change detection
+  - CardPaymentScreen — Card payment confirmation with stub processor, success routing
+  - ChangeScreen — "Someone will bring your change" notification with amount display, auto-return
+  - StatusScreen — Configurable success/error/info display with icon, title, message, auto-return
+  - GuestScreen — Two-step flow: name + phone entry, then plan selection + pay method
+  - ManageAccountScreen — Account overview with membership status, purchase/top-up, freeze membership
+  - FreezeScreen — Days-to-freeze numpad entry, PIN-verified freeze action
+- [x] **Route wiring:** `/kiosk` route added to App.jsx, default redirect changed to `/kiosk`
 
 ### DevOps
 
@@ -115,6 +133,10 @@ _None yet._
 - Admin panel uses Recharts for charts (bar charts for revenue, pie charts for swim types)
 - Settings page uses toggle switches for boolean settings and a sticky bottom save bar
 - Toast notifications use react-hot-toast with custom branded styles
+- Kiosk UI uses a state-machine pattern (not React Router) for screen management — simpler for the kiosk use case where screens transition based on actions rather than URLs
+- Default route (`/`) redirects to `/kiosk` (the kiosk is the primary interface), admin accessed at `/admin`
+- KioskApp manages its own Toaster instance positioned at top-center (vs admin's top-right)
+- Kiosk settings loaded from `/api/settings` endpoint on KioskApp mount (reuses admin settings endpoint without auth)
 
 ---
 

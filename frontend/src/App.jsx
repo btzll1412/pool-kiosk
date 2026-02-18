@@ -12,6 +12,7 @@ import TransactionsList from "./admin/pages/Transactions/TransactionsList";
 import RevenueReport from "./admin/pages/Reports/RevenueReport";
 import SwimReport from "./admin/pages/Reports/SwimReport";
 import Settings from "./admin/pages/Settings/Settings";
+import KioskApp from "./kiosk/KioskApp";
 
 function ProtectedRoute({ children }) {
   const { authed } = useAuth();
@@ -51,6 +52,8 @@ export default function App() {
         />
 
         <Routes>
+          <Route path="/kiosk" element={<KioskApp />} />
+
           <Route path="/admin/login" element={<Login />} />
 
           <Route
@@ -73,7 +76,7 @@ export default function App() {
             <Route path="settings" element={<Settings />} />
           </Route>
 
-          <Route path="*" element={<Navigate to="/admin" replace />} />
+          <Route path="*" element={<Navigate to="/kiosk" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
