@@ -1,9 +1,12 @@
+import logging
 import uuid
 from datetime import date, datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.models.checkin import Checkin, CheckinType
 from app.models.member import Member
@@ -19,6 +22,7 @@ def perform_checkin(
 ) -> Checkin:
     member = db.query(Member).filter(Member.id == member_id, Member.is_active.is_(True)).first()
     if not member:
+        logger.warning("Check-in failed — member not found or inactive: member=%s", member_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found or inactive")
 
     membership = _get_active_membership(db, member_id)
@@ -26,6 +30,7 @@ def perform_checkin(
     if membership:
         checkin_type, deducted = _process_membership_checkin(db, membership, guest_count)
     else:
+        logger.warning("Check-in failed — no active membership: member=%s", member_id)
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail="No active membership. Please purchase a plan.",
@@ -40,6 +45,7 @@ def perform_checkin(
     db.add(checkin)
     db.commit()
     db.refresh(checkin)
+    logger.info("Check-in completed: member=%s, type=%s, guests=%d, checkin=%s", member_id, checkin_type.value, guest_count, checkin.id)
     return checkin
 
 
@@ -74,11 +80,13 @@ def _process_membership_checkin(
     if membership.plan_type == PlanType.swim_pass:
         remaining = (membership.swims_total or 0) - membership.swims_used
         if remaining < total_swims:
+            logger.warning("Check-in failed — not enough swims: membership=%s, need=%d, remaining=%d", membership.id, total_swims, remaining)
             raise HTTPException(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
                 detail=f"Not enough swims remaining. Need {total_swims}, have {remaining}.",
             )
         membership.swims_used += total_swims
+        logger.debug("Swim pass deducted: membership=%s, used=%d/%d", membership.id, membership.swims_used, membership.swims_total)
         return CheckinType.swim_pass, total_swims
 
     return CheckinType.membership, 0

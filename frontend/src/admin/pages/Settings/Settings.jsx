@@ -214,6 +214,7 @@ export default function Settings() {
   useEffect(() => {
     getSettings()
       .then(setSettings)
+      .catch((err) => toast.error(err.response?.data?.detail || "Failed to load settings"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -229,8 +230,8 @@ export default function Settings() {
       setSettings(updated);
       setDirty(false);
       toast.success("Settings saved successfully");
-    } catch {
-      toast.error("Failed to save settings");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to save settings");
     } finally {
       setSaving(false);
     }
@@ -359,8 +360,8 @@ function SettingField({ field, value, onChange }) {
         } else {
           toast.error(result.message);
         }
-      } catch {
-        toast.error("Failed to send test webhook");
+      } catch (err) {
+        toast.error(err.response?.data?.detail || "Failed to send test webhook");
       } finally {
         setTesting(false);
       }

@@ -1,8 +1,11 @@
+import logging
 import uuid
 from datetime import date, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.models.membership import Membership
 from app.models.membership_freeze import MembershipFreeze
@@ -35,6 +38,7 @@ def create_membership(db: Session, member_id: uuid.UUID, plan_id: uuid.UUID) -> 
     db.add(membership)
     db.commit()
     db.refresh(membership)
+    logger.info("Membership created: member=%s, plan=%s, type=%s, membership=%s", member_id, plan.name, plan.plan_type.value, membership.id)
     return membership
 
 
@@ -68,6 +72,7 @@ def update_membership(
         "is_active": membership.is_active,
     }
     log_activity(db, user_id=user_id, action="membership.update", entity_type="membership", entity_id=membership.id, before=before, after=after)
+    logger.info("Membership updated: membership=%s, by_user=%s", membership_id, user_id)
     return membership
 
 
@@ -92,6 +97,7 @@ def adjust_swims(
         after={"swims_used": membership.swims_used},
         note=notes,
     )
+    logger.info("Swims adjusted: membership=%s, before=%d, after=%d, by_user=%s", membership_id, before_used, membership.swims_used, user_id)
     return membership
 
 
@@ -137,6 +143,7 @@ def freeze_membership(
     db.commit()
     db.refresh(freeze)
     log_activity(db, user_id=user_id, action="membership.freeze", entity_type="membership", entity_id=membership_id, after={"freeze_end": str(freeze_end), "days_extended": days})
+    logger.info("Membership frozen: membership=%s, until=%s, days=%d", membership_id, freeze_end, days)
     return freeze
 
 
@@ -163,4 +170,5 @@ def unfreeze_membership(db: Session, membership_id: uuid.UUID, user_id: uuid.UUI
     db.commit()
     db.refresh(membership)
     log_activity(db, user_id=user_id, action="membership.unfreeze", entity_type="membership", entity_id=membership_id)
+    logger.info("Membership unfrozen: membership=%s", membership_id)
     return membership

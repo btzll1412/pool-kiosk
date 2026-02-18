@@ -46,8 +46,8 @@ export default function SavedCardsScreen({ member, goTo, context }) {
       await setDefaultCard(cardId, member.member_id, pin);
       toast.success("Default card updated");
       loadCards();
-    } catch {
-      toast.error("Failed to set default card");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to set default card");
     }
   }
 
@@ -56,8 +56,8 @@ export default function SavedCardsScreen({ member, goTo, context }) {
       await deleteSavedCard(cardId, member.member_id, pin);
       toast.success("Card removed");
       loadCards();
-    } catch {
-      toast.error("Failed to remove card");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to remove card");
     }
   }
 
@@ -69,8 +69,8 @@ export default function SavedCardsScreen({ member, goTo, context }) {
       setEditingId(null);
       setEditName("");
       loadCards();
-    } catch {
-      toast.error("Failed to rename card");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to rename card");
     }
   }
 

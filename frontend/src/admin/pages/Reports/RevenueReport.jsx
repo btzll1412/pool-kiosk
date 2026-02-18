@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import toast from "react-hot-toast";
 import { getRevenueReport, getMembershipReport } from "../../../api/reports";
 import Card, { CardHeader } from "../../../shared/Card";
 import PageHeader from "../../../shared/PageHeader";
@@ -37,6 +38,7 @@ export default function RevenueReport() {
         setRevenue(rev);
         setMemberships(mem);
       })
+      .catch((err) => toast.error(err.response?.data?.detail || "Failed to load reports"))
       .finally(() => setLoading(false));
   }, [range, groupBy]);
 

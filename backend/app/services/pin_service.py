@@ -1,8 +1,11 @@
+import logging
 import uuid
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.models.member import Member
 from app.models.pin_lockout import PinLockout
@@ -19,6 +22,7 @@ def verify_member_pin(db: Session, member_id: uuid.UUID, pin: str) -> bool:
     max_attempts = int(get_setting(db, "pin_max_attempts", "3"))
 
     if lockout and lockout.locked_until and lockout.locked_until > datetime.utcnow():
+        logger.warning("PIN attempt on locked account: member=%s, locked_until=%s", member_id, lockout.locked_until)
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
             detail="Account locked due to too many failed PIN attempts. Contact admin.",
@@ -29,6 +33,7 @@ def verify_member_pin(db: Session, member_id: uuid.UUID, pin: str) -> bool:
             lockout.failed_attempts = 0
             lockout.locked_until = None
             db.commit()
+        logger.debug("PIN verified successfully: member=%s", member_id)
         return True
 
     if not lockout:
@@ -40,9 +45,11 @@ def verify_member_pin(db: Session, member_id: uuid.UUID, pin: str) -> bool:
 
     if lockout.failed_attempts >= max_attempts:
         lockout.locked_until = datetime.utcnow() + timedelta(minutes=30)
+        logger.warning("Account locked after %d failed PIN attempts: member=%s", lockout.failed_attempts, member_id)
 
     db.commit()
     remaining = max_attempts - lockout.failed_attempts
     if remaining <= 0:
         raise HTTPException(status_code=status.HTTP_423_LOCKED, detail="Account locked. Contact admin.")
+    logger.info("Failed PIN attempt: member=%s, attempts=%d/%d", member_id, lockout.failed_attempts, max_attempts)
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid PIN. {remaining} attempts remaining.")

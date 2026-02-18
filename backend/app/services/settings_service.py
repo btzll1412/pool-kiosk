@@ -1,6 +1,9 @@
 import json
+import logging
 
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.models.setting import Setting
 
@@ -64,4 +67,5 @@ def update_settings(db: Session, updates: dict[str, str]) -> dict[str, str]:
             setting = Setting(key=key, value=value)
             db.add(setting)
     db.commit()
+    logger.info("Settings updated: %d keys changed (%s)", len(updates), ", ".join(updates.keys()))
     return get_all_settings(db)

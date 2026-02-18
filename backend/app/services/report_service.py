@@ -1,8 +1,11 @@
+import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.models.checkin import Checkin
 from app.models.guest_visit import GuestVisit

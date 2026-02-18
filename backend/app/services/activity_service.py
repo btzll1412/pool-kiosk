@@ -1,6 +1,9 @@
+import logging
 import uuid
 
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.models.activity_log import ActivityLog
 
@@ -27,4 +30,5 @@ def log_activity(
     db.add(entry)
     db.commit()
     db.refresh(entry)
+    logger.debug("Activity logged: action=%s, entity=%s/%s, user=%s", action, entity_type, entity_id, user_id)
     return entry

@@ -4,7 +4,7 @@
 
 ---
 
-## Current Phase: Bug Fixes + Testing Complete — Ready for Phase 8
+## Current Phase: Logging & Error Handling Complete — Ready for Phase 8
 
 ### Overall Progress
 
@@ -65,6 +65,8 @@
 - [x] **Membership expiry check** scheduled job fires `membership_expiring` and `membership_expired` webhooks
 - [x] **Daily summary** scheduled job fires stats webhook at 21:00
 - [x] **Test suite** — 38 pytest tests covering auth, kiosk scan/search/checkin, cash/card/split payments, PIN verification + lockout
+- [x] **Consistent logging** — Every service, router, and payment adapter uses `logging.getLogger(__name__)` with structured key=value messages
+- [x] **Global log format** configured in main.py: `%(asctime)s [%(levelname)s] %(name)s: %(message)s`
 
 ### Frontend — Admin Panel
 
@@ -118,6 +120,7 @@
   - AutoChargeScreen — Card info display, monthly plan selection grid, enable/disable auto-charge with next charge date
   - SplitPaymentScreen — Cash amount numpad + saved card selector, live cash/card split display, submits to split payment endpoint
 - [x] **Route wiring:** `/kiosk` route added to App.jsx, default redirect changed to `/kiosk`
+- [x] **Consistent error handling** — All API calls use `.catch()` with `err.response?.data?.detail` extraction, no silent failures
 
 ### DevOps
 
@@ -165,4 +168,34 @@ _None._
 
 ---
 
-## Last Updated: 2026-02-18 (Bug Fixes + Testing)
+## Logging & Error Handling (2026-02-18)
+
+### Backend Logging Added
+
+All 10 services, 11 routers, and 2 payment adapters now use consistent structured logging:
+
+- **payment_service.py** — Cash/card/credit payment lifecycle, overpayment handling, low balance alerts
+- **checkin_service.py** — Check-in success/failure, swim pass deduction, membership validation
+- **membership_service.py** — Create, update, swim adjust, freeze/unfreeze
+- **member_service.py** — Create, update, deactivate, credit adjust, card assign/deactivate
+- **pin_service.py** — PIN verification, failed attempts, account lockouts (security audit trail)
+- **auth_service.py** — Token decode failures, user not found, admin access denied
+- **activity_service.py** — Debug-level activity log entries
+- **settings_service.py** — Settings update with key count
+- **seed.py** — Admin creation and settings seeding
+- **All routers** — Request-level logging for key operations (login, kiosk actions, settings, reports)
+- **Payment adapters** — Stub payment initiation/tokenization, cash adapter unsupported operation warnings
+
+### Frontend Error Handling Fixed
+
+- **Dashboard, MembersList, MemberForm, RevenueReport, SwimReport** — Added missing `.catch()` on data load
+- **MemberDetail** — Fixed 3 empty catch blocks + added `.catch()` to initial data load
+- **Settings** — Added `.catch()` to settings load, fixed save/test webhook catch blocks
+- **Login** — Fixed catch block to extract server error detail
+- **SavedCardsScreen** — Fixed 3 empty catch blocks with specific error messages
+- **SplitPaymentScreen** — Added `console.warn` for background card loading failure
+- **API client** — Added `console.warn` for token refresh failures
+
+---
+
+## Last Updated: 2026-02-18 (Logging & Error Handling)

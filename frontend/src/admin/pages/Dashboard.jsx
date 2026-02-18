@@ -6,6 +6,7 @@ import {
   UserCheck,
   Users,
 } from "lucide-react";
+import toast from "react-hot-toast";
 import { getDashboard } from "../../api/reports";
 import StatCard from "../../shared/StatCard";
 import PageHeader from "../../shared/PageHeader";
@@ -18,6 +19,7 @@ export default function Dashboard() {
   useEffect(() => {
     getDashboard()
       .then(setStats)
+      .catch((err) => toast.error(err.response?.data?.detail || "Failed to load dashboard"))
       .finally(() => setLoading(false));
   }, []);
 

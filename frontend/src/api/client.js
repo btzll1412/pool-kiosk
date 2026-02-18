@@ -31,7 +31,8 @@ client.interceptors.response.use(
           localStorage.setItem("refresh_token", data.refresh_token);
           original.headers.Authorization = `Bearer ${data.access_token}`;
           return client(original);
-        } catch {
+        } catch (refreshErr) {
+          console.warn("Token refresh failed:", refreshErr.response?.data?.detail || refreshErr.message);
           localStorage.removeItem("access_token");
           localStorage.removeItem("refresh_token");
           window.location.href = "/admin/login";

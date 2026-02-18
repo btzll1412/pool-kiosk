@@ -1,9 +1,12 @@
+import logging
 import uuid
 from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.card import Card
@@ -59,10 +62,13 @@ router = APIRouter()
 def scan_card(data: ScanRequest, request: Request, db: Session = Depends(get_db)):
     card = db.query(Card).filter(Card.rfid_uid == data.rfid_uid, Card.is_active.is_(True)).first()
     if not card:
+        logger.info("Card scan — unrecognized: rfid=%s", data.rfid_uid)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not recognized")
     member = db.query(Member).filter(Member.id == card.member_id, Member.is_active.is_(True)).first()
     if not member:
+        logger.warning("Card scan — member inactive: rfid=%s, member=%s", data.rfid_uid, card.member_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found or inactive")
+    logger.info("Card scanned: rfid=%s, member=%s %s", data.rfid_uid, member.first_name, member.last_name)
     return _build_member_status(db, member)
 
 
@@ -109,6 +115,7 @@ def kiosk_checkin(data: KioskCheckinRequest, request: Request, db: Session = Dep
         )
 
     guests_msg = f" + {checkin.guest_count} guest(s)" if checkin.guest_count > 0 else ""
+    logger.info("Kiosk check-in: member=%s, guests=%d", data.member_id, checkin.guest_count)
     return KioskCheckinResponse(
         checkin_id=checkin.id,
         checkin_type=checkin.checkin_type,
@@ -153,6 +160,7 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
     else:
         msg = "Payment recorded successfully."
 
+    logger.info("Kiosk cash payment: member=%s, plan=%s, amount=$%s", data.member_id, data.plan_id, data.amount_tendered)
     return PaymentResponse(
         success=True,
         transaction_id=tx.id,
@@ -193,6 +201,7 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
         db.add(card)
         db.commit()
 
+    logger.info("Kiosk card payment: member=%s, plan=%s, saved_card=%s", data.member_id, data.plan_id, data.saved_card_id or "new")
     return PaymentResponse(
         success=True,
         transaction_id=tx.id,
@@ -291,6 +300,7 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
     db.commit()
     db.refresh(cash_tx)
 
+    logger.info("Kiosk split payment: member=%s, plan=%s, cash=$%s, card=$%s", data.member_id, data.plan_id, data.cash_amount, card_amount)
     return PaymentResponse(
         success=True,
         transaction_id=cash_tx.id,
@@ -508,6 +518,7 @@ def guest_visit(data: GuestVisitRequest, request: Request, db: Session = Depends
     db.add(visit)
     db.commit()
     db.refresh(visit)
+    logger.info("Guest visit: name=%s, plan=%s, amount=$%s", data.name, plan.name, plan.price)
     return GuestVisitResponse(visit_id=visit.id, amount_paid=plan.price, message=f"Welcome, {data.name}! Enjoy your swim.")
 
 

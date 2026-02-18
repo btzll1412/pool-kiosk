@@ -1,7 +1,10 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.plan import Plan

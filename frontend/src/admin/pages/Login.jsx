@@ -20,8 +20,8 @@ export default function Login() {
     try {
       await login(username, password);
       toast.success("Welcome back!");
-    } catch {
-      toast.error("Invalid credentials. Please try again.");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Invalid credentials. Please try again.");
     } finally {
       setLoading(false);
     }

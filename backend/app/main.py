@@ -1,6 +1,15 @@
 import logging
+import sys
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
+
+# Configure logging format for the entire application
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    stream=sys.stdout,
+)
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI

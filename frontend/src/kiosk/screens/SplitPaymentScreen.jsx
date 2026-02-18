@@ -28,7 +28,7 @@ export default function SplitPaymentScreen({ member, goTo, context, settings }) 
         if (def) setSelectedCardId(def.id);
         else if (cards.length > 0) setSelectedCardId(cards[0].id);
       })
-      .catch(() => {})
+      .catch((err) => console.warn("Failed to load saved cards:", err.response?.data?.detail || err.message))
       .finally(() => setCardsLoading(false));
   }, []);
 

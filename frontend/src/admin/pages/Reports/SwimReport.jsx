@@ -11,6 +11,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import toast from "react-hot-toast";
 import { getSwimReport } from "../../../api/reports";
 import Card, { CardHeader } from "../../../shared/Card";
 import PageHeader from "../../../shared/PageHeader";
@@ -33,6 +34,7 @@ export default function SwimReport() {
 
     getSwimReport({ start_date: start, end_date: end })
       .then(setData)
+      .catch((err) => toast.error(err.response?.data?.detail || "Failed to load swim report"))
       .finally(() => setLoading(false));
   }, [range]);
 
