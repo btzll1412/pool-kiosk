@@ -24,7 +24,7 @@ A self-hosted, local kiosk-based pool management system with RFID membership car
 | Payment | Modular adapter pattern (plug in any processor) |
 | Containerization | Docker + Docker Compose |
 | Reverse Proxy | Nginx (serves frontend + proxies API) |
-| Notifications | Webhook system (HA integration later) |
+| Notifications | Webhook system (8 event types, per-event URL, HA-compatible) |
 
 ---
 
@@ -89,7 +89,7 @@ pool-management/
 │   │   │   ├── checkin_service.py
 │   │   │   ├── payment_service.py
 │   │   │   ├── membership_service.py
-│   │   │   ├── notification_service.py  # HA webhook placeholder
+│   │   │   ├── notification_service.py  # Webhook notification system (8 event types)
 │   │   │   └── report_service.py
 │   │   │
 │   │   └── payments/                # Modular payment adapters
@@ -410,6 +410,7 @@ pool-management/
 
 - `GET /api/settings` — Get all settings
 - `PUT /api/settings` — Update settings
+- `POST /api/settings/webhook-test` — Test a webhook event type
 
 ---
 
@@ -422,7 +423,7 @@ pool-management/
 | checkin_return_seconds | 8 | Progress bar duration after check-in before auto-return to idle |
 | inactivity_timeout_seconds | 30 | Seconds of no activity before "Still Here?" timer starts |
 | inactivity_warning_seconds | 10 | Duration of "Still Here?" countdown before forced return to idle |
-| change_notification_webhook | "" | HA webhook URL (when ready) |
+| change_notification_webhook | "" | Legacy — migrated to webhook_change_needed |
 | pool_name | "Pool" | Displayed on kiosk |
 | currency_symbol | "$" | |
 | cash_box_instructions | "" | Text shown on cash screen |
@@ -433,6 +434,16 @@ pool-management/
 | auto_charge_enabled | true | Allow recurring billing |
 | guest_visit_enabled | true | Allow walk-in guests without account |
 | split_payment_enabled | true | Allow splitting payment between cash and card |
+| webhook_change_needed | "" | Webhook URL for change-needed events |
+| webhook_checkin | "" | Webhook URL for check-in events |
+| webhook_membership_expiring | "" | Webhook URL for membership expiring warnings |
+| webhook_membership_expired | "" | Webhook URL for expired memberships |
+| webhook_low_balance | "" | Webhook URL for low balance alerts |
+| webhook_auto_charge_success | "" | Webhook URL for successful auto-charges |
+| webhook_auto_charge_failed | "" | Webhook URL for failed auto-charges |
+| webhook_daily_summary | "" | Webhook URL for daily summary stats |
+| low_balance_threshold | 5.00 | Balance threshold for low_balance webhook |
+| membership_expiry_warning_days | 7 | Days before expiry to fire warning webhook |
 
 ---
 
@@ -701,9 +712,51 @@ Every action in the admin panel is logged with:
 
 ---
 
+## Webhook / Notification System
+
+The system supports 8 webhook event types, each with its own configurable URL. Webhooks are fire-and-forget (5s timeout, errors logged but never block the user flow). Designed primarily for Home Assistant automations but compatible with any webhook consumer.
+
+### Webhook Payload Schema
+
+Every webhook POST sends:
+```json
+{
+  "event": "<event_type>",
+  "timestamp": "2026-02-18T14:30:00.000000",
+  "data": { ...event-specific fields... }
+}
+```
+
+### Event Types & Payloads
+
+| Event | Trigger | Data Fields |
+|---|---|---|
+| `change_needed` | Cash payment needs change | `member_name`, `amount` |
+| `checkin` | Member checks in at kiosk | `member_name`, `member_id`, `checkin_type`, `guest_count` |
+| `membership_expiring` | Daily 07:00 check | `member_name`, `member_id`, `days_remaining`, `plan_name` |
+| `membership_expired` | Daily 07:00 check | `member_name`, `member_id`, `plan_name` |
+| `low_balance` | Credit payment drops below threshold | `member_name`, `member_id`, `balance`, `threshold` |
+| `auto_charge_success` | Daily 06:00 auto-charge succeeds | `member_name`, `member_id`, `plan_name`, `amount`, `card_last4` |
+| `auto_charge_failed` | Daily 06:00 auto-charge fails | `member_name`, `member_id`, `plan_name`, `amount`, `card_last4`, `reason` |
+| `daily_summary` | Daily 21:00 summary | `pool_name`, `date`, `total_checkins_today`, `unique_members_today`, `revenue_today`, `active_memberships`, `guests_today` |
+
+### Scheduled Jobs (APScheduler)
+
+| Job | Schedule | Description |
+|---|---|---|
+| Auto-charge | 06:00 daily | Process recurring billing on saved cards |
+| Membership expiry check | 07:00 daily | Fire expiring/expired webhooks for monthly memberships |
+| Daily summary | 21:00 daily | Fire daily stats webhook |
+
+### Admin Webhook Test
+
+`POST /api/settings/webhook-test?event_type=<type>` — sends a test payload to the configured URL for the given event type.
+
+---
+
 ## Future Integrations (placeholders ready)
 
-- **Home Assistant:** webhook fired on change request, low balance alerts, daily swim count
+- **Home Assistant:** Full webhook integration complete (8 event types)
 - **FusionPBX:** outbound call trigger when change is needed
 - **Payment Processor:** drop in Square, Stripe Terminal, or any other via adapter
 - **Email/SMS:** receipt sending, membership expiry reminders, PIN reset, auto-charge notices
@@ -729,5 +782,6 @@ Every action in the admin panel is logged with:
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-02-18 | Phase 7: Added webhook notification system (8 events), scheduled jobs, admin webhook config UI, payload docs | — |
 | 2026-02-18 | Phase 5: Added tokenize_card/charge_saved_card to payment adapter, updated recurring/auto-charge section | — |
 | 2026-02-18 | Initial design document created from planning session | — |

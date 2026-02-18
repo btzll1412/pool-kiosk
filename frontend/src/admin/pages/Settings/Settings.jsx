@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Save } from "lucide-react";
+import { Save, Send } from "lucide-react";
 import toast from "react-hot-toast";
-import { getSettings, updateSettings } from "../../../api/settings";
+import { getSettings, updateSettings, testWebhook } from "../../../api/settings";
 import Button from "../../../shared/Button";
 import Card, { CardHeader } from "../../../shared/Card";
 import PageHeader from "../../../shared/PageHeader";
@@ -124,14 +124,76 @@ const settingGroups = [
     ],
   },
   {
-    title: "Notifications",
-    description: "External integrations",
+    title: "Notifications & Webhooks",
+    description: "Configure webhook URLs for event notifications (e.g. Home Assistant)",
     fields: [
       {
-        key: "change_notification_webhook",
-        label: "Change Notification Webhook URL",
-        type: "text",
-        helpText: "Home Assistant webhook URL for change requests",
+        key: "webhook_change_needed",
+        label: "Change Needed",
+        type: "webhook",
+        eventType: "change_needed",
+        helpText: "Fired when a member needs change from a cash payment",
+      },
+      {
+        key: "webhook_checkin",
+        label: "Check-in",
+        type: "webhook",
+        eventType: "checkin",
+        helpText: "Fired on every member check-in",
+      },
+      {
+        key: "webhook_membership_expiring",
+        label: "Membership Expiring",
+        type: "webhook",
+        eventType: "membership_expiring",
+        helpText: "Fired when a membership is expiring soon (daily check at 07:00)",
+      },
+      {
+        key: "webhook_membership_expired",
+        label: "Membership Expired",
+        type: "webhook",
+        eventType: "membership_expired",
+        helpText: "Fired when a membership has expired (daily check at 07:00)",
+      },
+      {
+        key: "webhook_low_balance",
+        label: "Low Balance",
+        type: "webhook",
+        eventType: "low_balance",
+        helpText: "Fired when a member's credit balance drops below threshold",
+      },
+      {
+        key: "webhook_auto_charge_success",
+        label: "Auto-Charge Success",
+        type: "webhook",
+        eventType: "auto_charge_success",
+        helpText: "Fired after a successful recurring charge",
+      },
+      {
+        key: "webhook_auto_charge_failed",
+        label: "Auto-Charge Failed",
+        type: "webhook",
+        eventType: "auto_charge_failed",
+        helpText: "Fired when a recurring charge fails",
+      },
+      {
+        key: "webhook_daily_summary",
+        label: "Daily Summary",
+        type: "webhook",
+        eventType: "daily_summary",
+        helpText: "Fired daily at 21:00 with the day's stats",
+      },
+      {
+        key: "low_balance_threshold",
+        label: "Low Balance Threshold ($)",
+        type: "number",
+        helpText: "Balance below this triggers the low_balance webhook",
+      },
+      {
+        key: "membership_expiry_warning_days",
+        label: "Expiry Warning Days",
+        type: "number",
+        helpText: "Days before expiry to fire membership_expiring webhook",
       },
       {
         key: "cash_box_instructions",
@@ -228,6 +290,8 @@ export default function Settings() {
 }
 
 function SettingField({ field, value, onChange }) {
+  const [testing, setTesting] = useState(false);
+
   if (field.type === "toggle") {
     const isOn = value === "true";
     return (
@@ -274,6 +338,57 @@ function SettingField({ field, value, onChange }) {
             </option>
           ))}
         </select>
+        {field.helpText && (
+          <p className="mt-1 text-xs text-gray-500">{field.helpText}</p>
+        )}
+      </div>
+    );
+  }
+
+  if (field.type === "webhook") {
+    const handleTest = async () => {
+      if (!value) {
+        toast.error("Enter a webhook URL first");
+        return;
+      }
+      setTesting(true);
+      try {
+        const result = await testWebhook(field.eventType);
+        if (result.success) {
+          toast.success(result.message);
+        } else {
+          toast.error(result.message);
+        }
+      } catch {
+        toast.error("Failed to send test webhook");
+      } finally {
+        setTesting(false);
+      }
+    };
+
+    return (
+      <div>
+        <label className="mb-1.5 block text-sm font-medium text-gray-700">
+          {field.label}
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="url"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="https://..."
+            className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600"
+          />
+          <button
+            type="button"
+            onClick={handleTest}
+            disabled={testing || !value}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Send className="h-4 w-4" />
+            {testing ? "Sending..." : "Test"}
+          </button>
+        </div>
         {field.helpText && (
           <p className="mt-1 text-xs text-gray-500">{field.helpText}</p>
         )}

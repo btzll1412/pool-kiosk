@@ -45,7 +45,7 @@ from app.services.auto_charge_service import (
 )
 from app.services.checkin_service import perform_checkin
 from app.services.membership_service import freeze_membership, unfreeze_membership
-from app.services.notification_service import send_change_notification
+from app.services.notification_service import notify_checkin, send_change_notification
 from app.services.payment_service import get_payment_adapter, process_card_payment, process_cash_payment
 from app.services.pin_service import verify_member_pin
 from app.services.rate_limit import limiter
@@ -97,6 +97,17 @@ def kiosk_checkin(data: KioskCheckinRequest, request: Request, db: Session = Dep
             detail=f"Maximum {max_guests} guests allowed",
         )
     checkin = perform_checkin(db, data.member_id, data.guest_count)
+
+    member = db.query(Member).filter(Member.id == data.member_id).first()
+    if member:
+        notify_checkin(
+            db,
+            member_name=f"{member.first_name} {member.last_name}",
+            member_id=str(member.id),
+            checkin_type=checkin.checkin_type.value,
+            guest_count=checkin.guest_count,
+        )
+
     guests_msg = f" + {checkin.guest_count} guest(s)" if checkin.guest_count > 0 else ""
     return KioskCheckinResponse(
         checkin_id=checkin.id,
