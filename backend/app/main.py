@@ -1,5 +1,7 @@
+import logging
 from contextlib import asynccontextmanager
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
@@ -21,8 +23,23 @@ from app.routers import (
     settings as settings_router,
     transactions,
 )
+from app.services.auto_charge_service import process_due_charges
 from app.services.rate_limit import limiter
 from app.services.seed import create_default_admin, seed_default_settings
+
+logger = logging.getLogger(__name__)
+
+
+def run_auto_charge_job():
+    """Daily job to process auto-charge on saved cards."""
+    db = SessionLocal()
+    try:
+        results = process_due_charges(db)
+        logger.info("Auto-charge job completed: %s", results)
+    except Exception:
+        logger.exception("Auto-charge job failed")
+    finally:
+        db.close()
 
 
 @asynccontextmanager
@@ -33,7 +50,16 @@ async def lifespan(app: FastAPI):
         seed_default_settings(db)
     finally:
         db.close()
+
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(run_auto_charge_job, "cron", hour=6, minute=0, id="auto_charge_daily")
+    scheduler.start()
+    logger.info("APScheduler started — auto-charge job scheduled daily at 06:00")
+
     yield
+
+    scheduler.shutdown(wait=False)
+    logger.info("APScheduler shut down")
 
 
 app = FastAPI(

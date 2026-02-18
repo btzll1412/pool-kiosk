@@ -61,6 +61,16 @@ export default function ManageAccountScreen({ member, goTo, context }) {
             <KioskButton
               variant="secondary"
               size="lg"
+              icon={CreditCard}
+              onClick={() => goTo("savedCards", { pin: context.pin })}
+              className="w-full"
+            >
+              Manage Saved Cards
+            </KioskButton>
+
+            <KioskButton
+              variant="secondary"
+              size="lg"
               icon={ShoppingBag}
               onClick={() => goTo("payment", { pin: context.pin })}
               className="w-full"

@@ -15,6 +15,8 @@ from app.models.plan import Plan, PlanType
 from app.models.saved_card import SavedCard
 from app.models.transaction import PaymentMethod
 from app.schemas.kiosk import (
+    AutoChargeDisableRequest,
+    AutoChargeRequest,
     CardPaymentRequest,
     CashPaymentRequest,
     GuestVisitRequest,
@@ -26,17 +28,25 @@ from app.schemas.kiosk import (
     MemberStatus,
     ActiveMembershipInfo,
     PaymentResponse,
+    SavedCardDetailResponse,
     SavedCardRequest,
     SavedCardResponse,
     SavedCardUpdateRequest,
     ScanRequest,
     SearchRequest,
+    SetDefaultCardRequest,
     SplitPaymentRequest,
+    TokenizeCardRequest,
+)
+from app.services.auto_charge_service import (
+    charge_saved_card_now,
+    disable_auto_charge,
+    enable_auto_charge,
 )
 from app.services.checkin_service import perform_checkin
 from app.services.membership_service import freeze_membership, unfreeze_membership
 from app.services.notification_service import send_change_notification
-from app.services.payment_service import process_card_payment, process_cash_payment
+from app.services.payment_service import get_payment_adapter, process_card_payment, process_cash_payment
 from app.services.pin_service import verify_member_pin
 from app.services.rate_limit import limiter
 from app.services.settings_service import get_setting
@@ -144,7 +154,32 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
 @limiter.limit("20/minute")
 def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(get_db)):
     verify_member_pin(db, data.member_id, data.pin)
+
+    if data.saved_card_id:
+        tx = charge_saved_card_now(db, data.saved_card_id, data.plan_id, data.member_id)
+        return PaymentResponse(
+            success=True,
+            transaction_id=tx.id,
+            membership_id=tx.membership_id,
+            message="Saved card payment processed successfully.",
+        )
+
     tx = process_card_payment(db, data.member_id, data.plan_id)
+
+    if data.save_card and data.card_last4:
+        adapter = get_payment_adapter()
+        token = adapter.tokenize_card(data.card_last4, data.card_brand or "", str(data.member_id))
+        friendly = data.friendly_name or f"{data.card_brand or 'Card'} ending {data.card_last4}"
+        card = SavedCard(
+            member_id=data.member_id,
+            processor_token=token,
+            card_last4=data.card_last4,
+            card_brand=data.card_brand,
+            friendly_name=friendly,
+        )
+        db.add(card)
+        db.commit()
+
     return PaymentResponse(
         success=True,
         transaction_id=tx.id,
@@ -226,7 +261,7 @@ def kiosk_unfreeze(data: KioskUnfreezeRequest, request: Request, db: Session = D
     return {"message": "Membership unfrozen. Welcome back!"}
 
 
-@router.get("/saved-cards", response_model=list[SavedCardResponse])
+@router.get("/saved-cards", response_model=list[SavedCardDetailResponse])
 @limiter.limit("15/minute")
 def list_saved_cards(
     request: Request,
@@ -238,7 +273,23 @@ def list_saved_cards(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="member_id and pin required")
     verify_member_pin(db, member_id, pin)
     cards = db.query(SavedCard).filter(SavedCard.member_id == member_id).all()
-    return cards
+    result = []
+    for c in cards:
+        plan_name = None
+        if c.auto_charge_plan_id:
+            plan = db.query(Plan).filter(Plan.id == c.auto_charge_plan_id).first()
+            plan_name = plan.name if plan else None
+        result.append(SavedCardDetailResponse(
+            id=c.id,
+            card_last4=c.card_last4,
+            card_brand=c.card_brand,
+            friendly_name=c.friendly_name,
+            is_default=c.is_default,
+            auto_charge_enabled=c.auto_charge_enabled,
+            auto_charge_plan_name=plan_name,
+            next_charge_date=c.next_charge_date,
+        ))
+    return result
 
 
 @router.post("/saved-cards", response_model=SavedCardResponse, status_code=201)
@@ -250,6 +301,26 @@ def save_card(data: SavedCardRequest, request: Request, member_id: uuid.UUID = N
     card = SavedCard(
         member_id=member_id,
         processor_token=data.processor_token,
+        card_last4=data.card_last4,
+        card_brand=data.card_brand,
+        friendly_name=friendly,
+    )
+    db.add(card)
+    db.commit()
+    db.refresh(card)
+    return card
+
+
+@router.post("/saved-cards/tokenize", response_model=SavedCardResponse, status_code=201)
+@limiter.limit("10/minute")
+def tokenize_and_save_card(data: TokenizeCardRequest, request: Request, db: Session = Depends(get_db)):
+    verify_member_pin(db, data.member_id, data.pin)
+    adapter = get_payment_adapter()
+    token = adapter.tokenize_card(data.card_last4, data.card_brand or "", str(data.member_id))
+    friendly = data.friendly_name or f"{data.card_brand or 'Card'} ending {data.card_last4}"
+    card = SavedCard(
+        member_id=data.member_id,
+        processor_token=token,
         card_last4=data.card_last4,
         card_brand=data.card_brand,
         friendly_name=friendly,
@@ -290,6 +361,53 @@ def delete_saved_card(
     db.delete(card)
     db.commit()
     return {"message": "Card removed"}
+
+
+@router.put("/saved-cards/{card_id}/default")
+@limiter.limit("10/minute")
+def set_default_card(
+    card_id: uuid.UUID,
+    data: SetDefaultCardRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    verify_member_pin(db, data.member_id, data.pin)
+    card = db.query(SavedCard).filter(SavedCard.id == card_id, SavedCard.member_id == data.member_id).first()
+    if not card:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
+    # Clear default on all other cards
+    db.query(SavedCard).filter(
+        SavedCard.member_id == data.member_id, SavedCard.id != card_id
+    ).update({"is_default": False})
+    card.is_default = True
+    db.commit()
+    return {"message": "Default card updated"}
+
+
+@router.post("/saved-cards/{card_id}/auto-charge")
+@limiter.limit("10/minute")
+def enable_auto_charge_endpoint(
+    card_id: uuid.UUID,
+    data: AutoChargeRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    verify_member_pin(db, data.member_id, data.pin)
+    card = enable_auto_charge(db, card_id, data.plan_id, data.member_id)
+    return {"message": "Auto-charge enabled", "next_charge_date": str(card.next_charge_date)}
+
+
+@router.delete("/saved-cards/{card_id}/auto-charge")
+@limiter.limit("10/minute")
+def disable_auto_charge_endpoint(
+    card_id: uuid.UUID,
+    data: AutoChargeDisableRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    verify_member_pin(db, data.member_id, data.pin)
+    disable_auto_charge(db, card_id, data.member_id)
+    return {"message": "Auto-charge disabled"}
 
 
 @router.post("/guest", response_model=GuestVisitResponse)

@@ -7,6 +7,7 @@ from app.payments.base import (
     PaymentStatus,
     PaymentStatusEnum,
     RefundResult,
+    SavedCardChargeResult,
 )
 
 
@@ -33,4 +34,15 @@ class CashPaymentAdapter(BasePaymentAdapter):
             success=True,
             refund_id=f"cash_refund_{uuid.uuid4().hex[:12]}",
             message="Cash refund recorded",
+        )
+
+    def tokenize_card(self, card_last4: str, card_brand: str, member_id: str) -> str:
+        raise NotImplementedError("Cash adapter does not support card tokenization")
+
+    def charge_saved_card(
+        self, token: str, amount: Decimal, member_id: str, description: str
+    ) -> SavedCardChargeResult:
+        return SavedCardChargeResult(
+            success=False,
+            message="Cash adapter cannot charge saved cards",
         )

@@ -15,6 +15,9 @@ import GuestScreen from "./screens/GuestScreen";
 import PinScreen from "./screens/PinScreen";
 import ManageAccountScreen from "./screens/ManageAccountScreen";
 import FreezeScreen from "./screens/FreezeScreen";
+import SavedCardsScreen from "./screens/SavedCardsScreen";
+import AddCardScreen from "./screens/AddCardScreen";
+import AutoChargeScreen from "./screens/AutoChargeScreen";
 import { scanCard } from "../api/kiosk";
 
 const SCREENS = {
@@ -31,6 +34,9 @@ const SCREENS = {
   pin: PinScreen,
   manage: ManageAccountScreen,
   freeze: FreezeScreen,
+  savedCards: SavedCardsScreen,
+  addCard: AddCardScreen,
+  autoCharge: AutoChargeScreen,
 };
 
 export default function KioskApp() {

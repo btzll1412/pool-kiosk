@@ -9,15 +9,18 @@ import {
   Shield,
   Trash2,
   UserX,
+  Zap,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   adjustCredit,
   deactivateCard,
   deactivateMember,
+  deleteMemberSavedCard,
   getMember,
   getMemberCards,
   getMemberHistory,
+  getMemberSavedCards,
 } from "../../../api/members";
 import Badge from "../../../shared/Badge";
 import Button from "../../../shared/Button";
@@ -32,6 +35,7 @@ export default function MemberDetail() {
   const navigate = useNavigate();
   const [member, setMember] = useState(null);
   const [cards, setCards] = useState([]);
+  const [savedCards, setSavedCards] = useState([]);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCredit, setShowCredit] = useState(false);
@@ -42,11 +46,12 @@ export default function MemberDetail() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([getMember(id), getMemberCards(id), getMemberHistory(id)])
-      .then(([m, c, h]) => {
+    Promise.all([getMember(id), getMemberCards(id), getMemberHistory(id), getMemberSavedCards(id)])
+      .then(([m, c, h, sc]) => {
         setMember(m);
         setCards(c);
         setHistory(h);
+        setSavedCards(sc);
       })
       .finally(() => setLoading(false));
   };
@@ -91,6 +96,16 @@ export default function MemberDetail() {
       load();
     } catch {
       toast.error("Failed to deactivate card");
+    }
+  };
+
+  const handleDeleteSavedCard = async (cardId) => {
+    try {
+      await deleteMemberSavedCard(id, cardId);
+      toast.success("Saved card removed");
+      load();
+    } catch {
+      toast.error("Failed to remove saved card");
     }
   };
 
@@ -147,7 +162,7 @@ export default function MemberDetail() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
         {/* Member Info */}
         <Card>
           <CardHeader title="Member Info" />
@@ -215,6 +230,51 @@ export default function MemberDetail() {
                       </button>
                     )}
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Saved Payment Cards */}
+        <Card>
+          <CardHeader title="Saved Cards" description={`${savedCards.length} card${savedCards.length !== 1 ? "s" : ""}`} />
+          {savedCards.length === 0 ? (
+            <p className="text-sm text-gray-400">No saved payment cards</p>
+          ) : (
+            <div className="space-y-2">
+              {savedCards.map((sc) => (
+                <div
+                  key={sc.id}
+                  className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <CreditCard className="h-4 w-4 text-gray-400" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">
+                          {sc.friendly_name || `${sc.card_brand || "Card"} **** ${sc.card_last4}`}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {sc.card_brand} **** {sc.card_last4}
+                          {sc.is_default && " · Default"}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteSavedCard(sc.id)}
+                      className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  {sc.auto_charge_enabled && (
+                    <div className="mt-2 flex items-center gap-1.5 text-xs text-emerald-600">
+                      <Zap className="h-3 w-3" />
+                      Auto-charge: {sc.auto_charge_plan_name}
+                      {sc.next_charge_date && ` · Next: ${sc.next_charge_date}`}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
