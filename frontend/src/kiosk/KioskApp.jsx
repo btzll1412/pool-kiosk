@@ -113,6 +113,7 @@ export default function KioskApp() {
 
       {!isIdle && (
         <InactivityTimer
+          key={screen}
           timeoutSeconds={timeoutSec}
           warningSeconds={warningSec}
           onTimeout={goIdle}

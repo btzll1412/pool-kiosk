@@ -1,6 +1,7 @@
 import { useCallback } from "react";
-import { AlertCircle, CheckCircle, Info } from "lucide-react";
+import { AlertCircle, CheckCircle, Home, Info } from "lucide-react";
 import AutoReturnBar from "../components/AutoReturnBar";
+import KioskButton from "../components/KioskButton";
 
 const icons = {
   success: CheckCircle,
@@ -62,6 +63,16 @@ export default function StatusScreen({ goIdle, context, settings }) {
       )}
 
       <AutoReturnBar seconds={settings.returnSeconds} onComplete={handleReturn} />
+
+      <KioskButton
+        variant="secondary"
+        size="lg"
+        icon={Home}
+        onClick={handleReturn}
+        className="mt-6"
+      >
+        Return to Home
+      </KioskButton>
     </div>
   );
 }

@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.activity_log import ActivityLog
+from app.models.checkin import Checkin
 from app.models.plan import Plan
 from app.models.saved_card import SavedCard
 from app.models.user import User
@@ -87,15 +88,29 @@ def get_member_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    entries = (
+    # Get activity log entries
+    activity_entries = (
         db.query(ActivityLog)
         .filter(ActivityLog.entity_id == member_id)
         .order_by(ActivityLog.created_at.desc())
         .limit(100)
         .all()
     )
-    return [
-        {
+
+    # Get check-in records
+    checkin_entries = (
+        db.query(Checkin)
+        .filter(Checkin.member_id == member_id)
+        .order_by(Checkin.checked_in_at.desc())
+        .limit(100)
+        .all()
+    )
+
+    # Merge and format results
+    results = []
+
+    for e in activity_entries:
+        results.append({
             "id": str(e.id),
             "action_type": e.action_type,
             "entity_type": e.entity_type,
@@ -103,9 +118,26 @@ def get_member_history(
             "after_value": e.after_value,
             "note": e.note,
             "created_at": e.created_at.isoformat(),
-        }
-        for e in entries
-    ]
+        })
+
+    for c in checkin_entries:
+        results.append({
+            "id": str(c.id),
+            "action_type": "checkin",
+            "entity_type": "checkin",
+            "before_value": None,
+            "after_value": {
+                "checkin_type": c.checkin_type.value,
+                "guest_count": c.guest_count,
+            },
+            "note": c.notes or f"Checked in ({c.checkin_type.value.replace('_', ' ')})" + (f" with {c.guest_count} guest(s)" if c.guest_count > 0 else ""),
+            "created_at": c.checked_in_at.isoformat(),
+        })
+
+    # Sort by created_at descending
+    results.sort(key=lambda x: x["created_at"], reverse=True)
+
+    return results[:100]
 
 
 @router.post("/{member_id}/credit", response_model=MemberResponse)

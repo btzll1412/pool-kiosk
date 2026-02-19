@@ -1,4 +1,4 @@
-import { ArrowLeft, CreditCard, ShoppingBag, Snowflake, Waves } from "lucide-react";
+import { ArrowLeft, CreditCard, ShoppingBag, Waves } from "lucide-react";
 import MemberCard from "../components/MemberCard";
 import KioskButton from "../components/KioskButton";
 
@@ -75,20 +75,8 @@ export default function ManageAccountScreen({ member, goTo, context }) {
               onClick={() => goTo("payment", { pin: context.pin })}
               className="w-full"
             >
-              Purchase / Top Up Plan
+              Purchase Plan
             </KioskButton>
-
-            {membership && !member.is_frozen && (
-              <KioskButton
-                variant="secondary"
-                size="lg"
-                icon={Snowflake}
-                onClick={() => goTo("freeze", { pin: context.pin })}
-                className="w-full"
-              >
-                Freeze Membership
-              </KioskButton>
-            )}
           </div>
         </div>
       </div>
