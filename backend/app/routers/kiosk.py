@@ -75,6 +75,18 @@ def scan_card(data: ScanRequest, request: Request, db: Session = Depends(get_db)
     return _build_member_status(db, member)
 
 
+@router.get("/members", response_model=list[MemberStatus])
+@limiter.limit("30/minute")
+def list_all_members(request: Request, db: Session = Depends(get_db)):
+    members = (
+        db.query(Member)
+        .filter(Member.is_active.is_(True))
+        .order_by(Member.first_name, Member.last_name)
+        .all()
+    )
+    return [_build_member_status(db, m) for m in members]
+
+
 @router.post("/search", response_model=list[MemberStatus])
 @limiter.limit("15/minute")
 def search_members(data: SearchRequest, request: Request, db: Session = Depends(get_db)):
@@ -608,12 +620,12 @@ def _build_member_status(db: Session, member: Member) -> MemberStatus:
                     valid_until=m.valid_until,
                 )
                 break
-        elif m.plan_type == PlanType.swim_pass:
+        elif m.plan_type in (PlanType.swim_pass, PlanType.single):
             remaining = (m.swims_total or 0) - m.swims_used
             if remaining > 0:
                 active_info = ActiveMembershipInfo(
                     membership_id=m.id,
-                    plan_name=m.plan.name if m.plan else "Swim Pass",
+                    plan_name=m.plan.name if m.plan else ("Swim Pass" if m.plan_type == PlanType.swim_pass else "Single Swim"),
                     plan_type=m.plan_type,
                     swims_remaining=remaining,
                 )

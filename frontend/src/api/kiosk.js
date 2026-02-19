@@ -10,6 +10,11 @@ export async function scanCard(rfid_uid) {
   return data;
 }
 
+export async function getAllMembers() {
+  const { data } = await kiosk.get("/members");
+  return data;
+}
+
 export async function searchMembers(query) {
   const { data } = await kiosk.post("/search", { query });
   return data;

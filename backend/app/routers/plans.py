@@ -37,7 +37,6 @@ def list_plans(
             "price": str(plan.price),
             "swim_count": plan.swim_count,
             "duration_days": plan.duration_days,
-            "description": plan.description,
             "display_order": plan.display_order,
             "is_active": plan.is_active,
             "created_at": plan.created_at.isoformat() if plan.created_at else None,
