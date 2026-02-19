@@ -18,6 +18,7 @@ import {
   Zap,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { useTimezone, formatDate, formatDateTime } from "../../../context/TimezoneContext";
 import {
   adjustCredit,
   deactivateCard,
@@ -50,6 +51,7 @@ import { SkeletonLine, SkeletonCard } from "../../../shared/Skeleton";
 export default function MemberDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const timezone = useTimezone();
   const [member, setMember] = useState(null);
   const [cards, setCards] = useState([]);
   const [savedCards, setSavedCards] = useState([]);
@@ -325,7 +327,7 @@ export default function MemberDetail() {
               </span>
             </InfoRow>
             <InfoRow label="Joined">
-              {new Date(member.created_at).toLocaleDateString("en-US", {
+              {formatDate(member.created_at, timezone, {
                 month: "long",
                 day: "numeric",
                 year: "numeric",
@@ -371,7 +373,7 @@ export default function MemberDetail() {
                         {card.rfid_uid}
                       </p>
                       <p className="text-xs text-gray-400 dark:text-gray-500">
-                        {new Date(card.assigned_at).toLocaleDateString()}
+                        {formatDate(card.assigned_at, timezone)}
                       </p>
                     </div>
                   </div>
@@ -551,7 +553,7 @@ export default function MemberDetail() {
                   )}
 
                   <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
-                    Created: {new Date(ms.created_at).toLocaleDateString()}
+                    Created: {formatDate(ms.created_at, timezone)}
                   </p>
                 </div>
               ))}
@@ -579,7 +581,7 @@ export default function MemberDetail() {
                       <p className="text-xs text-gray-500 dark:text-gray-400">{entry.note}</p>
                     )}
                     <p className="text-xs text-gray-400 dark:text-gray-500">
-                      {new Date(entry.created_at).toLocaleString()}
+                      {formatDateTime(entry.created_at, timezone)}
                     </p>
                   </div>
                 </div>

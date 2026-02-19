@@ -308,6 +308,40 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 - Import members from CSV with validation for duplicates
 - Import reports errors and skipped rows
 
+### Admin Check-ins Page
+- New Check-ins page added to admin sidebar with ClipboardCheck icon
+- Filterable by: search (member name), check-in type, date range (start/end), unique members only
+- Quick date filter buttons: Today, This Week, This Month
+- Displays: member name with initials avatar, type badge, guest count, date/time, notes
+- Shows total check-ins and unique member count
+- CSV export of filtered results
+- Clicking a row navigates to member detail page
+- Backend filtering supports all filter combinations with proper date range handling
+
+### Admin PIN Reset
+- Admin can reset/modify member PINs from member detail page
+- PIN must be 4-6 digits
+- Logs action in activity log
+- Automatically unlocks PIN if account was locked
+
+### Kiosk Settings Auto-Refresh
+- Settings refresh every 30 seconds when on idle screen
+- Allows admin changes to take effect without manual kiosk refresh
+- Stops polling when navigating away from idle screen
+
+### Account Credit Payment
+- Members can use account credit towards plan purchases
+- Payment screen shows "Account Credit" option with Wallet icon
+- Full credit payment when balance covers entire amount
+- Partial credit with CreditPartialScreen when credit doesn't cover full amount
+- Cash or card can be used for remaining balance after credit applied
+
+### Inactivity Timer Fixes
+- Fixed stale closure issue causing timer to not work on input screens
+- Uses refs to track warning state without dependencies
+- Removed mousemove event to prevent constant timer resets
+- Dialog dismissible by clicking anywhere on screen
+
 ---
 
 ## Last Updated: 2026-02-19 (Phase 9 — UX Polish & Admin Enhancements)

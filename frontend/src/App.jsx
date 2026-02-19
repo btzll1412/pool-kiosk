@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useNavigate, useLocation } from
 import { Toaster } from "react-hot-toast";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { TimezoneProvider } from "./context/TimezoneContext";
 import { checkSetupStatus } from "./api/auth";
 import Layout from "./admin/layout/Layout";
 import Login from "./admin/pages/Login";
@@ -19,6 +20,7 @@ import GuestsList from "./admin/pages/Guests/GuestsList";
 import RevenueReport from "./admin/pages/Reports/RevenueReport";
 import SwimReport from "./admin/pages/Reports/SwimReport";
 import Settings from "./admin/pages/Settings/Settings";
+import CheckinsList from "./admin/pages/Checkins/CheckinsList";
 import KioskApp from "./kiosk/KioskApp";
 
 function ProtectedRoute({ children }) {
@@ -75,6 +77,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
+      <TimezoneProvider>
       <AuthProvider>
         <Toaster
           position="top-right"
@@ -129,6 +132,7 @@ export default function App() {
               <Route path="plans" element={<PlansList />} />
               <Route path="transactions" element={<TransactionsList />} />
               <Route path="guests" element={<GuestsList />} />
+              <Route path="checkins" element={<CheckinsList />} />
               <Route path="reports" element={<RevenueReport />} />
               <Route path="reports/swims" element={<SwimReport />} />
               <Route path="settings" element={<Settings />} />
@@ -138,6 +142,7 @@ export default function App() {
           </Routes>
         </SetupCheck>
       </AuthProvider>
+      </TimezoneProvider>
       </ThemeProvider>
     </BrowserRouter>
   );

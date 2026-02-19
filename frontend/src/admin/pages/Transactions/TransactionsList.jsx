@@ -3,12 +3,14 @@ import { Download, Filter } from "lucide-react";
 import toast from "react-hot-toast";
 import { getTransactions } from "../../../api/payments";
 import { exportCsv } from "../../../api/reports";
+import { useTimezone, formatDateTime } from "../../../context/TimezoneContext";
 import Badge from "../../../shared/Badge";
 import Button from "../../../shared/Button";
 import PageHeader from "../../../shared/PageHeader";
 import Table from "../../../shared/Table";
 
 export default function TransactionsList() {
+  const timezone = useTimezone();
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -76,7 +78,7 @@ export default function TransactionsList() {
       key: "created_at",
       label: "Date",
       render: (row) =>
-        new Date(row.created_at).toLocaleString("en-US", {
+        formatDateTime(row.created_at, timezone, {
           month: "short",
           day: "numeric",
           hour: "numeric",

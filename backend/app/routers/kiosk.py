@@ -205,7 +205,9 @@ def get_kiosk_settings(request: Request, db: Session = Depends(get_db)):
     currency = get_setting(db, "currency_symbol", "$")
     return {
         "poolName": pool_name,
+        "pool_name": pool_name,
         "currency": currency,
+        "timezone": get_setting(db, "timezone", "America/New_York"),
         "checkin_return_seconds": get_setting(db, "checkin_return_seconds", "8"),
         "inactivity_timeout_seconds": get_setting(db, "inactivity_timeout_seconds", "30"),
         "inactivity_warning_seconds": get_setting(db, "inactivity_warning_seconds", "10"),
@@ -821,6 +823,18 @@ def guest_visit(data: GuestVisitRequest, request: Request, db: Session = Depends
         amount_paid=plan.price,
     )
     db.add(visit)
+
+    # Create a transaction record for revenue tracking
+    payment_method_enum = PaymentMethod.cash if data.payment_method == "cash" else PaymentMethod.card
+    transaction = Transaction(
+        member_id=None,  # Guest visit, no member
+        transaction_type=TransactionType.payment,
+        payment_method=payment_method_enum,
+        amount=plan.price,
+        notes=f"Guest visit: {data.name} - {plan.name}",
+    )
+    db.add(transaction)
+
     db.commit()
     db.refresh(visit)
     logger.info("Guest visit: name=%s, plan=%s, amount=$%s", data.name, plan.name, plan.price)

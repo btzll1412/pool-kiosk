@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Keyboard from "react-simple-keyboard";
 import "react-simple-keyboard/build/css/index.css";
 
@@ -7,8 +7,9 @@ const signalActivity = () => {
   window.dispatchEvent(new CustomEvent("kiosk-activity"));
 };
 
-export default function VirtualKeyboard({ value, onChange, onClose, layout = "default" }) {
+export default function VirtualKeyboard({ value, onChange, onClose }) {
   const keyboardRef = useRef(null);
+  const [layoutName, setLayoutName] = useState("default");
 
   useEffect(() => {
     if (keyboardRef.current) {
@@ -25,6 +26,8 @@ export default function VirtualKeyboard({ value, onChange, onClose, layout = "de
     signalActivity();
     if (button === "{enter}") {
       onClose?.();
+    } else if (button === "{shift}" || button === "{lock}") {
+      setLayoutName(layoutName === "default" ? "shift" : "default");
     }
   };
 
@@ -37,7 +40,7 @@ export default function VirtualKeyboard({ value, onChange, onClose, layout = "de
       "{space} {enter}",
     ],
     shift: [
-      "1 2 3 4 5 6 7 8 9 0 {bksp}",
+      "! @ # $ % ^ & * ( ) {bksp}",
       "Q W E R T Y U I O P",
       "A S D F G H J K L",
       "{shift} Z X C V B N M {shift}",
@@ -49,7 +52,7 @@ export default function VirtualKeyboard({ value, onChange, onClose, layout = "de
     "{bksp}": "⌫",
     "{enter}": "Done",
     "{space}": "Space",
-    "{shift}": "⇧",
+    "{shift}": layoutName === "default" ? "⇧ ABC" : "⇧ abc",
   };
 
   return (
@@ -58,7 +61,7 @@ export default function VirtualKeyboard({ value, onChange, onClose, layout = "de
         <Keyboard
           keyboardRef={(r) => (keyboardRef.current = r)}
           layout={layouts}
-          layoutName={layout}
+          layoutName={layoutName}
           onChange={handleChange}
           onKeyPress={handleKeyPress}
           display={display}
@@ -66,7 +69,7 @@ export default function VirtualKeyboard({ value, onChange, onClose, layout = "de
           buttonTheme={[
             {
               class: "keyboard-key-large",
-              buttons: "1 2 3 4 5 6 7 8 9 0 q w e r t y u i o p a s d f g h j k l z x c v b n m Q W E R T Y U I O P A S D F G H J K L Z X C V B N M",
+              buttons: "1 2 3 4 5 6 7 8 9 0 q w e r t y u i o p a s d f g h j k l z x c v b n m Q W E R T Y U I O P A S D F G H J K L Z X C V B N M ! @ # $ % ^ & * ( )",
             },
             {
               class: "keyboard-key-action",
