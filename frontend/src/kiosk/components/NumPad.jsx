@@ -1,18 +1,26 @@
 import { X } from "lucide-react";
 
+// Dispatch custom activity event to reset inactivity timer
+const signalActivity = () => {
+  window.dispatchEvent(new CustomEvent("kiosk-activity"));
+};
+
 export default function NumPad({ value, onChange, onClose, maxLength, showDecimal = false }) {
   const isModal = Boolean(onClose);
 
   const handlePress = (digit) => {
+    signalActivity();
     if (maxLength && value.length >= maxLength) return;
     onChange(value + digit);
   };
 
   const handleBackspace = () => {
+    signalActivity();
     onChange(value.slice(0, -1));
   };
 
   const handleClear = () => {
+    signalActivity();
     onChange("");
   };
 

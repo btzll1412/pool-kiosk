@@ -2,6 +2,11 @@ import { useState, useRef } from "react";
 import VirtualKeyboard from "./VirtualKeyboard";
 import NumPad from "./NumPad";
 
+// Dispatch custom activity event to reset inactivity timer
+const signalActivity = () => {
+  window.dispatchEvent(new CustomEvent("kiosk-activity"));
+};
+
 export default function KioskInput({
   type = "text",
   value,
@@ -19,6 +24,7 @@ export default function KioskInput({
   const inputRef = useRef(null);
 
   const handleFocus = () => {
+    signalActivity();
     setShowKeyboard(true);
   };
 
@@ -27,10 +33,12 @@ export default function KioskInput({
   };
 
   const handlePhysicalChange = (e) => {
+    signalActivity();
     onChange(e);
   };
 
   const handleClose = () => {
+    signalActivity();
     setShowKeyboard(false);
     // Keep focus on input for continued physical typing
     inputRef.current?.blur();
@@ -69,6 +77,7 @@ export default function KioskInput({
           <div
             className="fixed inset-0 z-40 bg-black/20"
             onClick={handleClose}
+            onTouchStart={signalActivity}
           />
 
           {isNumeric ? (

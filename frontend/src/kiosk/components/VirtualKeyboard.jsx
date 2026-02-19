@@ -2,6 +2,11 @@ import { useEffect, useRef } from "react";
 import Keyboard from "react-simple-keyboard";
 import "react-simple-keyboard/build/css/index.css";
 
+// Dispatch custom activity event to reset inactivity timer
+const signalActivity = () => {
+  window.dispatchEvent(new CustomEvent("kiosk-activity"));
+};
+
 export default function VirtualKeyboard({ value, onChange, onClose, layout = "default" }) {
   const keyboardRef = useRef(null);
 
@@ -12,10 +17,12 @@ export default function VirtualKeyboard({ value, onChange, onClose, layout = "de
   }, [value]);
 
   const handleChange = (input) => {
+    signalActivity();
     onChange(input);
   };
 
   const handleKeyPress = (button) => {
+    signalActivity();
     if (button === "{enter}") {
       onClose?.();
     }

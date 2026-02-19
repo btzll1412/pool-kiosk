@@ -38,7 +38,24 @@ export default function InactivityTimer({
 
   useEffect(() => {
     reset();
-    const events = ["touchstart", "mousedown", "mousemove", "keydown", "scroll"];
+    // Listen to many event types to catch all possible interactions
+    // Including pointer events for better touch/stylus support
+    const events = [
+      "touchstart",
+      "touchend",
+      "mousedown",
+      "mouseup",
+      "mousemove",
+      "click",
+      "pointerdown",
+      "pointerup",
+      "keydown",
+      "keyup",
+      "scroll",
+      "wheel",
+      "input",
+      "kiosk-activity", // Custom event for virtual keyboard interactions
+    ];
     const handler = () => {
       if (!warning) reset();
     };
