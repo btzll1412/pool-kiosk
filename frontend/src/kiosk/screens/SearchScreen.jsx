@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Loader2, Search } from "lucide-react";
 import toast from "react-hot-toast";
 import { getAllMembers } from "../../api/kiosk";
+import KioskInput from "../components/KioskInput";
 
 export default function SearchScreen({ setMember, goTo, goIdle }) {
   const [query, setQuery] = useState("");
@@ -48,20 +49,12 @@ export default function SearchScreen({ setMember, goTo, goIdle }) {
 
       <div className="flex flex-1 flex-col items-center px-6 py-8 overflow-y-auto">
         <div className="w-full max-w-lg">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name or phone number..."
-              autoFocus
-              className="w-full rounded-2xl border-0 bg-white py-4 pl-12 pr-12 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500"
-            />
-            {loading && (
-              <Loader2 className="absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 animate-spin text-brand-500" />
-            )}
-          </div>
+          <KioskInput
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Tap here to search by name or phone..."
+            icon={Search}
+          />
 
           <div className="mt-6">
             {loading ? (

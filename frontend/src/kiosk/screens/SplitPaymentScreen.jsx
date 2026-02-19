@@ -114,7 +114,7 @@ export default function SplitPaymentScreen({ member, goTo, context, settings }) 
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-400">
               Enter Cash Amount
             </h3>
-            <NumPad value={cashAmount} onChange={setCashAmount} maxLength={7} showDot />
+            <NumPad value={cashAmount} onChange={setCashAmount} maxLength={7} showDecimal />
           </div>
 
           {/* Saved card selector */}

@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { ArrowLeft, Loader2, UserPlus } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, Banknote, CreditCard, UserPlus } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
+import KioskInput from "../components/KioskInput";
 import PlanCard from "../components/PlanCard";
 import { getPlans, guestVisit } from "../../api/kiosk";
 
@@ -89,31 +90,20 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
             </div>
 
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name *
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your name"
-                  autoFocus
-                  className="w-full rounded-2xl border-0 bg-white py-4 px-5 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone *
-                </label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="Phone number"
-                  className="w-full rounded-2xl border-0 bg-white py-4 px-5 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
+              <KioskInput
+                label="Name *"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Tap to enter your name"
+              />
+              <KioskInput
+                label="Phone *"
+                type="tel"
+                numeric
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Tap to enter phone number"
+              />
             </div>
 
             <KioskButton
@@ -158,22 +148,26 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
                   {Number(selectedPlan.price).toFixed(2)}
                 </p>
                 <div className="flex justify-center gap-4">
-                  <KioskButton
-                    variant="secondary"
-                    size="xl"
-                    loading={loading}
+                  <button
+                    type="button"
+                    disabled={loading}
                     onClick={() => handlePay("cash")}
+                    className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
                   >
-                    Pay Cash
-                  </KioskButton>
-                  <KioskButton
-                    variant="primary"
-                    size="xl"
-                    loading={loading}
+                    <Banknote className="h-8 w-8 text-emerald-600" />
+                    <span className="text-lg font-semibold text-gray-900">Cash</span>
+                    <span className="text-xs text-amber-600 font-medium">Exact Change Only</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading}
                     onClick={() => handlePay("card")}
+                    className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
                   >
-                    Pay Card
-                  </KioskButton>
+                    <CreditCard className="h-8 w-8 text-blue-600" />
+                    <span className="text-lg font-semibold text-gray-900">Card</span>
+                    <span className="text-xs text-gray-400">Credit or Debit</span>
+                  </button>
                 </div>
               </div>
             )}

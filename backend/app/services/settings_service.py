@@ -66,6 +66,19 @@ DEFAULT_SETTINGS = {
     "sip_change_needed_number": "",
     "sip_fusionpbx_api_url": "",
     "sip_fusionpbx_api_key": "",
+    # Kiosk Display Settings
+    "kiosk_welcome_title": "Welcome to {pool_name}",
+    "kiosk_welcome_subtitle": "Scan your membership card to get started",
+    "kiosk_card_instruction": "Hold your card near the reader",
+    "kiosk_help_text": "Need help? Please ask a staff member.",
+    "kiosk_overlay_enabled": "false",
+    "kiosk_overlay_text": "",
+    "kiosk_locked": "false",
+    "kiosk_lock_message": "Kiosk is currently unavailable. Please see staff.",
+    "kiosk_bg_type": "gradient",
+    "kiosk_bg_color": "#0284c7",
+    "kiosk_bg_image": "",
+    "kiosk_bg_image_mode": "cover",
 }
 
 

@@ -35,18 +35,19 @@ export async function getPlans() {
   return data;
 }
 
-export async function payCash(member_id, plan_id, amount_tendered, pin, wants_change = false) {
+export async function payCash(member_id, plan_id, amount_tendered, pin, wants_change = false, use_credit = false) {
   const { data } = await kiosk.post("/pay/cash", {
     member_id,
     plan_id,
     amount_tendered: String(amount_tendered),
     pin,
     wants_change,
+    use_credit,
   });
   return data;
 }
 
-export async function payCard(member_id, plan_id, pin, { saved_card_id = null, save_card = false, card_last4 = null, card_brand = null, friendly_name = null } = {}) {
+export async function payCard(member_id, plan_id, pin, { saved_card_id = null, save_card = false, card_last4 = null, card_brand = null, friendly_name = null, use_credit = false } = {}) {
   const { data } = await kiosk.post("/pay/card", {
     member_id,
     plan_id,
@@ -56,6 +57,7 @@ export async function payCard(member_id, plan_id, pin, { saved_card_id = null, s
     card_last4,
     card_brand,
     friendly_name,
+    use_credit,
   });
   return data;
 }
@@ -67,6 +69,15 @@ export async function paySplit(member_id, plan_id, cash_amount, pin, saved_card_
     cash_amount: String(cash_amount),
     pin,
     saved_card_id,
+  });
+  return data;
+}
+
+export async function payCredit(member_id, plan_id, pin) {
+  const { data } = await kiosk.post("/pay/credit", {
+    member_id,
+    plan_id,
+    pin,
   });
   return data;
 }
@@ -161,6 +172,6 @@ export async function kioskSignup(memberData) {
 }
 
 export async function getSettings() {
-  const { data } = await axios.get("/api/settings");
+  const { data } = await kiosk.get("/settings");
   return data;
 }

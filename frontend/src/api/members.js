@@ -45,6 +45,9 @@ export const getMemberPinStatus = (memberId) =>
 export const unlockMemberPin = (memberId) =>
   client.post(`/members/${memberId}/unlock-pin`).then((r) => r.data);
 
+export const resetMemberPin = (memberId, newPin) =>
+  client.post(`/members/${memberId}/reset-pin`, { new_pin: newPin }).then((r) => r.data);
+
 export const exportMembersCsv = () =>
   client.get("/members/export/csv", { responseType: "blob" }).then((r) => r.data);
 

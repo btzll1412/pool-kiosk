@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Toaster } from "react-hot-toast";
 import RFIDListener from "./components/RFIDListener";
 import InactivityTimer from "./components/InactivityTimer";
 import ScreenTransition from "./components/ScreenTransition";
+import { getSettings, scanCard } from "../api/kiosk";
 import IdleScreen from "./screens/IdleScreen";
 import MemberScreen from "./screens/MemberScreen";
 import CheckinScreen from "./screens/CheckinScreen";
@@ -20,8 +21,8 @@ import SavedCardsScreen from "./screens/SavedCardsScreen";
 import AddCardScreen from "./screens/AddCardScreen";
 import AutoChargeScreen from "./screens/AutoChargeScreen";
 import SplitPaymentScreen from "./screens/SplitPaymentScreen";
+import CreditPartialScreen from "./screens/CreditPartialScreen";
 import SignUpScreen from "./screens/SignUpScreen";
-import { scanCard } from "../api/kiosk";
 
 const SCREENS = {
   idle: IdleScreen,
@@ -31,6 +32,7 @@ const SCREENS = {
   cash: CashScreen,
   card: CardPaymentScreen,
   split: SplitPaymentScreen,
+  creditPartial: CreditPartialScreen,
   search: SearchScreen,
   change: ChangeScreen,
   status: StatusScreen,
@@ -44,17 +46,51 @@ const SCREENS = {
   signup: SignUpScreen,
 };
 
+// Refresh settings every 30 seconds when on idle screen
+const SETTINGS_REFRESH_INTERVAL = 30000;
+
 export default function KioskApp() {
   const [screen, setScreen] = useState("idle");
   const [member, setMember] = useState(null);
   const [context, setContext] = useState({});
   const [settings, setSettings] = useState({});
+  const refreshIntervalRef = useRef(null);
 
-  useEffect(() => {
-    import("../api/kiosk").then((mod) =>
-      mod.getSettings().then(setSettings).catch(() => {})
-    );
+  // Fetch settings function
+  const fetchSettings = useCallback(() => {
+    getSettings().then(setSettings).catch(() => {});
   }, []);
+
+  // Initial fetch on mount
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
+
+  // Refresh settings periodically when on idle screen
+  useEffect(() => {
+    if (screen === "idle") {
+      // Fetch immediately when returning to idle
+      fetchSettings();
+
+      // Set up interval for periodic refresh
+      refreshIntervalRef.current = setInterval(() => {
+        fetchSettings();
+      }, SETTINGS_REFRESH_INTERVAL);
+
+      return () => {
+        if (refreshIntervalRef.current) {
+          clearInterval(refreshIntervalRef.current);
+          refreshIntervalRef.current = null;
+        }
+      };
+    } else {
+      // Clear interval when not on idle screen
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    }
+  }, [screen, fetchSettings]);
 
   const goTo = useCallback((nextScreen, ctx = {}) => {
     setContext((prev) => ({ ...prev, ...ctx }));

@@ -1,9 +1,14 @@
 import logging
+import os
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+UPLOAD_DIR = "/app/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 from app.database import get_db
 from app.models.user import User
@@ -124,3 +129,35 @@ def test_sip_connection(
     success, message = _test_sip(db)
     logger.info("SIP test: success=%s, by_user=%s", success, current_user.username)
     return {"success": success, "message": message}
+
+
+@router.post("/upload-background")
+async def upload_kiosk_background(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Validate file type
+    allowed_types = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type. Allowed: {', '.join(allowed_types)}",
+        )
+
+    # Generate unique filename
+    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"kiosk_bg_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+
+    # Save file
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    # Update setting with new image path
+    image_url = f"/api/uploads/{filename}"
+    update_settings(db, {"kiosk_bg_image": image_url})
+
+    logger.info("Kiosk background uploaded: %s by user=%s", filename, current_user.username)
+    return {"success": True, "url": image_url}

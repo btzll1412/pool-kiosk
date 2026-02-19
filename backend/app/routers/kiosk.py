@@ -22,6 +22,7 @@ from app.schemas.kiosk import (
     AutoChargeRequest,
     CardPaymentRequest,
     CashPaymentRequest,
+    CreditPaymentRequest,
     GuestVisitRequest,
     GuestVisitResponse,
     KioskCheckinRequest,
@@ -196,6 +197,38 @@ def get_kiosk_plans(request: Request, db: Session = Depends(get_db)):
     ]
 
 
+@router.get("/settings")
+@limiter.limit("60/minute")
+def get_kiosk_settings(request: Request, db: Session = Depends(get_db)):
+    """Public endpoint for kiosk display settings."""
+    pool_name = get_setting(db, "pool_name", "Pool")
+    currency = get_setting(db, "currency_symbol", "$")
+    return {
+        "poolName": pool_name,
+        "currency": currency,
+        "checkin_return_seconds": get_setting(db, "checkin_return_seconds", "8"),
+        "inactivity_timeout_seconds": get_setting(db, "inactivity_timeout_seconds", "30"),
+        "inactivity_warning_seconds": get_setting(db, "inactivity_warning_seconds", "10"),
+        "family_max_guests": get_setting(db, "family_max_guests", "5"),
+        "cash_box_instructions": get_setting(db, "cash_box_instructions", ""),
+        "guest_visit_enabled": get_setting(db, "guest_visit_enabled", "true"),
+        "split_payment_enabled": get_setting(db, "split_payment_enabled", "true"),
+        # Kiosk display settings
+        "kiosk_welcome_title": get_setting(db, "kiosk_welcome_title", "Welcome to {pool_name}"),
+        "kiosk_welcome_subtitle": get_setting(db, "kiosk_welcome_subtitle", "Scan your membership card to get started"),
+        "kiosk_card_instruction": get_setting(db, "kiosk_card_instruction", "Hold your card near the reader"),
+        "kiosk_help_text": get_setting(db, "kiosk_help_text", "Need help? Please ask a staff member."),
+        "kiosk_overlay_enabled": get_setting(db, "kiosk_overlay_enabled", "false"),
+        "kiosk_overlay_text": get_setting(db, "kiosk_overlay_text", ""),
+        "kiosk_locked": get_setting(db, "kiosk_locked", "false"),
+        "kiosk_lock_message": get_setting(db, "kiosk_lock_message", "Kiosk is currently unavailable. Please see staff."),
+        "kiosk_bg_type": get_setting(db, "kiosk_bg_type", "gradient"),
+        "kiosk_bg_color": get_setting(db, "kiosk_bg_color", "#0284c7"),
+        "kiosk_bg_image": get_setting(db, "kiosk_bg_image", ""),
+        "kiosk_bg_image_mode": get_setting(db, "kiosk_bg_image_mode", "cover"),
+    }
+
+
 @router.post("/pay/cash", response_model=PaymentResponse)
 @limiter.limit("20/minute")
 def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(get_db)):
@@ -204,24 +237,108 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
-    tx, change_due, credit_added = process_cash_payment(
-        db, data.member_id, data.plan_id, data.amount_tendered, wants_change=data.wants_change
-    )
+    member = db.query(Member).filter(Member.id == data.member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
 
-    if change_due > 0:
+    credit_used = Decimal("0.00")
+    effective_price = plan.price
+
+    # Apply account credit if requested
+    if data.use_credit and member.credit_balance > 0:
+        credit_used = min(member.credit_balance, plan.price)
+        effective_price = plan.price - credit_used
+        member.credit_balance -= credit_used
+
+    # If credit covers entire amount, no cash needed
+    if effective_price <= 0:
+        membership = create_membership(db, data.member_id, data.plan_id)
+        credit_tx = Transaction(
+            member_id=data.member_id,
+            transaction_type=TransactionType.payment,
+            payment_method=PaymentMethod.credit,
+            amount=credit_used,
+            plan_id=data.plan_id,
+            membership_id=membership.id,
+            notes="Paid with account credit",
+        )
+        db.add(credit_tx)
+        db.commit()
+        db.refresh(credit_tx)
+        logger.info("Kiosk credit-only payment: member=%s, plan=%s, credit=$%s", data.member_id, data.plan_id, credit_used)
+        return PaymentResponse(
+            success=True,
+            transaction_id=credit_tx.id,
+            membership_id=membership.id,
+            credit_used=credit_used,
+            message=f"Paid ${credit_used} with account credit.",
+        )
+
+    # Validate cash amount covers remaining price
+    if data.amount_tendered < effective_price:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Minimum ${effective_price} required (after ${credit_used} credit applied)",
+        )
+
+    # Create membership
+    membership = create_membership(db, data.member_id, data.plan_id)
+
+    # Record credit transaction if credit was used
+    if credit_used > 0:
+        credit_tx = Transaction(
+            member_id=data.member_id,
+            transaction_type=TransactionType.payment,
+            payment_method=PaymentMethod.credit,
+            amount=credit_used,
+            plan_id=data.plan_id,
+            membership_id=membership.id,
+            notes="Credit portion of payment",
+        )
+        db.add(credit_tx)
+
+    # Handle cash payment for remaining amount
+    change_due = Decimal("0.00")
+    credit_added = Decimal("0.00")
+    overpayment = data.amount_tendered - effective_price
+
+    if overpayment > 0:
+        if data.wants_change:
+            change_due = overpayment
+        else:
+            member.credit_balance += overpayment
+            credit_added = overpayment
+
+    cash_tx = Transaction(
+        member_id=data.member_id,
+        transaction_type=TransactionType.payment,
+        payment_method=PaymentMethod.cash,
+        amount=data.amount_tendered,
+        plan_id=data.plan_id,
+        membership_id=membership.id,
+        notes="Cash portion of payment" if credit_used > 0 else None,
+    )
+    db.add(cash_tx)
+    db.commit()
+    db.refresh(cash_tx)
+
+    if credit_used > 0:
+        msg = f"Payment recorded: ${credit_used} credit + ${data.amount_tendered} cash."
+    elif change_due > 0:
         msg = f"Payment recorded. ${change_due} change due."
     elif credit_added > 0:
         msg = f"Payment recorded. ${credit_added} added to your account credit."
     else:
         msg = "Payment recorded successfully."
 
-    logger.info("Kiosk cash payment: member=%s, plan=%s, amount=$%s", data.member_id, data.plan_id, data.amount_tendered)
+    logger.info("Kiosk cash payment: member=%s, plan=%s, cash=$%s, credit=$%s", data.member_id, data.plan_id, data.amount_tendered, credit_used)
     return PaymentResponse(
         success=True,
-        transaction_id=tx.id,
-        membership_id=tx.membership_id,
+        transaction_id=cash_tx.id,
+        membership_id=membership.id,
         change_due=change_due,
         credit_added=credit_added,
+        credit_used=credit_used,
         message=msg,
     )
 
@@ -231,16 +348,90 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
 def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(get_db)):
     verify_member_pin(db, data.member_id, data.pin)
 
+    plan = db.query(Plan).filter(Plan.id == data.plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    member = db.query(Member).filter(Member.id == data.member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    credit_used = Decimal("0.00")
+    effective_price = plan.price
+
+    # Apply account credit if requested
+    if data.use_credit and member.credit_balance > 0:
+        credit_used = min(member.credit_balance, plan.price)
+        effective_price = plan.price - credit_used
+        member.credit_balance -= credit_used
+
+    # If credit covers entire amount, no card charge needed
+    if effective_price <= 0:
+        membership = create_membership(db, data.member_id, data.plan_id)
+        credit_tx = Transaction(
+            member_id=data.member_id,
+            transaction_type=TransactionType.payment,
+            payment_method=PaymentMethod.credit,
+            amount=credit_used,
+            plan_id=data.plan_id,
+            membership_id=membership.id,
+            notes="Paid with account credit",
+        )
+        db.add(credit_tx)
+        db.commit()
+        db.refresh(credit_tx)
+        logger.info("Kiosk credit-only payment: member=%s, plan=%s, credit=$%s", data.member_id, data.plan_id, credit_used)
+        return PaymentResponse(
+            success=True,
+            transaction_id=credit_tx.id,
+            membership_id=membership.id,
+            credit_used=credit_used,
+            message=f"Paid ${credit_used} with account credit.",
+        )
+
+    # Process card payment for remaining amount
     if data.saved_card_id:
+        # Use saved card - note: charge_saved_card_now handles membership creation
         tx = charge_saved_card_now(db, data.saved_card_id, data.plan_id, data.member_id)
+
+        # If credit was used, record credit transaction
+        if credit_used > 0:
+            credit_tx = Transaction(
+                member_id=data.member_id,
+                transaction_type=TransactionType.payment,
+                payment_method=PaymentMethod.credit,
+                amount=credit_used,
+                plan_id=data.plan_id,
+                membership_id=tx.membership_id,
+                notes="Credit portion of payment",
+            )
+            db.add(credit_tx)
+            db.commit()
+
+        logger.info("Kiosk card payment: member=%s, plan=%s, card=$%s, credit=$%s", data.member_id, data.plan_id, effective_price, credit_used)
         return PaymentResponse(
             success=True,
             transaction_id=tx.id,
             membership_id=tx.membership_id,
-            message="Saved card payment processed successfully.",
+            credit_used=credit_used,
+            message=f"Payment processed: ${credit_used} credit + ${effective_price} card." if credit_used > 0 else "Saved card payment processed successfully.",
         )
 
+    # New card payment
     tx = process_card_payment(db, data.member_id, data.plan_id)
+
+    # If credit was used, record credit transaction
+    if credit_used > 0:
+        credit_tx = Transaction(
+            member_id=data.member_id,
+            transaction_type=TransactionType.payment,
+            payment_method=PaymentMethod.credit,
+            amount=credit_used,
+            plan_id=data.plan_id,
+            membership_id=tx.membership_id,
+            notes="Credit portion of payment",
+        )
+        db.add(credit_tx)
 
     if data.save_card and data.card_last4:
         adapter = get_payment_adapter(db)
@@ -254,14 +445,16 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
             friendly_name=friendly,
         )
         db.add(card)
-        db.commit()
 
-    logger.info("Kiosk card payment: member=%s, plan=%s, saved_card=%s", data.member_id, data.plan_id, data.saved_card_id or "new")
+    db.commit()
+
+    logger.info("Kiosk card payment: member=%s, plan=%s, card=$%s, credit=$%s", data.member_id, data.plan_id, effective_price, credit_used)
     return PaymentResponse(
         success=True,
         transaction_id=tx.id,
         membership_id=tx.membership_id,
-        message="Card payment processed successfully.",
+        credit_used=credit_used,
+        message=f"Payment processed: ${credit_used} credit + ${effective_price} card." if credit_used > 0 else "Card payment processed successfully.",
     )
 
 
@@ -361,6 +554,63 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
         transaction_id=cash_tx.id,
         membership_id=membership.id,
         message=f"Split payment: ${data.cash_amount} cash + ${card_amount} card.",
+    )
+
+
+@router.post("/pay/credit", response_model=PaymentResponse)
+@limiter.limit("20/minute")
+def pay_credit(data: CreditPaymentRequest, request: Request, db: Session = Depends(get_db)):
+    """Pay for a plan using account credit balance."""
+    verify_member_pin(db, data.member_id, data.pin)
+
+    plan = db.query(Plan).filter(Plan.id == data.plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    member = db.query(Member).filter(Member.id == data.member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    if member.credit_balance <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No credit balance available")
+
+    credit_to_use = min(member.credit_balance, plan.price)
+    remaining = plan.price - credit_to_use
+
+    if remaining > 0:
+        # Partial credit - return the remaining amount needed
+        return PaymentResponse(
+            success=False,
+            credit_used=credit_to_use,
+            remaining_due=remaining,
+            message=f"Credit of ${credit_to_use} will be applied. ${remaining} remaining to pay.",
+        )
+
+    # Full credit payment - deduct credit and create membership
+    member.credit_balance -= credit_to_use
+    membership = create_membership(db, data.member_id, data.plan_id)
+
+    # Record credit transaction
+    credit_tx = Transaction(
+        member_id=data.member_id,
+        transaction_type=TransactionType.payment,
+        payment_method=PaymentMethod.credit,
+        amount=credit_to_use,
+        plan_id=data.plan_id,
+        membership_id=membership.id,
+        notes="Paid with account credit",
+    )
+    db.add(credit_tx)
+    db.commit()
+    db.refresh(credit_tx)
+
+    logger.info("Kiosk credit payment: member=%s, plan=%s, credit=$%s", data.member_id, data.plan_id, credit_to_use)
+    return PaymentResponse(
+        success=True,
+        transaction_id=credit_tx.id,
+        membership_id=membership.id,
+        credit_used=credit_to_use,
+        message=f"Paid ${credit_to_use} with account credit. Enjoy your swim!",
     )
 
 
@@ -635,6 +885,7 @@ def _build_member_status(db: Session, member: Member) -> MemberStatus:
         member_id=member.id,
         first_name=member.first_name,
         last_name=member.last_name,
+        phone=member.phone,
         credit_balance=member.credit_balance,
         has_pin=member.pin_hash is not None,
         active_membership=active_info,
