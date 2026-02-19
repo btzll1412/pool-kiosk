@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 from app.database import get_db
 from app.models.activity_log import ActivityLog
 from app.models.checkin import Checkin
+from app.models.membership import Membership
 from app.models.plan import Plan
 from app.models.saved_card import SavedCard
 from app.models.user import User
@@ -148,6 +149,40 @@ def adjust_credit_endpoint(
     current_user: User = Depends(get_current_user),
 ):
     return adjust_credit(db, member_id, data, user_id=current_user.id)
+
+
+@router.get("/{member_id}/memberships")
+def get_member_memberships(
+    member_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    memberships = (
+        db.query(Membership)
+        .filter(Membership.member_id == member_id)
+        .order_by(Membership.created_at.desc())
+        .all()
+    )
+    result = []
+    for m in memberships:
+        plan_name = m.plan.name if m.plan else None
+        swims_remaining = None
+        if m.swims_total is not None:
+            swims_remaining = (m.swims_total or 0) - (m.swims_used or 0)
+        result.append({
+            "id": str(m.id),
+            "plan_id": str(m.plan_id) if m.plan_id else None,
+            "plan_name": plan_name,
+            "plan_type": m.plan_type.value,
+            "swims_total": m.swims_total,
+            "swims_used": m.swims_used,
+            "swims_remaining": swims_remaining,
+            "valid_from": str(m.valid_from) if m.valid_from else None,
+            "valid_until": str(m.valid_until) if m.valid_until else None,
+            "is_active": m.is_active,
+            "created_at": m.created_at.isoformat(),
+        })
+    return result
 
 
 @router.get("/{member_id}/saved-cards")
