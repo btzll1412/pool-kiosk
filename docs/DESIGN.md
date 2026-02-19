@@ -381,6 +381,8 @@ pool-management/
 - `PUT /api/kiosk/saved-cards/{id}` — Rename a saved card
 - `DELETE /api/kiosk/saved-cards/{id}` — Remove saved card (PIN required)
 - `POST /api/kiosk/pay/split` — Split payment between cash and card
+- `POST /api/kiosk/verify-pin` — Verify member PIN before sensitive operations
+- `POST /api/kiosk/signup` — Self-registration for new members
 
 ### Members (admin auth)
 
@@ -394,6 +396,9 @@ pool-management/
 - `GET /api/members/{id}/cards` — List cards
 - `POST /api/members/{id}/cards` — Assign new card
 - `DELETE /api/members/{id}/cards/{card_id}` — Deactivate card
+- `GET /api/members/{id}/memberships` — List member's memberships with plan details
+- `GET /api/members/{id}/saved-cards` — List member's saved payment cards
+- `DELETE /api/members/{id}/saved-cards/{card_id}` — Remove saved card
 
 ### Plans (admin auth)
 
@@ -430,6 +435,15 @@ pool-management/
 - `POST /api/settings/payment-test?processor=<type>` — Test payment processor connection
 - `POST /api/settings/email-test` — Test SMTP email connection
 - `POST /api/settings/sip-test` — Test SIP/FusionPBX connection
+
+### Backup (admin auth)
+
+- `GET /api/backup/export` — Export full system data as JSON
+- `POST /api/backup/import` — Import system data from JSON file (replaces all data)
+
+### Guests (admin auth)
+
+- `GET /api/guests` — List guest visits with pagination
 
 ---
 
@@ -503,7 +517,13 @@ pool-management/
   → Scan card → [MEMBER SCREEN]
   → Tap "Search Account" → [SEARCH SCREEN] → [MEMBER SCREEN]
   → Tap "Guest Visit" → [GUEST SCREEN]
-  → Tap "New Member" → [SIGNUP SCREEN]
+  → Tap "New Member" → [SIGNUP SCREEN] → [MEMBER SCREEN]
+
+[SIGNUP SCREEN]
+  → Enter first name, last name, phone (required), email (optional)
+  → Set 4-digit PIN
+  → Submit → creates member → proceeds to [MEMBER SCREEN]
+  → Can then check in or purchase plan
 
 [MEMBER SCREEN]  (shows name, status, balance)
   → BIG "Check In" button (primary action)
@@ -912,6 +932,7 @@ try {
 6. **Phase 6** — Docker packaging + Nginx config
 7. **Phase 7** — HA/notification hooks
 8. **Phase 8** — Payment processors (Stripe/Square/Sola), email, SIP, dark mode, kiosk transitions, skeletons
+9. **Phase 9** — UX polish (kiosk signup, PIN verify, search debounce, swim pass stacking), admin enhancements (backup/restore, membership management, settings tabs, guest visits page)
 
 ---
 
@@ -921,6 +942,7 @@ try {
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-02-19 | Phase 9: Added kiosk signup, PIN verify endpoint, backup/restore, member memberships management, swim pass stacking, guest visits page, settings tabs | — |
 | 2026-02-18 | Phase 8: Added Stripe/Square/Sola payment adapters, email service, SIP service, dark mode, kiosk transitions, skeletons, 30+ new DB settings | — |
 | 2026-02-18 | Added Logging & Error Handling Standards section; consistent logging across all backend modules; frontend error handling audit | — |
 | 2026-02-18 | Bug fixes: split payment (frontend + backend), cash change_due flow, test suite (38 tests), bcrypt compat, JSONB→JSON | — |
