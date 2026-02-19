@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import VirtualKeyboard from "./VirtualKeyboard";
 import NumPad from "./NumPad";
 
@@ -16,17 +16,24 @@ export default function KioskInput({
   autoFocus = false,
 }) {
   const [showKeyboard, setShowKeyboard] = useState(false);
+  const inputRef = useRef(null);
 
   const handleFocus = () => {
     setShowKeyboard(true);
   };
 
-  const handleChange = (newValue) => {
+  const handleVirtualChange = (newValue) => {
     onChange({ target: { value: newValue } });
+  };
+
+  const handlePhysicalChange = (e) => {
+    onChange(e);
   };
 
   const handleClose = () => {
     setShowKeyboard(false);
+    // Keep focus on input for continued physical typing
+    inputRef.current?.blur();
   };
 
   const isNumeric = numeric || type === "tel" || type === "number";
@@ -44,12 +51,11 @@ export default function KioskInput({
             <Icon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
           )}
           <input
+            ref={inputRef}
             type="text"
-            inputMode="none"
             value={value}
-            readOnly
+            onChange={handlePhysicalChange}
             onFocus={handleFocus}
-            onClick={handleFocus}
             placeholder={placeholder}
             maxLength={maxLength}
             autoFocus={autoFocus}
@@ -68,7 +74,7 @@ export default function KioskInput({
           {isNumeric ? (
             <NumPad
               value={value}
-              onChange={handleChange}
+              onChange={handleVirtualChange}
               onClose={handleClose}
               maxLength={maxLength}
               showDecimal={showDecimal}
@@ -76,7 +82,7 @@ export default function KioskInput({
           ) : (
             <VirtualKeyboard
               value={value}
-              onChange={handleChange}
+              onChange={handleVirtualChange}
               onClose={handleClose}
             />
           )}
