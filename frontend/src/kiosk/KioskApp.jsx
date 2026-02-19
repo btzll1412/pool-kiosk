@@ -20,6 +20,7 @@ import SavedCardsScreen from "./screens/SavedCardsScreen";
 import AddCardScreen from "./screens/AddCardScreen";
 import AutoChargeScreen from "./screens/AutoChargeScreen";
 import SplitPaymentScreen from "./screens/SplitPaymentScreen";
+import CreditPartialScreen from "./screens/CreditPartialScreen";
 import SignUpScreen from "./screens/SignUpScreen";
 import { scanCard } from "../api/kiosk";
 
@@ -31,6 +32,7 @@ const SCREENS = {
   cash: CashScreen,
   card: CardPaymentScreen,
   split: SplitPaymentScreen,
+  creditPartial: CreditPartialScreen,
   search: SearchScreen,
   change: ChangeScreen,
   status: StatusScreen,

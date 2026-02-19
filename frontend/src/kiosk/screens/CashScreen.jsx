@@ -8,7 +8,10 @@ import { payCash } from "../../api/kiosk";
 export default function CashScreen({ member, goTo, goIdle, context, settings }) {
   const plan = context.plan;
   const pin = context.pin;
-  const price = Number(plan?.price || 0);
+  const useCredit = context.useCredit || false;
+  const creditAmount = Number(context.creditAmount || 0);
+  const originalPrice = Number(plan?.price || 0);
+  const price = useCredit ? Number(context.adjustedPrice || originalPrice) : originalPrice;
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -29,14 +32,20 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
     setLoading(true);
     try {
       // Always add overpayment to credit (wantsChange = false)
-      const data = await payCash(member.member_id, plan.id, amountNum, pin, false);
+      const data = await payCash(member.member_id, plan.id, amountNum, pin, false, useCredit);
+
+      let message = `Place ${settings.currency}${amountNum.toFixed(2)} in the cash box.`;
+      if (data.credit_used > 0) {
+        message = `${settings.currency}${Number(data.credit_used).toFixed(2)} credit applied.`;
+      }
+      if (data.credit_added > 0) {
+        message += ` ${settings.currency}${Number(data.credit_added).toFixed(2)} added to your account credit.`;
+      }
 
       goTo("status", {
         statusType: "success",
         statusTitle: "Payment Complete!",
-        statusMessage: data.credit_added > 0
-          ? `${settings.currency}${Number(data.credit_added).toFixed(2)} added to your account credit.`
-          : `Place ${settings.currency}${price.toFixed(2)} in the cash box. Thank you!`,
+        statusMessage: message,
       });
     } catch (err) {
       toast.error(err.response?.data?.detail || "Payment failed");
@@ -69,9 +78,23 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
         <div className="w-full max-w-sm">
           <div className="mb-6 rounded-2xl bg-white p-5 text-center shadow-sm ring-1 ring-gray-100">
             <p className="text-sm text-gray-500">{plan.name}</p>
-            <p className="mt-1 text-4xl font-extrabold text-gray-900">
-              {settings.currency}{price.toFixed(2)}
-            </p>
+            {useCredit && creditAmount > 0 ? (
+              <>
+                <p className="mt-1 text-lg text-gray-400 line-through">
+                  {settings.currency}{originalPrice.toFixed(2)}
+                </p>
+                <p className="text-sm text-emerald-600 font-medium">
+                  -{settings.currency}{creditAmount.toFixed(2)} credit applied
+                </p>
+                <p className="mt-1 text-4xl font-extrabold text-gray-900">
+                  {settings.currency}{price.toFixed(2)}
+                </p>
+              </>
+            ) : (
+              <p className="mt-1 text-4xl font-extrabold text-gray-900">
+                {settings.currency}{price.toFixed(2)}
+              </p>
+            )}
             <p className="mt-2 text-xs font-medium text-amber-600">
               Exact Change Only
             </p>

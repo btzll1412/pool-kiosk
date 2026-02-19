@@ -9,7 +9,10 @@ const CARD_BRANDS = ["Visa", "Mastercard", "Amex", "Discover"];
 export default function CardPaymentScreen({ member, goTo, context, settings }) {
   const plan = context.plan;
   const pin = context.pin;
-  const price = Number(plan?.price || 0);
+  const useCredit = context.useCredit || false;
+  const creditAmount = Number(context.creditAmount || 0);
+  const originalPrice = Number(plan?.price || 0);
+  const price = useCredit ? Number(context.adjustedPrice || originalPrice) : originalPrice;
   const [loading, setLoading] = useState(false);
   const [savedCards, setSavedCards] = useState([]);
   const [cardsLoading, setCardsLoading] = useState(true);
@@ -42,14 +45,20 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
     setLoading(true);
     try {
       const opts = useNewCard
-        ? { save_card: saveNewCard, card_last4: saveNewCard ? cardLast4 : null, card_brand: saveNewCard ? cardBrand : null }
-        : { saved_card_id: selectedCardId };
+        ? { save_card: saveNewCard, card_last4: saveNewCard ? cardLast4 : null, card_brand: saveNewCard ? cardBrand : null, use_credit: useCredit }
+        : { saved_card_id: selectedCardId, use_credit: useCredit };
 
       const data = await payCard(member.member_id, plan.id, pin, opts);
+
+      let message = data.message || "Card payment processed successfully.";
+      if (data.credit_used > 0) {
+        message = `${settings.currency}${Number(data.credit_used).toFixed(2)} credit applied. ` + message;
+      }
+
       goTo("status", {
         statusType: "success",
         statusTitle: "Payment Complete!",
-        statusMessage: data.message || "Card payment processed successfully.",
+        statusMessage: message,
       });
     } catch (err) {
       toast.error(err.response?.data?.detail || "Payment failed");
@@ -83,9 +92,23 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
           {/* Amount */}
           <div className="rounded-2xl bg-white p-5 text-center shadow-sm ring-1 ring-gray-100">
             <p className="text-sm text-gray-500">{plan.name}</p>
-            <p className="mt-1 text-4xl font-extrabold text-gray-900">
-              {settings.currency}{price.toFixed(2)}
-            </p>
+            {useCredit && creditAmount > 0 ? (
+              <>
+                <p className="mt-1 text-lg text-gray-400 line-through">
+                  {settings.currency}{originalPrice.toFixed(2)}
+                </p>
+                <p className="text-sm text-emerald-600 font-medium">
+                  -{settings.currency}{creditAmount.toFixed(2)} credit applied
+                </p>
+                <p className="mt-1 text-4xl font-extrabold text-gray-900">
+                  {settings.currency}{price.toFixed(2)}
+                </p>
+              </>
+            ) : (
+              <p className="mt-1 text-4xl font-extrabold text-gray-900">
+                {settings.currency}{price.toFixed(2)}
+              </p>
+            )}
           </div>
 
           {/* Saved Cards */}

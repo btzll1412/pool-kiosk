@@ -55,6 +55,7 @@ class CashPaymentRequest(BaseModel):
     amount_tendered: Decimal
     pin: str
     wants_change: bool = False
+    use_credit: bool = False
 
 
 class CardPaymentRequest(BaseModel):
@@ -66,6 +67,7 @@ class CardPaymentRequest(BaseModel):
     card_last4: str | None = None
     card_brand: str | None = None
     friendly_name: str | None = None
+    use_credit: bool = False
 
 
 class SplitPaymentRequest(BaseModel):
@@ -76,12 +78,20 @@ class SplitPaymentRequest(BaseModel):
     saved_card_id: uuid.UUID | None = None
 
 
+class CreditPaymentRequest(BaseModel):
+    member_id: uuid.UUID
+    plan_id: uuid.UUID
+    pin: str
+
+
 class PaymentResponse(BaseModel):
     success: bool
     transaction_id: uuid.UUID | None = None
     membership_id: uuid.UUID | None = None
     change_due: Decimal = Decimal("0.00")
     credit_added: Decimal = Decimal("0.00")
+    credit_used: Decimal = Decimal("0.00")
+    remaining_due: Decimal = Decimal("0.00")
     message: str
 
 
