@@ -37,10 +37,11 @@ In the **Proxmox web UI** (`https://<proxmox-ip>:8006`):
 2. Configure:
    - **Hostname:** `pool-kiosk`
    - **Template:** `debian-12-standard` (or `ubuntu-22.04-standard`)
-   - **Disk:** 10 GB (minimum)
+   - **Disk:** 16 GB (minimum)
    - **CPU:** 2 cores
    - **Memory:** 2048 MB
    - **Network:** DHCP or static IP on your LAN (e.g., `192.168.1.50/24`, gateway `192.168.1.1`)
+   - **Unprivileged:** Unchecked (privileged container required for Docker)
    - Set a root password
 3. **Before starting**, enable nesting (required for Docker):
    - Select the container > **Options** > **Features** > check **Nesting**
@@ -48,7 +49,27 @@ In the **Proxmox web UI** (`https://<proxmox-ip>:8006`):
      ```bash
      pct set <CTID> --features nesting=1
      ```
-4. **Start** the container
+4. **Configure Docker compatibility** (required for privileged containers):
+
+   SSH into the Proxmox host and add these lines to `/etc/pve/lxc/<CTID>.conf`:
+   ```bash
+   lxc.apparmor.profile: unconfined
+   lxc.cgroup2.devices.allow: a
+   lxc.cap.drop:
+   lxc.mount.auto: proc:rw sys:rw
+   ```
+
+   Or run this command:
+   ```bash
+   cat >> /etc/pve/lxc/<CTID>.conf << 'EOF'
+   lxc.apparmor.profile: unconfined
+   lxc.cgroup2.devices.allow: a
+   lxc.cap.drop:
+   lxc.mount.auto: proc:rw sys:rw
+   EOF
+   ```
+
+5. **Start** the container
 
 ### Step 2: Install Docker
 
@@ -92,8 +113,6 @@ Edit these values:
 ```
 DB_PASSWORD=<strong-random-password>
 SECRET_KEY=<random-64-character-string>
-ADMIN_DEFAULT_USERNAME=admin
-ADMIN_DEFAULT_PASSWORD=<your-admin-password>
 POOL_NAME=Your Pool Name
 ```
 
@@ -101,10 +120,17 @@ To generate random values:
 
 ```bash
 # Generate a strong DB password
-openssl rand -base64 24
+openssl rand -hex 16
 
 # Generate a JWT secret key
 openssl rand -hex 32
+```
+
+Or generate them automatically:
+
+```bash
+sed -i "s/change-me-strong-password/$(openssl rand -hex 16)/g" .env
+sed -i "s/change-me-in-production/$(openssl rand -hex 32)/g" .env
 ```
 
 ### Step 5: Start the Application
@@ -138,11 +164,16 @@ Press `Ctrl+C` to stop following logs (containers keep running).
 | Admin | `http://<container-ip>/admin` | Management dashboard |
 | API Docs | `http://<container-ip>/docs` | Interactive API documentation |
 
-Log in to the admin panel with the credentials from your `.env` file.
-
 ---
 
-## First-Time Setup (Admin Panel)
+## First-Time Setup
+
+When you first visit `/admin`, you'll be redirected to the **Setup Wizard** to create your admin account:
+
+1. **Create Admin Account** -- Enter username (3+ chars), email (for password recovery), and password (8+ chars)
+2. **Login** -- You'll be automatically logged in after setup
+
+### Admin Panel Configuration
 
 After logging in at `/admin`:
 
@@ -154,6 +185,16 @@ After logging in at `/admin`:
 6. **Members** -- Add members and assign RFID cards
 
 All payment processor credentials, email, and SIP configuration is managed through the admin settings page -- no server restarts needed.
+
+### Password Recovery
+
+If you forget your password or username:
+
+1. Go to `/admin/login`
+2. Click **"Forgot username or password?"**
+3. Enter your email to receive a reset link (password) or username reminder
+
+**Note:** SMTP must be configured in Settings for password recovery emails to work.
 
 ---
 
