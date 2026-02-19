@@ -4,7 +4,7 @@
 
 ---
 
-## Current Phase: Phase 8 Complete — All Phases Done
+## Current Phase: Phase 9 — UX Polish & Admin Enhancements
 
 ### Overall Progress
 
@@ -18,6 +18,7 @@
 | Phase 6 — Docker + Nginx | **Complete** | docker-compose.yml, Dockerfiles, nginx.conf done |
 | Phase 7 — HA/Notification Hooks | **Complete** | 8 webhook events, scheduled expiry check + daily summary, admin webhook config UI |
 | Phase 8 — Payment Processors, Email, SIP & UI Polish | **Complete** | Stripe/Square/Sola adapters, SMTP email, SIP/FusionPBX, dark mode, kiosk transitions, skeletons |
+| Phase 9 — UX Polish & Admin Enhancements | **In Progress** | Kiosk UX improvements, swim pass stacking, signup, backup/restore, membership management |
 
 ---
 
@@ -60,8 +61,8 @@
 - [x] **Sensitive settings masking** — GET endpoint returns masked values (••••••) for API keys and passwords; PUT filters out masked values to prevent overwriting secrets
 - [x] **10 Pydantic schema modules:** auth, member, card, plan, membership, checkin, transaction, kiosk, settings, report
 - [x] **11 API routers:** auth, members, cards, plans, memberships, checkins, payments, transactions, reports, settings, kiosk
-- [x] All kiosk endpoints: scan, search, checkin, plans, pay/cash, pay/card (with saved card support + save-after-payment), pay/split, freeze, unfreeze, saved-cards CRUD, tokenize, set-default, auto-charge enable/disable, guest visit, change notification
-- [x] All admin endpoints: full CRUD for members/plans/memberships, transaction management, reports with CSV export, settings management, member saved cards view + delete
+- [x] All kiosk endpoints: scan, search, checkin, plans, pay/cash, pay/card (with saved card support + save-after-payment), pay/split, freeze, unfreeze, saved-cards CRUD, tokenize, set-default, auto-charge enable/disable, guest visit, change notification, verify-pin, signup
+- [x] All admin endpoints: full CRUD for members/plans/memberships, transaction management, reports with CSV export, settings management, member saved cards view + delete, member memberships view + manage, full system backup/export, system restore/import, member PIN unlock, members CSV import/export
 - [x] Activity logging on all admin mutations
 - [x] **Webhook events** fired from: kiosk checkin, credit payment (low balance), auto-charge success/failure
 - [x] **Webhook test endpoint** `POST /api/settings/webhook-test?event_type=<type>` for admin testing
@@ -86,18 +87,21 @@
 - [x] **Login page:** Gradient background, branded card, form validation, JWT token storage, auto-redirect
 - [x] **Dashboard:** 5 stat cards (check-ins, swimmers, revenue, memberships, guests), quick action links, system status panel
 - [x] **Members list:** Search by name/phone/email, paginated table with avatar initials, status badges, click-to-detail
-- [x] **Member detail:** Info card, RFID cards list with deactivate, saved payment cards section with auto-charge status and admin delete, activity log timeline, credit adjustment modal, deactivate confirmation dialog, edit/back navigation
+- [x] **Member detail:** Info card, RFID cards list with deactivate, saved payment cards section with auto-charge status and admin delete, memberships section with swim progress bars and management (add/adjust/deactivate), activity log timeline, credit adjustment modal, deactivate confirmation dialog, edit/back navigation
 - [x] **Member form:** Create + edit mode, all fields, PIN on create, textarea for notes, validation
 - [x] **Plans list:** Card grid layout with type badges, pricing display, inline edit/deactivate, modal form for create/edit with plan-type-aware fields
 - [x] **Transactions list:** Filterable by type/method/date range, paginated table, color-coded badges, CSV export button, clear filters
 - [x] **Revenue report:** Date range + grouping selectors, stacked bar chart (Recharts) for cash/card/credit breakdown, stat cards, membership breakdown with progress bars
 - [x] **Swim report:** Date range selector, stat cards, donut pie chart for check-in types
-- [x] **Settings page:** 13 grouped sections (Kiosk, Timer, PIN, Fees, Features, Notifications & Webhooks, Payment Processor, Stripe/Square/Sola Configuration, Email SMTP, SIP/Phone System), toggle switches, webhook URL fields with inline "Test" buttons, password fields with show/hide toggle, conditional group rendering (processor-specific), Test Connection buttons, sticky save bar with unsaved changes indicator
+- [x] **Settings page:** 4 category tabs (General, Payments, Notifications, Backup), 13 grouped sections (Kiosk, Timer, PIN, Fees, Features, Notifications & Webhooks, Payment Processor, Stripe/Square/Sola Configuration, Email SMTP, SIP/Phone System), toggle switches, webhook URL fields with inline "Test" buttons, password fields with show/hide toggle, conditional group rendering (processor-specific), Test Connection buttons, sticky save bar with unsaved changes indicator
+- [x] **Backup & Restore:** Full system export to JSON (all tables), import from JSON with confirmation modal, includes members, plans, memberships, transactions, settings, cards, checkins, saved cards, guest visits, activity logs
+- [x] **Guest visits page:** Paginated list of walk-in guest visits with name, phone, payment details
+- [x] **Plans list:** Active subscriber count displayed on each plan card
 - [x] **App routing:** Protected routes, nested admin layout, all page routes wired
 
 ### Frontend — Kiosk UI
 
-- [x] **Kiosk API client** (`api/kiosk.js`) — 19 endpoint functions: scan, search, checkin, getPlans, payCash, payCard (with save options), paySplit, notifyChange, freeze, unfreeze, guestVisit, getSettings, getSavedCards, tokenizeAndSaveCard, updateSavedCard, deleteSavedCard, setDefaultCard, enableAutoCharge, disableAutoCharge
+- [x] **Kiosk API client** (`api/kiosk.js`) — 21 endpoint functions: scan, search, checkin, getPlans, payCash, payCard (with save options), paySplit, notifyChange, freeze, unfreeze, guestVisit, getSettings, getSavedCards, tokenizeAndSaveCard, updateSavedCard, deleteSavedCard, setDefaultCard, enableAutoCharge, disableAutoCharge, verifyPin, signup
 - [x] **KioskApp** (`kiosk/KioskApp.jsx`) — State-machine screen manager with RFID listener, inactivity timer, settings loading, and screen transitions (fade crossfade via ScreenTransition component)
 - [x] **7 kiosk components:**
   - RFIDListener — Captures USB HID keyboard input from RFID reader, 200ms buffer timeout, Enter key triggers scan
@@ -107,12 +111,13 @@
   - InactivityTimer — Global inactivity detection with configurable timeout, "Still Here?" overlay with countdown progress bar
   - KioskButton — Large touch-target button with 5 variants, 3 sizes, loading state, active scale animation
   - AutoReturnBar — Countdown progress bar for auto-return to idle after actions
-- [x] **17 kiosk screens:**
-  - IdleScreen — Welcome screen with pool name, RFID scan prompt, "Search Account" and "Guest Visit" buttons
+- [x] **18 kiosk screens:**
+  - IdleScreen — Welcome screen with pool name, RFID scan prompt, "Search Account", "Guest Visit", and "New Member" buttons
   - MemberScreen — Member info card, Check In button (active plan), purchase prompt (no plan), unfreeze option (frozen), manage account
-  - CheckinScreen — Guest count selector (+/- buttons, max from settings), success state with auto-return
-  - SearchScreen — Name/phone search input, results list with member cards, tap-to-select
-  - PinScreen — 4-digit PIN entry with numpad, dot indicators, routes to afterPin destination, handles unfreeze directly
+  - CheckinScreen — Success view with auto-return, simplified flow (guest count removed from this screen)
+  - SignUpScreen — New member self-registration with first name, last name, phone, email, and 4-digit PIN
+  - SearchScreen — Name/phone search input with 300ms debounce, results list with member cards, tap-to-select
+  - PinScreen — 4-digit PIN entry with numpad, dot indicators, API-verified PIN before navigation, handles unfreeze directly
   - PaymentScreen — Plan grid selection, payment method chooser (Cash / Card / Split)
   - CashScreen — Amount numpad with decimal, price display, overpay-to-credit messaging, change detection
   - CardPaymentScreen — Card payment with saved card selector, default card highlight, new card option with save toggle
@@ -213,6 +218,7 @@ _None._
 - Kiosk settings loaded from `/api/settings` endpoint on KioskApp mount (reuses admin settings endpoint without auth)
 - Auto-charge uses APScheduler (BackgroundScheduler) instead of Celery — appropriate for single-server kiosk deployment, no Redis needed
 - Auto-charge limited to monthly plans only — single swims and swim passes don't have fixed renewal cycles
+- Swim pass stacking — purchasing a new swim pass adds swims to existing active swim pass instead of creating duplicate membership
 - Only one card per member can have auto-charge enabled (enabling on one card disables any other)
 - Stub adapter generates fake tokens and always succeeds for charge_saved_card — useful for testing without real processor
 - Payment processor config stored in DB settings (not env vars) — allows switching processors from admin UI without restart
@@ -255,4 +261,53 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-02-18 (Phase 8 — Payment Processors, Email, SIP & UI Polish)
+---
+
+## Phase 9 Implementation Notes (2026-02-19)
+
+### Kiosk UX Improvements
+- **PIN verification** now calls API before navigation — invalid PINs rejected immediately with toast error
+- **Search debounce** — 300ms delay on search input to reduce API calls while typing
+- **Check-in simplified** — CheckinScreen now shows success view only, guest count handled elsewhere
+- **Inactivity timer** — Added `key={screen}` prop to reset timer on every screen change
+- **Guest screen** — Phone field now required for walk-in guests
+
+### Swim Pass Stacking
+- When purchasing a new swim pass, system checks for existing active swim_pass membership
+- If found, adds new swims to existing pass instead of creating duplicate membership
+- Prevents members from having multiple overlapping swim passes
+
+### Kiosk Self-Registration (SignUpScreen)
+- New members can register themselves at kiosk without admin
+- Fields: first name, last name, phone (required), email (optional), 4-digit PIN
+- Creates member record and returns member status for immediate check-in
+
+### Manual Card Entry
+- CardPaymentScreen now supports manual entry when no card reader available
+- User enters last 4 digits and selects card brand from dropdown
+- Useful for testing and environments without physical card readers
+
+### Admin Panel Enhancements
+- **Settings tabs** — Organized into 4 categories: General, Payments, Notifications, Backup
+- **Backup/Restore** — Full system export/import for server migration or data backup
+- **Guest visits page** — View all walk-in guest visits with pagination
+- **Plan subscriber counts** — Each plan card shows number of active subscribers
+- **Member memberships** — View and manage member's plans with swim adjustment and deactivation
+
+### Member History
+- Now includes both ActivityLog entries AND Checkin records
+- Merged and sorted by date for complete member timeline
+
+### Admin PIN Unlock
+- Added `unlock_member_pin` and `get_pin_lockout_status` functions to pin_service
+- PIN lockout status shown in member detail when account is locked
+- Admin can click "Unlock" button to clear failed attempts and unlock account
+
+### Members CSV Import/Export
+- Export all members to CSV with name, phone, email, credit balance, status
+- Import members from CSV with validation for duplicates
+- Import reports errors and skipped rows
+
+---
+
+## Last Updated: 2026-02-19 (Phase 9 — UX Polish & Admin Enhancements)

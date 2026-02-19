@@ -1,7 +1,10 @@
+import csv
+import io
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -9,10 +12,12 @@ logger = logging.getLogger(__name__)
 from app.database import get_db
 from app.models.activity_log import ActivityLog
 from app.models.checkin import Checkin
+from app.models.member import Member
 from app.models.membership import Membership
 from app.models.plan import Plan
 from app.models.saved_card import SavedCard
 from app.models.user import User
+from app.services.auth_service import hash_pin
 from app.schemas.member import (
     CreditAdjustRequest,
     MemberCreate,
@@ -29,6 +34,7 @@ from app.services.member_service import (
     list_members,
     update_member,
 )
+from app.services.pin_service import get_pin_lockout_status, unlock_member_pin
 
 router = APIRouter()
 
@@ -225,3 +231,129 @@ def delete_member_saved_card(
     db.delete(card)
     db.commit()
     return {"message": "Saved card removed"}
+
+
+@router.get("/{member_id}/pin-status")
+def get_member_pin_status(
+    member_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get the PIN lockout status for a member."""
+    lockout = get_pin_lockout_status(db, member_id)
+    if not lockout:
+        return {"is_locked": False, "failed_attempts": 0}
+    return lockout
+
+
+@router.post("/{member_id}/unlock-pin")
+def unlock_member_pin_endpoint(
+    member_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Unlock a member's PIN after lockout (admin only)."""
+    unlock_member_pin(db, member_id)
+    return {"message": "PIN unlocked successfully"}
+
+
+@router.get("/export/csv")
+def export_members_csv(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export all members as CSV."""
+    members = db.query(Member).order_by(Member.last_name, Member.first_name).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["First Name", "Last Name", "Phone", "Email", "Credit Balance", "Notes", "Is Active", "Created At"])
+
+    for m in members:
+        writer.writerow([
+            m.first_name,
+            m.last_name,
+            m.phone or "",
+            m.email or "",
+            str(m.credit_balance),
+            m.notes or "",
+            "Yes" if m.is_active else "No",
+            m.created_at.isoformat() if m.created_at else "",
+        ])
+
+    logger.info("Members CSV export: %d members by user=%s", len(members), current_user.id)
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=members.csv"},
+    )
+
+
+@router.post("/import/csv")
+async def import_members_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Import members from CSV. Expects columns: First Name, Last Name, Phone, Email, PIN (optional)."""
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must be a CSV")
+
+    content = await file.read()
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    imported = 0
+    skipped = 0
+    errors = []
+
+    for i, row in enumerate(reader, start=2):  # Start at 2 to account for header row
+        first_name = row.get("First Name", "").strip()
+        last_name = row.get("Last Name", "").strip()
+        phone = row.get("Phone", "").strip() or None
+        email = row.get("Email", "").strip() or None
+        pin = row.get("PIN", "").strip() or None
+
+        if not first_name or not last_name:
+            errors.append(f"Row {i}: Missing first name or last name")
+            skipped += 1
+            continue
+
+        # Check for duplicate by phone or email
+        if phone:
+            existing = db.query(Member).filter(Member.phone == phone).first()
+            if existing:
+                errors.append(f"Row {i}: Phone {phone} already exists")
+                skipped += 1
+                continue
+
+        if email:
+            existing = db.query(Member).filter(Member.email == email).first()
+            if existing:
+                errors.append(f"Row {i}: Email {email} already exists")
+                skipped += 1
+                continue
+
+        member = Member(
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
+            email=email,
+            pin_hash=hash_pin(pin) if pin else None,
+        )
+        db.add(member)
+        imported += 1
+
+    db.commit()
+    logger.info("Members CSV import: %d imported, %d skipped by user=%s", imported, skipped, current_user.id)
+
+    return {
+        "message": f"Import complete: {imported} members imported, {skipped} skipped",
+        "imported": imported,
+        "skipped": skipped,
+        "errors": errors[:10],  # Only return first 10 errors
+    }

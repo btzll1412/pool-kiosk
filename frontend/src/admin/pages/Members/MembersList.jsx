@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Search } from "lucide-react";
+import { Download, Plus, Search, Upload } from "lucide-react";
 import toast from "react-hot-toast";
-import { getMembers } from "../../../api/members";
+import { exportMembersCsv, getMembers, importMembersCsv } from "../../../api/members";
 import Badge from "../../../shared/Badge";
 import Button from "../../../shared/Button";
 import PageHeader from "../../../shared/PageHeader";
@@ -15,6 +15,43 @@ export default function MembersList() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const perPage = 25;
+  const fileInputRef = useRef(null);
+  const [importing, setImporting] = useState(false);
+
+  const handleExport = async () => {
+    try {
+      const blob = await exportMembersCsv();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "members.csv";
+      a.click();
+      window.URL.revokeObjectURL(url);
+      toast.success("Members exported");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Export failed");
+    }
+  };
+
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    try {
+      const result = await importMembersCsv(file);
+      toast.success(result.message);
+      // Reload the list
+      setPage(1);
+      setSearch("");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Import failed");
+    } finally {
+      setImporting(false);
+      // Reset file input
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -83,9 +120,29 @@ export default function MembersList() {
         title="Members"
         description={`${data.total} total member${data.total !== 1 ? "s" : ""}`}
         actions={
-          <Button icon={Plus} onClick={() => navigate("/admin/members/new")}>
-            Add Member
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" icon={Download} onClick={handleExport}>
+              Export
+            </Button>
+            <Button
+              variant="secondary"
+              icon={Upload}
+              onClick={() => fileInputRef.current?.click()}
+              loading={importing}
+            >
+              Import
+            </Button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".csv"
+              onChange={handleImport}
+              className="hidden"
+            />
+            <Button icon={Plus} onClick={() => navigate("/admin/members/new")}>
+              Add Member
+            </Button>
+          </div>
         }
       />
 

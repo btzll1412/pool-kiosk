@@ -53,3 +53,31 @@ def verify_member_pin(db: Session, member_id: uuid.UUID, pin: str) -> bool:
         raise HTTPException(status_code=status.HTTP_423_LOCKED, detail="Account locked. Contact admin.")
     logger.info("Failed PIN attempt: member=%s, attempts=%d/%d", member_id, lockout.failed_attempts, max_attempts)
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid PIN. {remaining} attempts remaining.")
+
+
+def unlock_member_pin(db: Session, member_id: uuid.UUID) -> bool:
+    """Admin function to unlock a member's PIN after lockout."""
+    lockout = db.query(PinLockout).filter(PinLockout.member_id == member_id).first()
+    if not lockout:
+        return False  # No lockout record exists
+
+    lockout.failed_attempts = 0
+    lockout.locked_until = None
+    db.commit()
+    logger.info("PIN unlocked by admin: member=%s", member_id)
+    return True
+
+
+def get_pin_lockout_status(db: Session, member_id: uuid.UUID) -> dict | None:
+    """Get the current PIN lockout status for a member."""
+    lockout = db.query(PinLockout).filter(PinLockout.member_id == member_id).first()
+    if not lockout:
+        return None
+
+    is_locked = bool(lockout.locked_until and lockout.locked_until > datetime.utcnow())
+    return {
+        "failed_attempts": lockout.failed_attempts,
+        "locked_until": lockout.locked_until.isoformat() if lockout.locked_until else None,
+        "is_locked": is_locked,
+        "last_attempt_at": lockout.last_attempt_at.isoformat() if lockout.last_attempt_at else None,
+    }
