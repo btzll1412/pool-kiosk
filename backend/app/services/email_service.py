@@ -132,3 +132,61 @@ def send_membership_expired_email(
     </div>
     """
     return send_email(db, to_email, subject, body)
+
+
+def send_password_reset_email(db: Session, to_email: str, token: str) -> bool:
+    """Send a password reset email with link."""
+    from app.services.settings_service import get_setting
+
+    pool_name = get_setting(db, "pool_name", "Pool Management")
+    # Build reset URL - assumes frontend is at same origin
+    reset_link = f"/admin/reset-password/{token}"
+
+    subject = f"Password Reset — {pool_name}"
+    body = f"""
+    <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
+        <h2 style="color: #1e40af;">Password Reset Request</h2>
+        <p>You requested a password reset for your {pool_name} admin account.</p>
+        <p>Click the button below to reset your password. This link expires in 1 hour.</p>
+        <p style="margin: 24px 0;">
+            <a href="{reset_link}"
+               style="display: inline-block; background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600;">
+                Reset Password
+            </a>
+        </p>
+        <p style="color: #6b7280; font-size: 13px;">
+            If you didn't request this, you can safely ignore this email.
+        </p>
+        <p style="color: #6b7280; font-size: 13px;">
+            Or copy and paste this link into your browser:<br>
+            <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">{reset_link}</code>
+        </p>
+    </div>
+    """
+    return send_email(db, to_email, subject, body)
+
+
+def send_username_reminder_email(db: Session, to_email: str, username: str) -> bool:
+    """Send a username reminder email."""
+    from app.services.settings_service import get_setting
+
+    pool_name = get_setting(db, "pool_name", "Pool Management")
+
+    subject = f"Username Reminder — {pool_name}"
+    body = f"""
+    <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
+        <h2 style="color: #1e40af;">Username Reminder</h2>
+        <p>You requested a username reminder for your {pool_name} admin account.</p>
+        <p>Your username is: <strong style="font-size: 18px;">{username}</strong></p>
+        <p style="margin-top: 24px;">
+            <a href="/admin/login"
+               style="display: inline-block; background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600;">
+                Go to Login
+            </a>
+        </p>
+        <p style="color: #6b7280; font-size: 13px; margin-top: 24px;">
+            If you didn't request this, you can safely ignore this email.
+        </p>
+    </div>
+    """
+    return send_email(db, to_email, subject, body)

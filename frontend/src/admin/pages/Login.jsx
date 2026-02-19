@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, Link } from "react-router-dom";
 import { Waves } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
@@ -72,6 +72,15 @@ export default function Login() {
               Sign in
             </Button>
           </form>
+
+          <div className="mt-4 text-center">
+            <Link
+              to="/admin/forgot-password"
+              className="text-sm text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400 transition-colors"
+            >
+              Forgot username or password?
+            </Link>
+          </div>
         </div>
 
         <p className="mt-6 text-center text-xs text-gray-400 dark:text-gray-500">

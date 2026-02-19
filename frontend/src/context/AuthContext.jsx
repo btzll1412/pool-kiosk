@@ -16,7 +16,15 @@ export function AuthProvider({ children }) {
     setAuthed(false);
   }, []);
 
-  const value = useMemo(() => ({ authed, login, logout }), [authed, login, logout]);
+  // Called after successful setup - tokens are already stored by setupAdmin
+  const setAuthedFromSetup = useCallback(() => {
+    setAuthed(true);
+  }, []);
+
+  const value = useMemo(
+    () => ({ authed, login, logout, setAuthedFromSetup }),
+    [authed, login, logout, setAuthedFromSetup]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

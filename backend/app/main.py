@@ -44,7 +44,7 @@ from app.services.notification_service import (
 )
 from app.services.rate_limit import limiter
 from app.services.report_service import get_dashboard_stats
-from app.services.seed import create_default_admin, seed_default_settings
+from app.services.seed import seed_default_settings
 from app.services.settings_service import get_setting
 
 logger = logging.getLogger(__name__)
@@ -138,7 +138,6 @@ async def lifespan(app: FastAPI):
     if not getattr(app.state, "testing", False):
         db = SessionLocal()
         try:
-            create_default_admin(db)
             seed_default_settings(db)
         finally:
             db.close()
