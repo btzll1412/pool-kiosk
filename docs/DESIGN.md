@@ -399,6 +399,10 @@ pool-management/
 - `GET /api/members/{id}/memberships` — List member's memberships with plan details
 - `GET /api/members/{id}/saved-cards` — List member's saved payment cards
 - `DELETE /api/members/{id}/saved-cards/{card_id}` — Remove saved card
+- `GET /api/members/{id}/pin-status` — Get PIN lockout status
+- `POST /api/members/{id}/unlock-pin` — Unlock member's PIN (admin)
+- `GET /api/members/export/csv` — Export all members as CSV
+- `POST /api/members/import/csv` — Import members from CSV file
 
 ### Plans (admin auth)
 
@@ -942,7 +946,7 @@ try {
 
 | Date | Change | Author |
 |---|---|---|
-| 2026-02-19 | Phase 9: Added kiosk signup, PIN verify endpoint, backup/restore, member memberships management, swim pass stacking, guest visits page, settings tabs | — |
+| 2026-02-19 | Phase 9: Added kiosk signup, PIN verify endpoint, backup/restore, member memberships management, swim pass stacking, guest visits page, settings tabs, admin PIN unlock, members CSV import/export | — |
 | 2026-02-18 | Phase 8: Added Stripe/Square/Sola payment adapters, email service, SIP service, dark mode, kiosk transitions, skeletons, 30+ new DB settings | — |
 | 2026-02-18 | Added Logging & Error Handling Standards section; consistent logging across all backend modules; frontend error handling audit | — |
 | 2026-02-18 | Bug fixes: split payment (frontend + backend), cash change_due flow, test suite (38 tests), bcrypt compat, JSONB→JSON | — |

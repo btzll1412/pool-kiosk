@@ -62,7 +62,7 @@
 - [x] **10 Pydantic schema modules:** auth, member, card, plan, membership, checkin, transaction, kiosk, settings, report
 - [x] **11 API routers:** auth, members, cards, plans, memberships, checkins, payments, transactions, reports, settings, kiosk
 - [x] All kiosk endpoints: scan, search, checkin, plans, pay/cash, pay/card (with saved card support + save-after-payment), pay/split, freeze, unfreeze, saved-cards CRUD, tokenize, set-default, auto-charge enable/disable, guest visit, change notification, verify-pin, signup
-- [x] All admin endpoints: full CRUD for members/plans/memberships, transaction management, reports with CSV export, settings management, member saved cards view + delete, member memberships view + manage, full system backup/export, system restore/import
+- [x] All admin endpoints: full CRUD for members/plans/memberships, transaction management, reports with CSV export, settings management, member saved cards view + delete, member memberships view + manage, full system backup/export, system restore/import, member PIN unlock, members CSV import/export
 - [x] Activity logging on all admin mutations
 - [x] **Webhook events** fired from: kiosk checkin, credit payment (low balance), auto-charge success/failure
 - [x] **Webhook test endpoint** `POST /api/settings/webhook-test?event_type=<type>` for admin testing
@@ -297,6 +297,16 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 ### Member History
 - Now includes both ActivityLog entries AND Checkin records
 - Merged and sorted by date for complete member timeline
+
+### Admin PIN Unlock
+- Added `unlock_member_pin` and `get_pin_lockout_status` functions to pin_service
+- PIN lockout status shown in member detail when account is locked
+- Admin can click "Unlock" button to clear failed attempts and unlock account
+
+### Members CSV Import/Export
+- Export all members to CSV with name, phone, email, credit balance, status
+- Import members from CSV with validation for duplicates
+- Import reports errors and skipped rows
 
 ---
 
