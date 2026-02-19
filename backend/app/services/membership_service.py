@@ -19,6 +19,32 @@ def create_membership(db: Session, member_id: uuid.UUID, plan_id: uuid.UUID) -> 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
     today = date.today()
+
+    # For swim passes, stack onto existing active membership if one exists
+    if plan.plan_type == PlanType.swim_pass:
+        existing = (
+            db.query(Membership)
+            .filter(
+                Membership.member_id == member_id,
+                Membership.plan_type == PlanType.swim_pass,
+                Membership.is_active.is_(True),
+            )
+            .first()
+        )
+        if existing:
+            # Check if there are remaining swims
+            remaining = (existing.swims_total or 0) - existing.swims_used
+            if remaining > 0:
+                # Add new swims to existing balance
+                existing.swims_total = (existing.swims_total or 0) + plan.swim_count
+                db.commit()
+                db.refresh(existing)
+                logger.info(
+                    "Swim pass stacked: member=%s, plan=%s, added=%d swims, new_total=%d, membership=%s",
+                    member_id, plan.name, plan.swim_count, existing.swims_total, existing.id
+                )
+                return existing
+
     membership = Membership(
         member_id=member_id,
         plan_id=plan.id,
