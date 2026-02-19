@@ -1,16 +1,25 @@
-import { useEffect, useState } from "react";
-import { Eye, EyeOff, Save, Send } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, Database, Download, Eye, EyeOff, Save, Send, Settings2, CreditCard, Bell, Upload } from "lucide-react";
 import toast from "react-hot-toast";
 import { getSettings, updateSettings, testWebhook, testPaymentConnection, testEmail, testSipCall } from "../../../api/settings";
+import { exportSystem, importSystem } from "../../../api/backup";
 import Button from "../../../shared/Button";
 import Card, { CardHeader } from "../../../shared/Card";
 import PageHeader from "../../../shared/PageHeader";
 import { SkeletonLine } from "../../../shared/Skeleton";
 
+const CATEGORIES = [
+  { id: "general", label: "General", icon: Settings2 },
+  { id: "payments", label: "Payments", icon: CreditCard },
+  { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "backup", label: "Backup", icon: Database },
+];
+
 const settingGroups = [
   {
     title: "Kiosk Behavior",
     description: "Configure how the kiosk operates",
+    category: "general",
     fields: [
       { key: "pool_name", label: "Pool Name", type: "text", helpText: "Displayed on the kiosk welcome screen" },
       { key: "currency_symbol", label: "Currency Symbol", type: "text" },
@@ -28,6 +37,7 @@ const settingGroups = [
   {
     title: "Inactivity Timer",
     description: "Auto-return to idle screen settings",
+    category: "general",
     fields: [
       { key: "inactivity_timeout_seconds", label: "Inactivity Timeout (seconds)", type: "number", helpText: 'Seconds before "Still Here?" appears' },
       { key: "inactivity_warning_seconds", label: "Warning Duration (seconds)", type: "number", helpText: "Countdown before forced return to idle" },
@@ -36,6 +46,7 @@ const settingGroups = [
   {
     title: "PIN & Security",
     description: "Member PIN configuration",
+    category: "general",
     fields: [
       {
         key: "pin_length", label: "PIN Length", type: "select",
@@ -47,6 +58,7 @@ const settingGroups = [
   {
     title: "Cards & Fees",
     description: "RFID card fee configuration",
+    category: "payments",
     fields: [
       { key: "first_card_fee", label: "First Card Fee ($)", type: "number" },
       { key: "replacement_card_fee", label: "Replacement Card Fee ($)", type: "number" },
@@ -55,6 +67,7 @@ const settingGroups = [
   {
     title: "Features",
     description: "Enable or disable features",
+    category: "payments",
     fields: [
       { key: "guest_visit_enabled", label: "Guest Visits", type: "toggle", helpText: "Allow walk-in guests without accounts" },
       { key: "split_payment_enabled", label: "Split Payments", type: "toggle", helpText: "Allow splitting between cash and card" },
@@ -64,6 +77,7 @@ const settingGroups = [
   {
     title: "Payment Processor",
     description: "Select and configure the payment processor",
+    category: "payments",
     fields: [
       {
         key: "payment_processor", label: "Active Processor", type: "select",
@@ -79,6 +93,7 @@ const settingGroups = [
   {
     title: "Stripe Configuration",
     description: "Stripe API credentials",
+    category: "payments",
     showWhen: (s) => s.payment_processor === "stripe",
     testAction: "stripe",
     fields: [
@@ -90,6 +105,7 @@ const settingGroups = [
   {
     title: "Square Configuration",
     description: "Square API credentials",
+    category: "payments",
     showWhen: (s) => s.payment_processor === "square",
     testAction: "square",
     fields: [
@@ -104,6 +120,7 @@ const settingGroups = [
   {
     title: "Sola Configuration",
     description: "Sola API credentials",
+    category: "payments",
     showWhen: (s) => s.payment_processor === "sola",
     testAction: "sola",
     fields: [
@@ -119,6 +136,7 @@ const settingGroups = [
   {
     title: "Email (SMTP)",
     description: "Configure outbound email for receipts and notifications",
+    category: "notifications",
     testAction: "email",
     fields: [
       { key: "email_smtp_host", label: "SMTP Host", type: "text", helpText: "e.g. smtp.gmail.com" },
@@ -133,6 +151,7 @@ const settingGroups = [
   {
     title: "SIP / Phone System",
     description: "FusionPBX integration for staff phone calls",
+    category: "notifications",
     testAction: "sip",
     fields: [
       { key: "sip_enabled", label: "SIP Enabled", type: "toggle", helpText: "Enable outbound calls for change notifications" },
@@ -149,6 +168,7 @@ const settingGroups = [
   {
     title: "Notifications & Webhooks",
     description: "Configure webhook URLs for event notifications (e.g. Home Assistant)",
+    category: "notifications",
     fields: [
       { key: "webhook_change_needed", label: "Change Needed", type: "webhook", eventType: "change_needed", helpText: "Fired when a member needs change from a cash payment" },
       { key: "webhook_checkin", label: "Check-in", type: "webhook", eventType: "checkin", helpText: "Fired on every member check-in" },
@@ -170,6 +190,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [activeCategory, setActiveCategory] = useState("general");
 
   useEffect(() => {
     getSettings()
@@ -217,6 +238,10 @@ export default function Settings() {
     );
   }
 
+  const filteredGroups = settingGroups.filter(
+    (g) => g.category === activeCategory && (!g.showWhen || g.showWhen(settings))
+  );
+
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader
@@ -229,10 +254,34 @@ export default function Settings() {
         }
       />
 
-      <div className="space-y-6">
-        {settingGroups.map((group) => {
-          if (group.showWhen && !group.showWhen(settings)) return null;
+      {/* Category Tabs */}
+      <div className="mb-6 flex gap-2 border-b border-gray-200 dark:border-gray-700">
+        {CATEGORIES.map((cat) => {
+          const Icon = cat.icon;
+          const isActive = activeCategory === cat.id;
           return (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setActiveCategory(cat.id)}
+              className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                isActive
+                  ? "border-brand-600 text-brand-600"
+                  : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {cat.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="space-y-6">
+        {activeCategory === "backup" ? (
+          <BackupRestoreSection />
+        ) : (
+          filteredGroups.map((group) => (
             <Card key={group.title}>
               <CardHeader
                 title={group.title}
@@ -250,8 +299,8 @@ export default function Settings() {
                 ))}
               </div>
             </Card>
-          );
-        })}
+          ))
+        )}
       </div>
 
       {/* Sticky save bar */}
@@ -433,5 +482,153 @@ function SettingField({ field, value, onChange }) {
       />
       {field.helpText && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{field.helpText}</p>}
     </div>
+  );
+}
+
+function BackupRestoreSection() {
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const data = await exportSystem();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `pool-backup-${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Backup exported successfully");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+      setShowConfirm(true);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!selectedFile) return;
+    setImporting(true);
+    try {
+      const result = await importSystem(selectedFile);
+      toast.success(`System restored: ${result.stats.members} members, ${result.stats.plans} plans, ${result.stats.transactions} transactions`);
+      setShowConfirm(false);
+      setSelectedFile(null);
+      // Reload page to reflect new data
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <>
+      <Card>
+        <CardHeader
+          title="Export System Backup"
+          description="Download a complete backup of all system data"
+        />
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Export all members, plans, memberships, transactions, settings, and other data to a JSON file.
+            Use this to migrate to a new server or create a backup.
+          </p>
+          <Button icon={Download} onClick={handleExport} loading={exporting}>
+            {exporting ? "Exporting..." : "Export Backup"}
+          </Button>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Import System Backup"
+          description="Restore system from a backup file"
+        />
+        <div className="space-y-4">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950">
+            <div className="flex gap-3">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div>
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Warning</p>
+                <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                  Importing a backup will <strong>replace all existing data</strong>. This cannot be undone.
+                  Make sure to export a backup of the current system first.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <Button
+            variant="secondary"
+            icon={Upload}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Select Backup File
+          </Button>
+        </div>
+      </Card>
+
+      {/* Confirmation Modal */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-800">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+              <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Confirm System Restore
+            </h3>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              You are about to restore the system from <strong>{selectedFile?.name}</strong>.
+              This will permanently replace all current data including members, plans, and transactions.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowConfirm(false);
+                  setSelectedFile(null);
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleImport}
+                loading={importing}
+                className="flex-1"
+              >
+                {importing ? "Restoring..." : "Restore System"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

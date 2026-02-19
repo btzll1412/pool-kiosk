@@ -1,30 +1,38 @@
-import { useState } from "react";
-import { ArrowLeft, Loader2, Search, User } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, Loader2, Search } from "lucide-react";
 import toast from "react-hot-toast";
-import KioskButton from "../components/KioskButton";
 import { searchMembers } from "../../api/kiosk";
 
 export default function SearchScreen({ setMember, goTo, goIdle }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
+  const debounceRef = useRef(null);
 
-  async function handleSearch(e) {
-    e.preventDefault();
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
     if (query.trim().length < 2) {
-      toast.error("Enter at least 2 characters");
+      setResults(null);
       return;
     }
-    setLoading(true);
-    try {
-      const data = await searchMembers(query.trim());
-      setResults(data);
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Search failed");
-    } finally {
-      setLoading(false);
-    }
-  }
+
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const data = await searchMembers(query.trim());
+        setResults(data);
+      } catch (err) {
+        toast.error(err.response?.data?.detail || "Search failed");
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query]);
 
   function selectMember(m) {
     setMember(m);
@@ -48,28 +56,20 @@ export default function SearchScreen({ setMember, goTo, goIdle }) {
 
       <div className="flex flex-1 flex-col items-center px-6 py-8">
         <div className="w-full max-w-lg">
-          <form onSubmit={handleSearch} className="flex gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Name or phone number"
-                autoFocus
-                className="w-full rounded-2xl border-0 bg-white py-4 pl-12 pr-4 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500"
-              />
-            </div>
-            <KioskButton
-              variant="primary"
-              size="lg"
-              loading={loading}
-              onClick={handleSearch}
-              className="rounded-2xl"
-            >
-              Search
-            </KioskButton>
-          </form>
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Start typing name or phone number..."
+              autoFocus
+              className="w-full rounded-2xl border-0 bg-white py-4 pl-12 pr-12 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500"
+            />
+            {loading && (
+              <Loader2 className="absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 animate-spin text-brand-500" />
+            )}
+          </div>
 
           {results !== null && (
             <div className="mt-6">

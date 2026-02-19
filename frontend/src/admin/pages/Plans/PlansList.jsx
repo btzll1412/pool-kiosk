@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DollarSign, Edit, Plus, Trash2 } from "lucide-react";
+import { Edit, Plus, Trash2, Users } from "lucide-react";
 import toast from "react-hot-toast";
 import { createPlan, deactivatePlan, getPlans, updatePlan } from "../../../api/plans";
 import Badge from "../../../shared/Badge";
@@ -138,6 +138,11 @@ export default function PlansList() {
                 {plan.plan_type === "monthly" &&
                   `Valid for ${plan.duration_days} days`}
                 {plan.plan_type === "single" && "One-time swim"}
+              </div>
+
+              <div className="mt-3 flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+                <Users className="h-4 w-4" />
+                <span>{plan.active_subscribers || 0} active subscriber{plan.active_subscribers !== 1 ? "s" : ""}</span>
               </div>
 
               {!plan.is_active && (

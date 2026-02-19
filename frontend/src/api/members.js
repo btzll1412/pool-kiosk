@@ -35,3 +35,6 @@ export const getMemberSavedCards = (memberId) =>
 
 export const deleteMemberSavedCard = (memberId, cardId) =>
   client.delete(`/members/${memberId}/saved-cards/${cardId}`).then((r) => r.data);
+
+export const getMemberMemberships = (memberId) =>
+  client.get(`/members/${memberId}/memberships`).then((r) => r.data);

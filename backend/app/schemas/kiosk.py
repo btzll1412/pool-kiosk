@@ -86,7 +86,7 @@ class PaymentResponse(BaseModel):
 
 class GuestVisitRequest(BaseModel):
     name: str
-    phone: str | None = None
+    phone: str
     payment_method: PaymentMethod
     plan_id: uuid.UUID
 
@@ -169,4 +169,12 @@ class KioskFreezeRequest(BaseModel):
 
 class KioskUnfreezeRequest(BaseModel):
     member_id: uuid.UUID
+    pin: str
+
+
+class KioskSignupRequest(BaseModel):
+    first_name: str
+    last_name: str
+    phone: str
+    email: str | None = None
     pin: str

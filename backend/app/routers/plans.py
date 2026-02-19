@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 from app.database import get_db
+from app.models.membership import Membership
 from app.models.plan import Plan
 from app.models.user import User
 from app.schemas.plan import PlanCreate, PlanResponse, PlanUpdate
@@ -16,12 +17,33 @@ from app.services.auth_service import get_current_user
 router = APIRouter()
 
 
-@router.get("", response_model=list[PlanResponse])
+@router.get("")
 def list_plans(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return db.query(Plan).order_by(Plan.display_order, Plan.name).all()
+    plans = db.query(Plan).order_by(Plan.display_order, Plan.name).all()
+    result = []
+    for plan in plans:
+        active_subscribers = (
+            db.query(Membership)
+            .filter(Membership.plan_id == plan.id, Membership.is_active.is_(True))
+            .count()
+        )
+        result.append({
+            "id": str(plan.id),
+            "name": plan.name,
+            "plan_type": plan.plan_type.value,
+            "price": str(plan.price),
+            "swim_count": plan.swim_count,
+            "duration_days": plan.duration_days,
+            "description": plan.description,
+            "display_order": plan.display_order,
+            "is_active": plan.is_active,
+            "created_at": plan.created_at.isoformat() if plan.created_at else None,
+            "active_subscribers": active_subscribers,
+        })
+    return result
 
 
 @router.post("", response_model=PlanResponse, status_code=201)

@@ -8,6 +8,8 @@ logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.activity_log import ActivityLog
+from app.models.checkin import Checkin
+from app.models.membership import Membership
 from app.models.plan import Plan
 from app.models.saved_card import SavedCard
 from app.models.user import User
@@ -87,15 +89,29 @@ def get_member_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    entries = (
+    # Get activity log entries
+    activity_entries = (
         db.query(ActivityLog)
         .filter(ActivityLog.entity_id == member_id)
         .order_by(ActivityLog.created_at.desc())
         .limit(100)
         .all()
     )
-    return [
-        {
+
+    # Get check-in records
+    checkin_entries = (
+        db.query(Checkin)
+        .filter(Checkin.member_id == member_id)
+        .order_by(Checkin.checked_in_at.desc())
+        .limit(100)
+        .all()
+    )
+
+    # Merge and format results
+    results = []
+
+    for e in activity_entries:
+        results.append({
             "id": str(e.id),
             "action_type": e.action_type,
             "entity_type": e.entity_type,
@@ -103,9 +119,26 @@ def get_member_history(
             "after_value": e.after_value,
             "note": e.note,
             "created_at": e.created_at.isoformat(),
-        }
-        for e in entries
-    ]
+        })
+
+    for c in checkin_entries:
+        results.append({
+            "id": str(c.id),
+            "action_type": "checkin",
+            "entity_type": "checkin",
+            "before_value": None,
+            "after_value": {
+                "checkin_type": c.checkin_type.value,
+                "guest_count": c.guest_count,
+            },
+            "note": c.notes or f"Checked in ({c.checkin_type.value.replace('_', ' ')})" + (f" with {c.guest_count} guest(s)" if c.guest_count > 0 else ""),
+            "created_at": c.checked_in_at.isoformat(),
+        })
+
+    # Sort by created_at descending
+    results.sort(key=lambda x: x["created_at"], reverse=True)
+
+    return results[:100]
 
 
 @router.post("/{member_id}/credit", response_model=MemberResponse)
@@ -116,6 +149,40 @@ def adjust_credit_endpoint(
     current_user: User = Depends(get_current_user),
 ):
     return adjust_credit(db, member_id, data, user_id=current_user.id)
+
+
+@router.get("/{member_id}/memberships")
+def get_member_memberships(
+    member_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    memberships = (
+        db.query(Membership)
+        .filter(Membership.member_id == member_id)
+        .order_by(Membership.created_at.desc())
+        .all()
+    )
+    result = []
+    for m in memberships:
+        plan_name = m.plan.name if m.plan else None
+        swims_remaining = None
+        if m.swims_total is not None:
+            swims_remaining = (m.swims_total or 0) - (m.swims_used or 0)
+        result.append({
+            "id": str(m.id),
+            "plan_id": str(m.plan_id) if m.plan_id else None,
+            "plan_name": plan_name,
+            "plan_type": m.plan_type.value,
+            "swims_total": m.swims_total,
+            "swims_used": m.swims_used,
+            "swims_remaining": swims_remaining,
+            "valid_from": str(m.valid_from) if m.valid_from else None,
+            "valid_until": str(m.valid_until) if m.valid_until else None,
+            "is_active": m.is_active,
+            "created_at": m.created_at.isoformat(),
+        })
+    return result
 
 
 @router.get("/{member_id}/saved-cards")

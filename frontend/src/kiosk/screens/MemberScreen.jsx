@@ -1,8 +1,13 @@
+import { useState } from "react";
 import { ArrowLeft, LogIn, Settings, ShoppingBag, Snowflake } from "lucide-react";
+import toast from "react-hot-toast";
 import MemberCard from "../components/MemberCard";
 import KioskButton from "../components/KioskButton";
+import { checkin } from "../../api/kiosk";
 
 export default function MemberScreen({ member, goTo, goIdle }) {
+  const [loading, setLoading] = useState(false);
+
   if (!member) {
     goIdle();
     return null;
@@ -11,8 +16,16 @@ export default function MemberScreen({ member, goTo, goIdle }) {
   const hasActivePlan = !!member.active_membership;
   const isFrozen = member.is_frozen;
 
-  function handleCheckin() {
-    goTo("checkin");
+  async function handleCheckin() {
+    setLoading(true);
+    try {
+      const result = await checkin(member.member_id, 0);
+      goTo("checkin", { checkinResult: result });
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Check-in failed");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function handlePurchase() {
@@ -80,9 +93,10 @@ export default function MemberScreen({ member, goTo, goIdle }) {
                 size="xl"
                 icon={LogIn}
                 onClick={handleCheckin}
+                loading={loading}
                 className="w-full"
               >
-                Check In
+                Tap to Check In
               </KioskButton>
             ) : (
               <div className="rounded-2xl bg-amber-50 p-6 text-center">

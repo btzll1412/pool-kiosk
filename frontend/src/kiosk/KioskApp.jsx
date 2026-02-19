@@ -20,6 +20,7 @@ import SavedCardsScreen from "./screens/SavedCardsScreen";
 import AddCardScreen from "./screens/AddCardScreen";
 import AutoChargeScreen from "./screens/AutoChargeScreen";
 import SplitPaymentScreen from "./screens/SplitPaymentScreen";
+import SignUpScreen from "./screens/SignUpScreen";
 import { scanCard } from "../api/kiosk";
 
 const SCREENS = {
@@ -40,6 +41,7 @@ const SCREENS = {
   savedCards: SavedCardsScreen,
   addCard: AddCardScreen,
   autoCharge: AutoChargeScreen,
+  signup: SignUpScreen,
 };
 
 export default function KioskApp() {
@@ -113,6 +115,7 @@ export default function KioskApp() {
 
       {!isIdle && (
         <InactivityTimer
+          key={screen}
           timeoutSeconds={timeoutSec}
           warningSeconds={warningSec}
           onTimeout={goIdle}

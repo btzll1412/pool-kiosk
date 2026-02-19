@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { ArrowLeft, Lock, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Lock } from "lucide-react";
 import toast from "react-hot-toast";
 import NumPad from "../components/NumPad";
 import KioskButton from "../components/KioskButton";
-import { unfreezeMembership } from "../../api/kiosk";
+import { unfreezeMembership, verifyPin } from "../../api/kiosk";
 
 export default function PinScreen({ member, goTo, goIdle, context }) {
   const [pin, setPin] = useState("");
@@ -36,9 +36,16 @@ export default function PinScreen({ member, goTo, goIdle, context }) {
       return;
     }
 
-    // For other flows, store pin in context and navigate
-    setLoading(false);
-    goTo(afterPin, { pin });
+    // Verify PIN before navigating to other screens
+    try {
+      await verifyPin(member.member_id, pin);
+      goTo(afterPin, { pin });
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Invalid PIN");
+      setPin("");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

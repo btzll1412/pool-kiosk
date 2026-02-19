@@ -15,6 +15,11 @@ export async function searchMembers(query) {
   return data;
 }
 
+export async function verifyPin(member_id, pin) {
+  const { data } = await kiosk.post("/verify-pin", { member_id, pin });
+  return data;
+}
+
 export async function checkin(member_id, guest_count = 0) {
   const { data } = await kiosk.post("/checkin", { member_id, guest_count });
   return data;
@@ -142,6 +147,11 @@ export async function disableAutoCharge(card_id, member_id, pin) {
   const { data } = await kiosk.delete(`/saved-cards/${card_id}/auto-charge`, {
     data: { member_id, pin },
   });
+  return data;
+}
+
+export async function kioskSignup(memberData) {
+  const { data } = await kiosk.post("/signup", memberData);
   return data;
 }
 

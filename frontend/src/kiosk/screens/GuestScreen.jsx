@@ -19,6 +19,10 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
       toast.error("Please enter your name");
       return;
     }
+    if (!phone.trim()) {
+      toast.error("Please enter your phone number");
+      return;
+    }
     setLoadingPlans(true);
     getPlans()
       .then((data) => {
@@ -80,7 +84,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
                 Welcome, Guest!
               </h2>
               <p className="mt-1 text-sm text-gray-500">
-                Enter your name to get started
+                Enter your details to get started
               </p>
             </div>
 
@@ -100,7 +104,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone (optional)
+                  Phone *
                 </label>
                 <input
                   type="tel"
