@@ -119,7 +119,11 @@ export default function InactivityTimer({
   const progress = (countdown / warningSeconds) * 100;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/70 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/70 backdrop-blur-sm cursor-pointer"
+      onClick={handleStillHere}
+      onTouchStart={handleStillHere}
+    >
       <div className="mx-4 w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-2xl">
         <h2 className="text-3xl font-bold text-gray-900">Still Here?</h2>
         <p className="mt-2 text-lg text-gray-500">
@@ -131,13 +135,9 @@ export default function InactivityTimer({
             style={{ width: `${progress}%` }}
           />
         </div>
-        <button
-          type="button"
-          onClick={handleStillHere}
-          className="mt-6 w-full rounded-2xl bg-brand-600 px-8 py-4 text-xl font-bold text-white shadow-lg transition-all hover:bg-brand-700 active:scale-[0.98]"
-        >
-          I'm Still Here
-        </button>
+        <p className="mt-6 text-lg font-medium text-gray-400">
+          Tap anywhere to stay
+        </p>
       </div>
     </div>
   );
