@@ -7,11 +7,13 @@ import {
   DollarSign,
   Edit,
   History,
+  Lock,
   Minus,
   Plus,
   Shield,
   Ticket,
   Trash2,
+  Unlock,
   UserX,
   Zap,
 } from "lucide-react";
@@ -25,7 +27,9 @@ import {
   getMemberCards,
   getMemberHistory,
   getMemberMemberships,
+  getMemberPinStatus,
   getMemberSavedCards,
+  unlockMemberPin,
 } from "../../../api/members";
 import {
   adjustMembershipSwims,
@@ -69,6 +73,9 @@ export default function MemberDetail() {
   const [swimAdjustLoading, setSwimAdjustLoading] = useState(false);
   const [deactivateMembershipTarget, setDeactivateMembershipTarget] = useState(null);
 
+  // PIN lockout
+  const [pinStatus, setPinStatus] = useState(null);
+
   const load = () => {
     setLoading(true);
     Promise.all([
@@ -77,13 +84,15 @@ export default function MemberDetail() {
       getMemberHistory(id),
       getMemberSavedCards(id),
       getMemberMemberships(id),
+      getMemberPinStatus(id),
     ])
-      .then(([m, c, h, sc, ms]) => {
+      .then(([m, c, h, sc, ms, ps]) => {
         setMember(m);
         setCards(c);
         setHistory(h);
         setSavedCards(sc);
         setMemberships(ms);
+        setPinStatus(ps);
       })
       .catch((err) => toast.error(err.response?.data?.detail || "Failed to load member details"))
       .finally(() => setLoading(false));
@@ -193,6 +202,16 @@ export default function MemberDetail() {
     }
   };
 
+  const handleUnlockPin = async () => {
+    try {
+      await unlockMemberPin(id);
+      toast.success("PIN unlocked successfully");
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to unlock PIN");
+    }
+  };
+
   if (loading) {
     return (
       <div>
@@ -276,6 +295,23 @@ export default function MemberDetail() {
                 year: "numeric",
               })}
             </InfoRow>
+            {pinStatus?.is_locked && (
+              <InfoRow label="PIN Status">
+                <div className="flex items-center gap-2">
+                  <Badge color="red">
+                    <Lock className="h-3 w-3 mr-1" />
+                    Locked
+                  </Badge>
+                  <button
+                    onClick={handleUnlockPin}
+                    className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"
+                  >
+                    <Unlock className="h-3 w-3" />
+                    Unlock
+                  </button>
+                </div>
+              </InfoRow>
+            )}
             {member.notes && <InfoRow label="Notes">{member.notes}</InfoRow>}
           </dl>
         </Card>

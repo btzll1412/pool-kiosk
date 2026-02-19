@@ -38,3 +38,20 @@ export const deleteMemberSavedCard = (memberId, cardId) =>
 
 export const getMemberMemberships = (memberId) =>
   client.get(`/members/${memberId}/memberships`).then((r) => r.data);
+
+export const getMemberPinStatus = (memberId) =>
+  client.get(`/members/${memberId}/pin-status`).then((r) => r.data);
+
+export const unlockMemberPin = (memberId) =>
+  client.post(`/members/${memberId}/unlock-pin`).then((r) => r.data);
+
+export const exportMembersCsv = () =>
+  client.get("/members/export/csv", { responseType: "blob" }).then((r) => r.data);
+
+export const importMembersCsv = (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  return client.post("/members/import/csv", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  }).then((r) => r.data);
+};
