@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="poolGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0ea5e9"/>
+      <stop offset="100%" style="stop-color:#0284c7"/>
+    </linearGradient>
+  </defs>
+  <!-- Pool background circle -->
+  <circle cx="32" cy="32" r="30" fill="url(#poolGradient)"/>
+  <!-- Water waves -->
+  <path d="M12 28 Q17 24, 22 28 T32 28 T42 28 T52 28" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M12 36 Q17 32, 22 36 T32 36 T42 36 T52 36" stroke="white" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.8"/>
+  <path d="M12 44 Q17 40, 22 44 T32 44 T42 44 T52 44" stroke="white" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.6"/>
+</svg>
