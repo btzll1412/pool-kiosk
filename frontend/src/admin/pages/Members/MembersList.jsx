@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Download, Plus, Search, Upload } from "lucide-react";
 import toast from "react-hot-toast";
 import { exportMembersCsv, getMembers, importMembersCsv } from "../../../api/members";
+import { useTimezone, formatDate } from "../../../context/TimezoneContext";
 import Badge from "../../../shared/Badge";
 import Button from "../../../shared/Button";
 import PageHeader from "../../../shared/PageHeader";
@@ -10,6 +11,7 @@ import Table from "../../../shared/Table";
 
 export default function MembersList() {
   const navigate = useNavigate();
+  const timezone = useTimezone();
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -106,7 +108,7 @@ export default function MembersList() {
       key: "created_at",
       label: "Joined",
       render: (row) =>
-        new Date(row.created_at).toLocaleDateString("en-US", {
+        formatDate(row.created_at, timezone, {
           month: "short",
           day: "numeric",
           year: "numeric",

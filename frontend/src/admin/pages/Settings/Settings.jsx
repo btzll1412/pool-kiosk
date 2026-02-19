@@ -42,6 +42,27 @@ const settingGroups = [
       { key: "pool_name", label: "Pool Name", type: "text", helpText: "Displayed on the kiosk welcome screen" },
       { key: "currency_symbol", label: "Currency Symbol", type: "text" },
       {
+        key: "timezone", label: "Timezone", type: "select",
+        options: [
+          { value: "America/New_York", label: "Eastern Time (ET)" },
+          { value: "America/Chicago", label: "Central Time (CT)" },
+          { value: "America/Denver", label: "Mountain Time (MT)" },
+          { value: "America/Los_Angeles", label: "Pacific Time (PT)" },
+          { value: "America/Anchorage", label: "Alaska Time (AKT)" },
+          { value: "Pacific/Honolulu", label: "Hawaii Time (HST)" },
+          { value: "America/Phoenix", label: "Arizona (no DST)" },
+          { value: "America/Puerto_Rico", label: "Atlantic Time (AST)" },
+          { value: "UTC", label: "UTC" },
+          { value: "Europe/London", label: "London (GMT/BST)" },
+          { value: "Europe/Paris", label: "Paris (CET)" },
+          { value: "Europe/Berlin", label: "Berlin (CET)" },
+          { value: "Asia/Tokyo", label: "Tokyo (JST)" },
+          { value: "Asia/Shanghai", label: "Shanghai (CST)" },
+          { value: "Australia/Sydney", label: "Sydney (AEST)" },
+        ],
+        helpText: "Timezone used for displaying dates and times"
+      },
+      {
         key: "checkin_count_mode", label: "Check-in Count Mode", type: "select",
         options: [
           { value: "each", label: "Each (count every swipe)" },

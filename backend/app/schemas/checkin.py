@@ -24,3 +24,23 @@ class CheckinResponse(BaseModel):
     notes: str | None
 
     model_config = {"from_attributes": True}
+
+
+class CheckinWithMemberResponse(BaseModel):
+    id: uuid.UUID
+    member_id: uuid.UUID | None
+    member_name: str
+    membership_id: uuid.UUID | None
+    checkin_type: CheckinType | str
+    guest_count: int
+    checked_in_at: datetime
+    notes: str | None
+    is_guest: bool = False
+
+
+class CheckinListResponse(BaseModel):
+    items: list[CheckinWithMemberResponse]
+    total: int
+    page: int
+    per_page: int
+    unique_members: int | None = None

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Activity,
   DollarSign,
@@ -14,6 +15,7 @@ import Card from "../../shared/Card";
 import { SkeletonStatCards, SkeletonCard } from "../../shared/Skeleton";
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -50,30 +52,35 @@ export default function Dashboard() {
           value={stats?.total_checkins_today ?? 0}
           icon={Activity}
           color="brand"
+          onClick={() => navigate("/admin/checkins")}
         />
         <StatCard
           title="Unique Swimmers"
           value={stats?.unique_members_today ?? 0}
           icon={UserCheck}
           color="emerald"
+          onClick={() => navigate("/admin/checkins")}
         />
         <StatCard
           title="Revenue Today"
           value={`$${Number(stats?.revenue_today ?? 0).toFixed(2)}`}
           icon={DollarSign}
           color="purple"
+          onClick={() => navigate("/admin/transactions")}
         />
         <StatCard
           title="Active Memberships"
           value={stats?.active_memberships ?? 0}
           icon={Users}
           color="amber"
+          onClick={() => navigate("/admin/members")}
         />
         <StatCard
           title="Guests Today"
           value={stats?.guests_today ?? 0}
           icon={TrendingUp}
           color="rose"
+          onClick={() => navigate("/admin/guests")}
         />
       </div>
 

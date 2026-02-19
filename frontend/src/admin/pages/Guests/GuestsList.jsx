@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { Calendar, CreditCard, DollarSign, Phone, User } from "lucide-react";
 import { getGuests } from "../../../api/guests";
+import { useTimezone, formatDateTime } from "../../../context/TimezoneContext";
 import Card from "../../../shared/Card";
 import PageHeader from "../../../shared/PageHeader";
 import Pagination from "../../../shared/Pagination";
 import { SkeletonLine } from "../../../shared/Skeleton";
 
 export default function GuestsList() {
+  const timezone = useTimezone();
   const [guests, setGuests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -120,7 +122,7 @@ export default function GuestsList() {
                     <td className="whitespace-nowrap px-4 py-4">
                       <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
                         <Calendar className="h-4 w-4" />
-                        {new Date(guest.created_at).toLocaleString()}
+                        {formatDateTime(guest.created_at, timezone)}
                       </div>
                     </td>
                   </tr>

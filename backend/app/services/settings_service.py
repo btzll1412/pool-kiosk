@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 from app.models.setting import Setting
 
 DEFAULT_SETTINGS = {
+    "timezone": "America/New_York",
     "checkin_count_mode": "each",
     "family_max_guests": "5",
     "checkin_return_seconds": "8",
