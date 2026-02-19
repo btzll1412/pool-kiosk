@@ -15,6 +15,7 @@ import MemberDetail from "./admin/pages/Members/MemberDetail";
 import MemberForm from "./admin/pages/Members/MemberForm";
 import PlansList from "./admin/pages/Plans/PlansList";
 import TransactionsList from "./admin/pages/Transactions/TransactionsList";
+import GuestsList from "./admin/pages/Guests/GuestsList";
 import RevenueReport from "./admin/pages/Reports/RevenueReport";
 import SwimReport from "./admin/pages/Reports/SwimReport";
 import Settings from "./admin/pages/Settings/Settings";
@@ -127,6 +128,7 @@ export default function App() {
               <Route path="members/:id/edit" element={<MemberForm />} />
               <Route path="plans" element={<PlansList />} />
               <Route path="transactions" element={<TransactionsList />} />
+              <Route path="guests" element={<GuestsList />} />
               <Route path="reports" element={<RevenueReport />} />
               <Route path="reports/swims" element={<SwimReport />} />
               <Route path="settings" element={<Settings />} />

@@ -27,6 +27,7 @@ from app.routers import (
     auth,
     cards,
     checkins,
+    guests,
     kiosk,
     members,
     memberships,
@@ -185,6 +186,7 @@ app.include_router(checkins.router, prefix="/api/checkins", tags=["Checkins"])
 app.include_router(payments.router, prefix="/api/payments", tags=["Payments"])
 app.include_router(transactions.router, prefix="/api/transactions", tags=["Transactions"])
 app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
+app.include_router(guests.router, prefix="/api/guests", tags=["Guests"])
 app.include_router(settings_router.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(kiosk.router, prefix="/api/kiosk", tags=["Kiosk"])
 

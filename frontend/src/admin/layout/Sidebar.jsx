@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Settings,
   Ticket,
+  UserPlus,
   Users,
   Waves,
   X,
@@ -13,6 +14,7 @@ import {
 const nav = [
   { to: "/admin", icon: LayoutDashboard, label: "Dashboard", end: true },
   { to: "/admin/members", icon: Users, label: "Members" },
+  { to: "/admin/guests", icon: UserPlus, label: "Guests" },
   { to: "/admin/plans", icon: Ticket, label: "Plans" },
   { to: "/admin/transactions", icon: CreditCard, label: "Transactions" },
   { to: "/admin/reports", icon: BarChart3, label: "Reports" },
