@@ -86,7 +86,7 @@ class PaymentResponse(BaseModel):
 
 class GuestVisitRequest(BaseModel):
     name: str
-    phone: str | None = None
+    phone: str
     payment_method: PaymentMethod
     plan_id: uuid.UUID
 
