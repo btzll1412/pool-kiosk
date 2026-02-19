@@ -19,10 +19,10 @@ export default function PlanCard({ plan, selected, onSelect }) {
     <button
       type="button"
       onClick={() => onSelect(plan)}
-      className={`flex w-full flex-col items-center rounded-2xl p-6 text-center transition-all active:scale-[0.98]
+      className={`flex w-full flex-col items-center rounded-2xl p-6 text-center transition-all duration-200 active:scale-[0.97]
         ${selected
-          ? "bg-brand-600 text-white ring-2 ring-brand-600 shadow-lg shadow-brand-600/25"
-          : "bg-white text-gray-900 ring-1 ring-gray-200 hover:ring-brand-300 hover:shadow-md"
+          ? "bg-brand-600 text-white ring-2 ring-brand-600 shadow-lg shadow-brand-600/25 scale-[1.03]"
+          : "bg-white text-gray-900 ring-1 ring-gray-200 hover:ring-brand-300 hover:shadow-md hover:scale-[1.01]"
         }`}
     >
       <div

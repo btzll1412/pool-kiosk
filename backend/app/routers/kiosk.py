@@ -188,7 +188,7 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
     tx = process_card_payment(db, data.member_id, data.plan_id)
 
     if data.save_card and data.card_last4:
-        adapter = get_payment_adapter()
+        adapter = get_payment_adapter(db)
         token = adapter.tokenize_card(data.card_last4, data.card_brand or "", str(data.member_id))
         friendly = data.friendly_name or f"{data.card_brand or 'Card'} ending {data.card_last4}"
         card = SavedCard(
@@ -246,7 +246,7 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
     card_amount = plan.price - data.cash_amount
 
     # Charge the card portion
-    adapter = get_payment_adapter()
+    adapter = get_payment_adapter(db)
     if data.saved_card_id:
         saved_card = db.query(SavedCard).filter(
             SavedCard.id == data.saved_card_id, SavedCard.member_id == data.member_id
@@ -403,7 +403,7 @@ def save_card(data: SavedCardRequest, request: Request, member_id: uuid.UUID = N
 @limiter.limit("10/minute")
 def tokenize_and_save_card(data: TokenizeCardRequest, request: Request, db: Session = Depends(get_db)):
     verify_member_pin(db, data.member_id, data.pin)
-    adapter = get_payment_adapter()
+    adapter = get_payment_adapter(db)
     token = adapter.tokenize_card(data.card_last4, data.card_brand or "", str(data.member_id))
     friendly = data.friendly_name or f"{data.card_brand or 'Card'} ending {data.card_last4}"
     card = SavedCard(

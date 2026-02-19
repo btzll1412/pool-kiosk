@@ -13,6 +13,7 @@ import toast from "react-hot-toast";
 import { getRevenueReport, getMembershipReport } from "../../../api/reports";
 import Card, { CardHeader } from "../../../shared/Card";
 import PageHeader from "../../../shared/PageHeader";
+import { SkeletonStatCards, SkeletonCard } from "../../../shared/Skeleton";
 import StatCard from "../../../shared/StatCard";
 import { DollarSign, TrendingUp, Users } from "lucide-react";
 
@@ -44,8 +45,10 @@ export default function RevenueReport() {
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-brand-600" />
+      <div>
+        <PageHeader title="Revenue Report" />
+        <SkeletonStatCards count={3} />
+        <div className="mt-6"><SkeletonCard className="h-64" /></div>
       </div>
     );
   }
@@ -92,14 +95,14 @@ export default function RevenueReport() {
       {/* Revenue Chart */}
       <Card className="mb-6">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-base font-semibold text-gray-900">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
             Revenue Breakdown
           </h3>
           <div className="flex gap-2">
             <select
               value={range}
               onChange={(e) => setRange(e.target.value)}
-              className="rounded-lg border-0 py-1.5 pl-3 pr-8 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600"
+              className="rounded-lg border-0 py-1.5 pl-3 pr-8 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="7">Last 7 days</option>
               <option value="30">Last 30 days</option>
@@ -109,7 +112,7 @@ export default function RevenueReport() {
             <select
               value={groupBy}
               onChange={(e) => setGroupBy(e.target.value)}
-              className="rounded-lg border-0 py-1.5 pl-3 pr-8 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600"
+              className="rounded-lg border-0 py-1.5 pl-3 pr-8 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="day">By day</option>
               <option value="week">By week</option>
@@ -149,7 +152,7 @@ export default function RevenueReport() {
             </BarChart>
           </ResponsiveContainer>
         ) : (
-          <div className="flex h-64 items-center justify-center text-sm text-gray-400">
+          <div className="flex h-64 items-center justify-center text-sm text-gray-400 dark:text-gray-500">
             No revenue data for this period
           </div>
         )}
@@ -167,14 +170,14 @@ export default function RevenueReport() {
               return (
                 <div key={plan}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-gray-700">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                       {plan}
                     </span>
-                    <span className="text-sm text-gray-500">
+                    <span className="text-sm text-gray-500 dark:text-gray-400">
                       {count} ({pct}%)
                     </span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                  <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
                     <div
                       className="h-full rounded-full bg-brand-500 transition-all"
                       style={{ width: `${pct}%` }}

@@ -109,7 +109,7 @@ export default function TransactionsList() {
           className={`font-semibold ${
             row.transaction_type === "refund" || row.transaction_type === "credit_use"
               ? "text-red-600"
-              : "text-gray-900"
+              : "text-gray-900 dark:text-gray-100"
           }`}
         >
           {row.transaction_type === "refund" || row.transaction_type === "credit_use"
@@ -123,7 +123,7 @@ export default function TransactionsList() {
       key: "notes",
       label: "Notes",
       render: (row) => (
-        <span className="max-w-[200px] truncate text-gray-500">
+        <span className="max-w-[200px] truncate text-gray-500 dark:text-gray-400">
           {row.notes || "—"}
         </span>
       ),
@@ -145,7 +145,7 @@ export default function TransactionsList() {
       {/* Filters */}
       <div className="mb-5 flex flex-wrap items-end gap-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">
+          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
             Type
           </label>
           <select
@@ -153,7 +153,7 @@ export default function TransactionsList() {
             onChange={(e) =>
               setFilters((f) => ({ ...f, transaction_type: e.target.value }))
             }
-            className="rounded-lg border-0 py-2 pl-3 pr-8 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600"
+            className="rounded-lg border-0 py-2 pl-3 pr-8 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
           >
             <option value="">All types</option>
             <option value="payment">Payment</option>
@@ -164,7 +164,7 @@ export default function TransactionsList() {
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">
+          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
             Method
           </label>
           <select
@@ -172,7 +172,7 @@ export default function TransactionsList() {
             onChange={(e) =>
               setFilters((f) => ({ ...f, payment_method: e.target.value }))
             }
-            className="rounded-lg border-0 py-2 pl-3 pr-8 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600"
+            className="rounded-lg border-0 py-2 pl-3 pr-8 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
           >
             <option value="">All methods</option>
             <option value="cash">Cash</option>
@@ -182,7 +182,7 @@ export default function TransactionsList() {
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">
+          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
             From
           </label>
           <input
@@ -191,11 +191,11 @@ export default function TransactionsList() {
             onChange={(e) =>
               setFilters((f) => ({ ...f, start_date: e.target.value }))
             }
-            className="rounded-lg border-0 py-2 px-3 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600"
+            className="rounded-lg border-0 py-2 px-3 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">
+          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
             To
           </label>
           <input
@@ -204,7 +204,7 @@ export default function TransactionsList() {
             onChange={(e) =>
               setFilters((f) => ({ ...f, end_date: e.target.value }))
             }
-            className="rounded-lg border-0 py-2 px-3 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600"
+            className="rounded-lg border-0 py-2 px-3 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
           />
         </div>
         {(filters.transaction_type ||
@@ -220,7 +220,7 @@ export default function TransactionsList() {
                 end_date: "",
               })
             }
-            className="rounded-lg px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 transition-colors"
+            className="rounded-lg px-3 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             Clear filters
           </button>

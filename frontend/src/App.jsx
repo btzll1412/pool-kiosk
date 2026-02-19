@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import Layout from "./admin/layout/Layout";
 import Login from "./admin/pages/Login";
 import Dashboard from "./admin/pages/Dashboard";
@@ -23,6 +24,7 @@ function ProtectedRoute({ children }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <ThemeProvider>
       <AuthProvider>
         <Toaster
           position="top-right"
@@ -79,6 +81,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/kiosk" replace />} />
         </Routes>
       </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

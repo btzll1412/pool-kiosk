@@ -11,15 +11,15 @@ export default function Table({
   loading = false,
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="border-b border-gray-200 bg-gray-50/80">
+            <tr className="border-b border-gray-200 bg-gray-50/80 dark:border-gray-700 dark:bg-gray-900/50">
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  className="whitespace-nowrap px-4 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wider"
+                  className="whitespace-nowrap px-4 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wider dark:text-gray-400"
                   style={{ width: col.width }}
                 >
                   {col.label}
@@ -27,7 +27,7 @@ export default function Table({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
             {loading ? (
               <tr>
                 <td colSpan={columns.length} className="px-4 py-12 text-center">
@@ -53,12 +53,12 @@ export default function Table({
                   onClick={() => onRowClick?.(row)}
                   className={`transition-colors ${
                     onRowClick
-                      ? "cursor-pointer hover:bg-brand-50/50"
-                      : "hover:bg-gray-50/50"
+                      ? "cursor-pointer hover:bg-brand-50/50 dark:hover:bg-brand-900/20"
+                      : "hover:bg-gray-50/50 dark:hover:bg-gray-700/50"
                   }`}
                 >
                   {columns.map((col) => (
-                    <td key={col.key} className="whitespace-nowrap px-4 py-3 text-gray-700">
+                    <td key={col.key} className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">
                       {col.render ? col.render(row) : row[col.key]}
                     </td>
                   ))}
@@ -69,15 +69,15 @@ export default function Table({
         </table>
       </div>
       {totalPages > 1 && (
-        <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50/50 px-4 py-3">
-          <span className="text-sm text-gray-500">
+        <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50/50 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/30">
+          <span className="text-sm text-gray-500 dark:text-gray-400">
             Page {page} of {totalPages}
           </span>
           <div className="flex gap-1">
             <button
               onClick={() => onPageChange(page - 1)}
               disabled={page <= 1}
-              className="inline-flex items-center rounded-lg px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+              className="inline-flex items-center rounded-lg px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:pointer-events-none transition-colors dark:text-gray-400 dark:hover:bg-gray-700"
             >
               <ChevronLeft className="h-4 w-4" />
               Previous
@@ -85,7 +85,7 @@ export default function Table({
             <button
               onClick={() => onPageChange(page + 1)}
               disabled={page >= totalPages}
-              className="inline-flex items-center rounded-lg px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+              className="inline-flex items-center rounded-lg px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:pointer-events-none transition-colors dark:text-gray-400 dark:hover:bg-gray-700"
             >
               Next
               <ChevronRight className="h-4 w-4" />

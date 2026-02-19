@@ -21,10 +21,10 @@ A self-hosted, local kiosk-based pool management system with RFID membership car
 | ORM | SQLAlchemy + Alembic (migrations) |
 | Auth | JWT tokens (admin/staff login) |
 | RFID | USB HID reader (acts as keyboard input) |
-| Payment | Modular adapter pattern (plug in any processor) |
+| Payment | Modular adapter pattern — Stub, Cash, Stripe, Square, Sola |
 | Containerization | Docker + Docker Compose |
 | Reverse Proxy | Nginx (serves frontend + proxies API) |
-| Notifications | Webhook system (8 event types, per-event URL, HA-compatible) |
+| Notifications | Webhook system (8 events), SMTP email, SIP/FusionPBX calls |
 
 ---
 
@@ -90,13 +90,18 @@ pool-management/
 │   │   │   ├── payment_service.py
 │   │   │   ├── membership_service.py
 │   │   │   ├── notification_service.py  # Webhook notification system (8 event types)
+│   │   │   ├── email_service.py        # SMTP email sending + templates
+│   │   │   ├── sip_service.py          # FusionPBX SIP call origination
 │   │   │   └── report_service.py
 │   │   │
 │   │   └── payments/                # Modular payment adapters
 │   │       ├── __init__.py
 │   │       ├── base.py              # Abstract base class
 │   │       ├── cash.py              # Cash payment handler
-│   │       └── stub.py              # Placeholder for real processor
+│   │       ├── stub.py              # Placeholder for testing
+│   │       ├── stripe_adapter.py    # Stripe SDK integration
+│   │       ├── square_adapter.py    # Square SDK integration
+│   │       └── sola_adapter.py      # Sola REST API integration
 │
 ├── frontend/
 │   ├── Dockerfile
@@ -107,12 +112,15 @@ pool-management/
 │   └── src/
 │       ├── main.jsx
 │       ├── App.jsx
+│       ├── context/
+│       │   └── ThemeContext.jsx      # Dark mode theme provider
 │       ├── api/                     # API client functions
 │       │   ├── client.js            # Axios instance
 │       │   ├── members.js
 │       │   ├── plans.js
 │       │   ├── checkins.js
 │       │   ├── payments.js
+│       │   ├── settings.js          # Settings + test connection APIs
 │       │   └── reports.js
 │       │
 │       ├── kiosk/                   # Kiosk UI (customer-facing)
@@ -133,6 +141,7 @@ pool-management/
 │       │       ├── NumPad.jsx           # Touch-friendly number pad
 │       │       ├── MemberCard.jsx       # Member info display widget
 │       │       ├── PlanCard.jsx         # Plan option display
+│       │       ├── ScreenTransition.jsx # Fade crossfade between screens
 │       │       └── StatusBadge.jsx      # Green/yellow/red status
 │       │
 │       ├── admin/                   # Admin Panel UI
@@ -163,8 +172,15 @@ pool-management/
 │           ├── Button.jsx
 │           ├── Modal.jsx
 │           ├── Table.jsx
-│           ├── DatePicker.jsx
-│           └── Toast.jsx
+│           ├── Badge.jsx
+│           ├── Card.jsx
+│           ├── Input.jsx
+│           ├── Select.jsx
+│           ├── StatCard.jsx
+│           ├── EmptyState.jsx
+│           ├── PageHeader.jsx
+│           ├── ConfirmDialog.jsx
+│           └── Skeleton.jsx         # Loading skeleton components
 │
 └── nginx/
     ├── nginx.conf
@@ -408,9 +424,12 @@ pool-management/
 
 ### Settings (admin auth)
 
-- `GET /api/settings` — Get all settings
-- `PUT /api/settings` — Update settings
+- `GET /api/settings` — Get all settings (sensitive values masked)
+- `PUT /api/settings` — Update settings (masked values filtered out)
 - `POST /api/settings/webhook-test` — Test a webhook event type
+- `POST /api/settings/payment-test?processor=<type>` — Test payment processor connection
+- `POST /api/settings/email-test` — Test SMTP email connection
+- `POST /api/settings/sip-test` — Test SIP/FusionPBX connection
 
 ---
 
@@ -444,6 +463,36 @@ pool-management/
 | webhook_daily_summary | "" | Webhook URL for daily summary stats |
 | low_balance_threshold | 5.00 | Balance threshold for low_balance webhook |
 | membership_expiry_warning_days | 7 | Days before expiry to fire warning webhook |
+| **Payment Processor** | | |
+| payment_processor | "stub" | Active processor: stub, cash, stripe, square, sola |
+| stripe_api_key | "" | Stripe publishable API key |
+| stripe_secret_key | "" | Stripe secret key (masked in UI) |
+| stripe_webhook_secret | "" | Stripe webhook signing secret (masked) |
+| square_access_token | "" | Square access token (masked) |
+| square_location_id | "" | Square location ID |
+| square_environment | "sandbox" | sandbox or production |
+| sola_api_key | "" | Sola API key (masked) |
+| sola_api_secret | "" | Sola API secret (masked) |
+| sola_merchant_id | "" | Sola merchant ID |
+| sola_environment | "sandbox" | sandbox or production |
+| **Email (SMTP)** | | |
+| email_smtp_host | "" | SMTP server hostname |
+| email_smtp_port | "587" | SMTP port |
+| email_smtp_username | "" | SMTP username |
+| email_smtp_password | "" | SMTP password (masked) |
+| email_from_address | "" | From email address |
+| email_from_name | "Pool Management" | From display name |
+| email_tls_enabled | "true" | Enable STARTTLS |
+| **SIP / Phone** | | |
+| sip_enabled | "false" | Enable SIP call integration |
+| sip_server | "" | SIP server address |
+| sip_port | "5060" | SIP port |
+| sip_username | "" | SIP username |
+| sip_password | "" | SIP password (masked) |
+| sip_caller_id | "" | Caller ID for outbound calls |
+| sip_change_needed_number | "" | Phone number for change-needed notifications |
+| sip_fusionpbx_api_url | "" | FusionPBX REST API base URL |
+| sip_fusionpbx_api_key | "" | FusionPBX API key (masked) |
 
 ---
 
@@ -551,14 +600,27 @@ pool-management/
 
 ```python
 class BasePaymentAdapter:
+    def __init__(self, config: dict | None = None):
+        self.config = config or {}
+
     def initiate_payment(self, amount: Decimal, member_id: str, description: str) -> PaymentSession
     def check_status(self, session_id: str) -> PaymentStatus
     def refund(self, transaction_id: str, amount: Decimal) -> RefundResult
     def tokenize_card(self, card_last4: str, card_brand: str, member_id: str) -> str
     def charge_saved_card(self, token: str, amount: Decimal, member_id: str, description: str) -> SavedCardChargeResult
+    def test_connection(self) -> tuple[bool, str]  # Returns (success, message)
 ```
 
-Any new payment processor just implements this interface. Drop in and configure via environment variable. The `tokenize_card` and `charge_saved_card` methods were added in Phase 5 for recurring billing support.
+**Available adapters:**
+| Adapter | Config Source | SDK/Library |
+|---|---|---|
+| `stub` | None (always succeeds) | — |
+| `cash` | None (rejects card ops) | — |
+| `stripe` | DB settings (`stripe_*`) | `stripe` Python SDK |
+| `square` | DB settings (`square_*`) | `squareup` Python SDK |
+| `sola` | DB settings (`sola_*`) | `httpx` REST calls |
+
+The active processor is configured via `payment_processor` DB setting (not env var). `get_payment_adapter(db)` reads the setting and instantiates the appropriate adapter with processor-specific config from the database.
 
 ---
 
@@ -583,9 +645,10 @@ DATABASE_URL=postgresql://pool:password@postgres:5432/pooldb
 SECRET_KEY=your-jwt-secret-key
 ADMIN_DEFAULT_USERNAME=admin
 ADMIN_DEFAULT_PASSWORD=changeme
-PAYMENT_ADAPTER=stub
 POOL_NAME=My Pool
 ```
+
+> **Note:** Payment processor, email, and SIP configuration is managed through Admin Settings (stored in the database), not environment variables.
 
 ---
 
@@ -829,12 +892,13 @@ try {
 
 ---
 
-## Future Integrations (placeholders ready)
+## Integrations
 
-- **Home Assistant:** Full webhook integration complete (8 event types)
-- **FusionPBX:** outbound call trigger when change is needed
-- **Payment Processor:** drop in Square, Stripe Terminal, or any other via adapter
-- **Email/SMS:** receipt sending, membership expiry reminders, PIN reset, auto-charge notices
+- **Home Assistant:** Full webhook integration (8 event types, per-event URL, fire-and-forget)
+- **FusionPBX / SIP:** Outbound call origination for change-needed notifications via REST API
+- **Payment Processors:** Stripe (PaymentIntent + Customer API), Square (Payments + Customers API), Sola (REST API) — all configurable from admin
+- **Email (SMTP):** Auto-charge receipts, membership expiring/expired notifications — SMTP config in admin settings
+- **Future:** SMS notifications, PIN reset via email link
 
 ---
 
@@ -847,7 +911,7 @@ try {
 5. **Phase 5** — Recurring billing + saved cards
 6. **Phase 6** — Docker packaging + Nginx config
 7. **Phase 7** — HA/notification hooks
-8. **Phase 8** — Real payment processor integration
+8. **Phase 8** — Payment processors (Stripe/Square/Sola), email, SIP, dark mode, kiosk transitions, skeletons
 
 ---
 
@@ -857,6 +921,7 @@ try {
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-02-18 | Phase 8: Added Stripe/Square/Sola payment adapters, email service, SIP service, dark mode, kiosk transitions, skeletons, 30+ new DB settings | — |
 | 2026-02-18 | Added Logging & Error Handling Standards section; consistent logging across all backend modules; frontend error handling audit | — |
 | 2026-02-18 | Bug fixes: split payment (frontend + backend), cash change_due flow, test suite (38 tests), bcrypt compat, JSONB→JSON | — |
 | 2026-02-18 | Phase 7: Added webhook notification system (8 events), scheduled jobs, admin webhook config UI, payload docs | — |

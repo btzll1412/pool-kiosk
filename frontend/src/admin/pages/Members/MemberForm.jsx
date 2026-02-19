@@ -7,6 +7,7 @@ import Button from "../../../shared/Button";
 import Card from "../../../shared/Card";
 import Input from "../../../shared/Input";
 import PageHeader from "../../../shared/PageHeader";
+import { SkeletonLine } from "../../../shared/Skeleton";
 
 export default function MemberForm() {
   const { id } = useParams();
@@ -74,8 +75,18 @@ export default function MemberForm() {
 
   if (fetching) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-brand-600" />
+      <div className="mx-auto max-w-2xl">
+        <SkeletonLine width="w-20" height="h-4" className="mb-4" />
+        <Card>
+          <div className="space-y-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i}>
+                <SkeletonLine width="w-24" height="h-3" className="mb-2" />
+                <SkeletonLine width="w-full" height="h-10" />
+              </div>
+            ))}
+          </div>
+        </Card>
       </div>
     );
   }
@@ -84,7 +95,7 @@ export default function MemberForm() {
     <div className="mx-auto max-w-2xl">
       <button
         onClick={() => navigate(-1)}
-        className="mb-3 inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+        className="mb-3 inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
         Back
@@ -141,7 +152,7 @@ export default function MemberForm() {
           )}
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
               Notes
             </label>
             <textarea
@@ -149,11 +160,11 @@ export default function MemberForm() {
               onChange={handleChange("notes")}
               rows={3}
               placeholder="Admin notes about this member..."
-              className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-brand-600"
+              className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-brand-600 dark:bg-gray-800"
             />
           </div>
 
-          <div className="flex justify-end gap-3 border-t border-gray-100 pt-5">
+          <div className="flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700 pt-5">
             <Button variant="secondary" type="button" onClick={() => navigate(-1)}>
               Cancel
             </Button>

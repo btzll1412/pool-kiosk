@@ -35,11 +35,11 @@ export default function MembersList() {
             {row.last_name?.[0]}
           </div>
           <div>
-            <p className="font-medium text-gray-900">
+            <p className="font-medium text-gray-900 dark:text-gray-100">
               {row.first_name} {row.last_name}
             </p>
             {row.email && (
-              <p className="text-xs text-gray-500">{row.email}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{row.email}</p>
             )}
           </div>
         </div>
@@ -92,7 +92,7 @@ export default function MembersList() {
       {/* Search */}
       <div className="mb-5">
         <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
           <input
             type="text"
             placeholder="Search by name, phone, or email..."
@@ -101,7 +101,7 @@ export default function MembersList() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            className="block w-full rounded-lg border-0 py-2.5 pl-10 pr-4 text-sm text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-600"
+            className="block w-full rounded-lg border-0 py-2.5 pl-10 pr-4 text-sm text-gray-900 dark:text-gray-100 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800"
           />
         </div>
       </div>

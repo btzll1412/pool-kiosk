@@ -4,7 +4,7 @@
 
 ---
 
-## Current Phase: Logging & Error Handling Complete — Ready for Phase 8
+## Current Phase: Phase 8 Complete — All Phases Done
 
 ### Overall Progress
 
@@ -17,7 +17,7 @@
 | Phase 5 — Recurring Billing + Saved Cards | **Complete** | Auto-charge service, saved card management, APScheduler, kiosk + admin UI |
 | Phase 6 — Docker + Nginx | **Complete** | docker-compose.yml, Dockerfiles, nginx.conf done |
 | Phase 7 — HA/Notification Hooks | **Complete** | 8 webhook events, scheduled expiry check + daily summary, admin webhook config UI |
-| Phase 8 — Real Payment Processor | Not Started | Adapter interface ready |
+| Phase 8 — Payment Processors, Email, SIP & UI Polish | **Complete** | Stripe/Square/Sola adapters, SMTP email, SIP/FusionPBX, dark mode, kiosk transitions, skeletons |
 
 ---
 
@@ -52,9 +52,12 @@
 - [x] **Notification service:** Full webhook system with 8 event types, per-event URL configuration, fire-and-forget delivery
 - [x] **Seed service:** Auto-creates default admin and default settings on startup
 - [x] **Rate limiter:** slowapi-based per-IP limiting on kiosk endpoints
-- [x] **Payment adapters:** Base interface with tokenize/charge_saved_card methods, Stub adapter (always succeeds), Cash adapter (rejects card ops)
-- [x] **Auto-charge service** (`services/auto_charge_service.py`): process_due_charges (daily scheduler), enable/disable auto-charge, on-demand saved card charging
+- [x] **Payment adapters:** Base interface with tokenize/charge_saved_card/test_connection methods, Stub adapter (always succeeds), Cash adapter (rejects card ops), Stripe adapter (PaymentIntent + Customer API), Square adapter (Payments + Customers API), Sola adapter (REST/httpx)
+- [x] **Auto-charge service** (`services/auto_charge_service.py`): process_due_charges (daily scheduler), enable/disable auto-charge, on-demand saved card charging, email receipt on success
 - [x] **APScheduler** integrated in app lifespan — 3 daily jobs: auto-charge (06:00), membership expiry check (07:00), daily summary (21:00)
+- [x] **Email service** (`services/email_service.py`): SMTP-based send_email(), test_email_connection(), send_auto_charge_receipt(), send_membership_expiring_email(), send_membership_expired_email()
+- [x] **SIP service** (`services/sip_service.py`): FusionPBX REST API integration, originate_call(), call_for_change_needed(), test_sip_connection()
+- [x] **Sensitive settings masking** — GET endpoint returns masked values (••••••) for API keys and passwords; PUT filters out masked values to prevent overwriting secrets
 - [x] **10 Pydantic schema modules:** auth, member, card, plan, membership, checkin, transaction, kiosk, settings, report
 - [x] **11 API routers:** auth, members, cards, plans, memberships, checkins, payments, transactions, reports, settings, kiosk
 - [x] All kiosk endpoints: scan, search, checkin, plans, pay/cash, pay/card (with saved card support + save-after-payment), pay/split, freeze, unfreeze, saved-cards CRUD, tokenize, set-default, auto-charge enable/disable, guest visit, change notification
@@ -62,7 +65,10 @@
 - [x] Activity logging on all admin mutations
 - [x] **Webhook events** fired from: kiosk checkin, credit payment (low balance), auto-charge success/failure
 - [x] **Webhook test endpoint** `POST /api/settings/webhook-test?event_type=<type>` for admin testing
-- [x] **Membership expiry check** scheduled job fires `membership_expiring` and `membership_expired` webhooks
+- [x] **Payment test endpoint** `POST /api/settings/payment-test?processor=<type>` for admin testing
+- [x] **Email test endpoint** `POST /api/settings/email-test` for admin testing
+- [x] **SIP test endpoint** `POST /api/settings/sip-test` for admin testing
+- [x] **Membership expiry check** scheduled job fires `membership_expiring` and `membership_expired` webhooks + sends expiry emails
 - [x] **Daily summary** scheduled job fires stats webhook at 21:00
 - [x] **Test suite** — 38 pytest tests covering auth, kiosk scan/search/checkin, cash/card/split payments, PIN verification + lockout
 - [x] **Consistent logging** — Every service, router, and payment adapter uses `logging.getLogger(__name__)` with structured key=value messages
@@ -72,10 +78,10 @@
 
 - [x] React + Vite + Tailwind CSS project setup
 - [x] Inter font, custom brand color palette, @tailwindcss/forms plugin
-- [x] **API client layer** with Axios, JWT interceptor, auto-refresh, 8 API modules (auth, members, plans, checkins, payments, reports, settings, auth)
+- [x] **API client layer** with Axios, JWT interceptor, auto-refresh, 8 API modules (auth, members, plans, checkins, payments, reports, settings, auth) — settings API includes testPaymentConnection, testEmail, testSipCall
 - [x] **Auth context** with login/logout state management
 - [x] **useApi hook** for data fetching with loading/error states
-- [x] **11 shared components:** Button (4 variants, 4 sizes, loading state), Modal (keyboard dismiss, backdrop blur), Table (pagination, loading, empty state), Badge (6 colors), Card + CardHeader, Input (with error/help text), Select, StatCard (5 color themes), EmptyState, PageHeader, ConfirmDialog
+- [x] **12 shared components:** Button (4 variants, 4 sizes, loading state), Modal (keyboard dismiss, backdrop blur), Table (pagination, loading, empty state), Badge (6 colors), Card + CardHeader, Input (with error/help text), Select, StatCard (5 color themes), EmptyState, PageHeader, ConfirmDialog, Skeleton (SkeletonLine, SkeletonCard, SkeletonStatCards, SkeletonTable) — all with dark mode support
 - [x] **Admin layout:** Sidebar with icon navigation (desktop fixed + mobile overlay), Header with user menu + logout, responsive design with mobile hamburger menu
 - [x] **Login page:** Gradient background, branded card, form validation, JWT token storage, auto-redirect
 - [x] **Dashboard:** 5 stat cards (check-ins, swimmers, revenue, memberships, guests), quick action links, system status panel
@@ -86,13 +92,13 @@
 - [x] **Transactions list:** Filterable by type/method/date range, paginated table, color-coded badges, CSV export button, clear filters
 - [x] **Revenue report:** Date range + grouping selectors, stacked bar chart (Recharts) for cash/card/credit breakdown, stat cards, membership breakdown with progress bars
 - [x] **Swim report:** Date range selector, stat cards, donut pie chart for check-in types
-- [x] **Settings page:** 6 grouped sections (Kiosk, Timer, PIN, Fees, Features, Notifications & Webhooks), toggle switches, webhook URL fields with inline "Test" buttons, sticky save bar with unsaved changes indicator
+- [x] **Settings page:** 13 grouped sections (Kiosk, Timer, PIN, Fees, Features, Notifications & Webhooks, Payment Processor, Stripe/Square/Sola Configuration, Email SMTP, SIP/Phone System), toggle switches, webhook URL fields with inline "Test" buttons, password fields with show/hide toggle, conditional group rendering (processor-specific), Test Connection buttons, sticky save bar with unsaved changes indicator
 - [x] **App routing:** Protected routes, nested admin layout, all page routes wired
 
 ### Frontend — Kiosk UI
 
 - [x] **Kiosk API client** (`api/kiosk.js`) — 19 endpoint functions: scan, search, checkin, getPlans, payCash, payCard (with save options), paySplit, notifyChange, freeze, unfreeze, guestVisit, getSettings, getSavedCards, tokenizeAndSaveCard, updateSavedCard, deleteSavedCard, setDefaultCard, enableAutoCharge, disableAutoCharge
-- [x] **KioskApp** (`kiosk/KioskApp.jsx`) — State-machine screen manager with RFID listener, inactivity timer, settings loading, and screen transitions
+- [x] **KioskApp** (`kiosk/KioskApp.jsx`) — State-machine screen manager with RFID listener, inactivity timer, settings loading, and screen transitions (fade crossfade via ScreenTransition component)
 - [x] **7 kiosk components:**
   - RFIDListener — Captures USB HID keyboard input from RFID reader, 200ms buffer timeout, Enter key triggers scan
   - NumPad — Touch-friendly number pad with optional decimal point, backspace, clear
@@ -122,6 +128,17 @@
 - [x] **Route wiring:** `/kiosk` route added to App.jsx, default redirect changed to `/kiosk`
 - [x] **Consistent error handling** — All API calls use `.catch()` with `err.response?.data?.detail` extraction, no silent failures
 
+### Frontend — UI Polish (Phase 8)
+
+- [x] **Dark mode** — Tailwind `darkMode: "class"`, ThemeContext with localStorage persistence, Sun/Moon toggle in admin Header
+- [x] **All shared components** have `dark:` variant classes (backgrounds, borders, text, rings)
+- [x] **All admin pages** have `dark:` variant classes (Dashboard, Members, Plans, Transactions, Reports, Settings, Login)
+- [x] **Admin layout** (Sidebar, Header, Layout) have `dark:` variant classes
+- [x] **Kiosk screen transitions** — ScreenTransition component with 150ms fade crossfade on screen changes
+- [x] **CSS keyframe animations** — animate-fade-in, animate-slide-up, animate-scale-in, animate-checkmark-pop, skeleton-pulse
+- [x] **Micro-animations** — PlanCard scale-on-select (scale-[1.03]), CheckinScreen checkmark pop, NumPad button bounce (active:scale-90)
+- [x] **Loading skeletons** — Replaced spinners with skeleton placeholders in Dashboard, PlansList, Settings, RevenueReport, SwimReport, MemberDetail, MemberForm
+
 ### DevOps
 
 - [x] Docker Compose configuration (postgres, backend, frontend, nginx)
@@ -135,6 +152,39 @@
 ## Known Issues
 
 _None._
+
+---
+
+## Phase 8 Implementation Notes (2026-02-18)
+
+### Payment Processor Backend
+- `get_payment_adapter()` now accepts `db: Session` parameter — reads `payment_processor` setting from DB instead of env var
+- Processor config (API keys, secrets) read from DB settings via `get_processor_config()` helper
+- Three new adapters: Stripe (PaymentIntent/Customer API), Square (squareup SDK, location-scoped), Sola (httpx REST)
+- All adapters implement `test_connection()` for admin verification
+- `payment_adapter` removed from `config.py` — DB settings is sole source of truth
+- Sensitive settings (API keys, passwords) masked with "••••••" on GET; PUT filters out masked values
+
+### Email Service
+- SMTP-based using `smtplib` — reads config from DB settings
+- Wired to: membership expiry check (expiring + expired emails), auto-charge success (receipt)
+- TLS support via `email_tls_enabled` setting
+
+### SIP / Phone Integration
+- FusionPBX REST API for outbound call origination
+- Wired to `send_change_notification()` — triggers SIP call to staff when change is needed
+- Configurable via `sip_*` settings in admin
+
+### Admin Settings UI
+- 13 setting groups with conditional rendering (processor-specific groups shown/hidden based on `payment_processor` value)
+- Password field type with show/hide eye toggle
+- Test Connection buttons for payment processor, email, and SIP
+
+### UI Polish
+- Dark mode with Tailwind `darkMode: "class"` and ThemeContext (persists to localStorage)
+- Kiosk screen transitions (150ms fade crossfade)
+- Skeleton loading states replacing full-page spinners
+- Micro-animations on interactive kiosk elements
 
 ---
 
@@ -164,7 +214,14 @@ _None._
 - Auto-charge uses APScheduler (BackgroundScheduler) instead of Celery — appropriate for single-server kiosk deployment, no Redis needed
 - Auto-charge limited to monthly plans only — single swims and swim passes don't have fixed renewal cycles
 - Only one card per member can have auto-charge enabled (enabling on one card disables any other)
-- Stub adapter generates fake tokens and always succeeds for charge_saved_card — real processor integration deferred to Phase 8
+- Stub adapter generates fake tokens and always succeeds for charge_saved_card — useful for testing without real processor
+- Payment processor config stored in DB settings (not env vars) — allows switching processors from admin UI without restart
+- Sensitive settings masked with "••••••" on GET; PUT filters out masked values to prevent overwriting secrets
+- Email uses smtplib directly — simpler than async alternatives for scheduler context
+- SIP integration uses FusionPBX REST API, not raw SIP protocol
+- Dark mode uses Tailwind `darkMode: "class"` with React Context persisted to localStorage
+- Kiosk screen transitions use opacity-based crossfade (150ms)
+- Loading skeletons replace spinners for better perceived performance
 
 ---
 
@@ -198,4 +255,4 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-02-18 (Logging & Error Handling)
+## Last Updated: 2026-02-18 (Phase 8 — Payment Processors, Email, SIP & UI Polish)

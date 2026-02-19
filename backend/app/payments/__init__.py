@@ -7,6 +7,9 @@ from app.payments.base import (
 )
 from app.payments.stub import StubPaymentAdapter
 from app.payments.cash import CashPaymentAdapter
+from app.payments.stripe_adapter import StripePaymentAdapter
+from app.payments.square_adapter import SquarePaymentAdapter
+from app.payments.sola_adapter import SolaPaymentAdapter
 
 __all__ = [
     "BasePaymentAdapter",
@@ -16,4 +19,7 @@ __all__ = [
     "SavedCardChargeResult",
     "StubPaymentAdapter",
     "CashPaymentAdapter",
+    "StripePaymentAdapter",
+    "SquarePaymentAdapter",
+    "SolaPaymentAdapter",
 ]

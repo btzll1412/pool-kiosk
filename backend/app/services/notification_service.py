@@ -135,14 +135,24 @@ def notify_daily_summary(db: Session, data: dict) -> bool:
 # --- Backward-compatible wrapper ---
 
 def send_change_notification(db: Session, member_name: str, amount: str) -> bool:
-    """Backward-compatible wrapper. Migrates old setting key on first call."""
+    """Backward-compatible wrapper. Migrates old setting key on first call.
+    Also triggers SIP call if configured."""
     old_url = get_setting(db, "change_notification_webhook", "")
     new_url = get_setting(db, "webhook_change_needed", "")
 
     if old_url and not new_url:
         update_settings(db, {"webhook_change_needed": old_url})
 
-    return fire_webhook(db, WebhookEvent.change_needed, {
+    webhook_sent = fire_webhook(db, WebhookEvent.change_needed, {
         "member_name": member_name,
         "amount": amount,
     })
+
+    # Also trigger SIP call to staff
+    try:
+        from app.services.sip_service import call_for_change_needed
+        call_for_change_needed(db, member_name, amount)
+    except Exception:
+        logger.exception("SIP call for change notification failed")
+
+    return webhook_sent

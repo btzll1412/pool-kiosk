@@ -38,6 +38,13 @@ class SavedCardChargeResult(BaseModel):
 
 
 class BasePaymentAdapter(ABC):
+    def __init__(self, config: dict | None = None):
+        self.config = config or {}
+
+    def test_connection(self) -> tuple[bool, str]:
+        """Test connectivity to the payment processor. Override in real adapters."""
+        return True, "OK"
+
     @abstractmethod
     def initiate_payment(self, amount: Decimal, member_id: str, description: str) -> PaymentSession:
         ...

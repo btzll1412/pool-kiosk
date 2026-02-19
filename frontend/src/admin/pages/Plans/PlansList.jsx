@@ -8,6 +8,7 @@ import Card from "../../../shared/Card";
 import ConfirmDialog from "../../../shared/ConfirmDialog";
 import EmptyState from "../../../shared/EmptyState";
 import PageHeader from "../../../shared/PageHeader";
+import { SkeletonCard } from "../../../shared/Skeleton";
 
 export default function PlansList() {
   const [plans, setPlans] = useState([]);
@@ -53,8 +54,11 @@ export default function PlansList() {
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-brand-600" />
+      <div>
+        <PageHeader title="Plans" description="Manage pricing and membership plans" />
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => <SkeletonCard key={i} />)}
+        </div>
       </div>
     );
   }
@@ -98,14 +102,14 @@ export default function PlansList() {
                       setEditing(plan);
                       setShowForm(true);
                     }}
-                    className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                    className="rounded-lg p-1.5 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
                   >
                     <Edit className="h-4 w-4" />
                   </button>
                   {plan.is_active && (
                     <button
                       onClick={() => setDeleteTarget(plan)}
-                      className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                      className="rounded-lg p-1.5 text-gray-400 dark:text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -113,22 +117,22 @@ export default function PlansList() {
                 </div>
               </div>
 
-              <h3 className="text-lg font-semibold text-gray-900">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 {plan.name}
               </h3>
 
               <div className="mt-2 flex items-baseline gap-1">
-                <span className="text-3xl font-bold tracking-tight text-gray-900">
+                <span className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
                   ${Number(plan.price).toFixed(2)}
                 </span>
                 {plan.plan_type === "monthly" && (
-                  <span className="text-sm text-gray-500">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
                     / {plan.duration_days} days
                   </span>
                 )}
               </div>
 
-              <div className="mt-3 text-sm text-gray-500">
+              <div className="mt-3 text-sm text-gray-500 dark:text-gray-400">
                 {plan.plan_type === "swim_pass" &&
                   `${plan.swim_count} swim${plan.swim_count !== 1 ? "s" : ""} included`}
                 {plan.plan_type === "monthly" &&
@@ -214,15 +218,15 @@ function PlanForm({ plan, onClose, onSaved }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg rounded-xl bg-white shadow-2xl ring-1 ring-gray-900/5">
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+      <div className="relative w-full max-w-lg rounded-xl bg-white dark:bg-gray-800 shadow-2xl ring-1 ring-gray-900/5">
+        <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 px-6 py-4">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             {plan ? "Edit Plan" : "New Plan"}
           </h2>
         </div>
         <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
               Plan Name
             </label>
             <input
@@ -230,19 +234,19 @@ function PlanForm({ plan, onClose, onSaved }) {
               onChange={handleChange("name")}
               required
               placeholder='e.g. "Single Swim", "10-Swim Pack"'
-              className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600"
+              className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Type
               </label>
               <select
                 value={form.plan_type}
                 onChange={handleChange("plan_type")}
-                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600"
+                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
               >
                 <option value="single">Single Swim</option>
                 <option value="swim_pass">Swim Pass</option>
@@ -250,7 +254,7 @@ function PlanForm({ plan, onClose, onSaved }) {
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Price ($)
               </label>
               <input
@@ -260,14 +264,14 @@ function PlanForm({ plan, onClose, onSaved }) {
                 value={form.price}
                 onChange={handleChange("price")}
                 required
-                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600"
+                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
               />
             </div>
           </div>
 
           {form.plan_type === "swim_pass" && (
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Number of Swims
               </label>
               <input
@@ -276,14 +280,14 @@ function PlanForm({ plan, onClose, onSaved }) {
                 value={form.swim_count}
                 onChange={handleChange("swim_count")}
                 required
-                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600"
+                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
               />
             </div>
           )}
 
           {form.plan_type === "monthly" && (
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Duration (days)
               </label>
               <input
@@ -292,13 +296,13 @@ function PlanForm({ plan, onClose, onSaved }) {
                 value={form.duration_days}
                 onChange={handleChange("duration_days")}
                 required
-                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600"
+                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
               />
             </div>
           )}
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
               Display Order
             </label>
             <input
@@ -306,14 +310,14 @@ function PlanForm({ plan, onClose, onSaved }) {
               min="0"
               value={form.display_order}
               onChange={handleChange("display_order")}
-              className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600"
+              className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
             />
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               Lower numbers appear first on the kiosk
             </p>
           </div>
 
-          <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
+          <div className="flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">
             <Button variant="secondary" type="button" onClick={onClose}>
               Cancel
             </Button>

@@ -7,26 +7,34 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-from app.config import settings
 from app.models.member import Member
 from app.models.plan import Plan
 from app.models.transaction import PaymentMethod, Transaction, TransactionType
 from app.payments.base import BasePaymentAdapter
 from app.payments.cash import CashPaymentAdapter
+from app.payments.sola_adapter import SolaPaymentAdapter
+from app.payments.square_adapter import SquarePaymentAdapter
+from app.payments.stripe_adapter import StripePaymentAdapter
 from app.payments.stub import StubPaymentAdapter
 from app.services.membership_service import create_membership
 from app.services.notification_service import notify_low_balance
-from app.services.settings_service import get_setting
+from app.services.settings_service import get_processor_config, get_setting
 
 
-def get_payment_adapter() -> BasePaymentAdapter:
-    adapters = {
+def get_payment_adapter(db: Session) -> BasePaymentAdapter:
+    """Instantiate the configured payment adapter from DB settings."""
+    processor = get_setting(db, "payment_processor", "stub")
+    adapter_map: dict[str, type[BasePaymentAdapter]] = {
         "stub": StubPaymentAdapter,
         "cash": CashPaymentAdapter,
+        "stripe": StripePaymentAdapter,
+        "square": SquarePaymentAdapter,
+        "sola": SolaPaymentAdapter,
     }
-    adapter_cls = adapters.get(settings.payment_adapter, StubPaymentAdapter)
-    logger.debug("Using payment adapter: %s", adapter_cls.__name__)
-    return adapter_cls()
+    adapter_cls = adapter_map.get(processor, StubPaymentAdapter)
+    config = get_processor_config(db, processor)
+    logger.debug("Using payment adapter: %s (processor=%s)", adapter_cls.__name__, processor)
+    return adapter_cls(config=config)
 
 
 def process_cash_payment(
@@ -105,7 +113,7 @@ def process_card_payment(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
-    adapter = get_payment_adapter()
+    adapter = get_payment_adapter(db)
     session = adapter.initiate_payment(plan.price, str(member_id), f"Purchase: {plan.name}")
     logger.info("Card payment initiated: member=%s, plan=%s, amount=$%s, session=%s", member_id, plan.name, plan.price, session.session_id)
 
