@@ -73,3 +73,44 @@
     animation: skeleton-pulse 1.5s ease-in-out infinite;
   }
 }
+
+/* Virtual Keyboard Styles */
+.kiosk-keyboard {
+  background: #f3f4f6 !important;
+  border-radius: 1rem !important;
+  padding: 0.75rem !important;
+}
+
+.kiosk-keyboard .hg-button {
+  height: 3.5rem !important;
+  font-size: 1.25rem !important;
+  font-weight: 600 !important;
+  border-radius: 0.75rem !important;
+  background: white !important;
+  color: #1f2937 !important;
+  border: none !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+
+.kiosk-keyboard .hg-button:active {
+  background: #e5e7eb !important;
+  transform: scale(0.95);
+}
+
+.kiosk-keyboard .hg-button.keyboard-key-action {
+  background: #0ea5e9 !important;
+  color: white !important;
+}
+
+.kiosk-keyboard .hg-button.keyboard-key-action:active {
+  background: #0284c7 !important;
+}
+
+.kiosk-keyboard .hg-row {
+  gap: 0.375rem !important;
+  margin-bottom: 0.375rem !important;
+}
+
+.kiosk-keyboard .hg-row:last-child {
+  margin-bottom: 0 !important;
+}

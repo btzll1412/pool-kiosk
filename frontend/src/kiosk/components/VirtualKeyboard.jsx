@@ -1,0 +1,73 @@
+import { useEffect, useRef } from "react";
+import Keyboard from "react-simple-keyboard";
+import "react-simple-keyboard/build/css/index.css";
+
+export default function VirtualKeyboard({ value, onChange, onClose, layout = "default" }) {
+  const keyboardRef = useRef(null);
+
+  useEffect(() => {
+    if (keyboardRef.current) {
+      keyboardRef.current.setInput(value || "");
+    }
+  }, [value]);
+
+  const handleChange = (input) => {
+    onChange(input);
+  };
+
+  const handleKeyPress = (button) => {
+    if (button === "{enter}") {
+      onClose?.();
+    }
+  };
+
+  const layouts = {
+    default: [
+      "1 2 3 4 5 6 7 8 9 0 {bksp}",
+      "q w e r t y u i o p",
+      "a s d f g h j k l",
+      "{shift} z x c v b n m {shift}",
+      "{space} {enter}",
+    ],
+    shift: [
+      "1 2 3 4 5 6 7 8 9 0 {bksp}",
+      "Q W E R T Y U I O P",
+      "A S D F G H J K L",
+      "{shift} Z X C V B N M {shift}",
+      "{space} {enter}",
+    ],
+  };
+
+  const display = {
+    "{bksp}": "⌫",
+    "{enter}": "Done",
+    "{space}": "Space",
+    "{shift}": "⇧",
+  };
+
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-50 bg-gray-100 p-4 shadow-2xl">
+      <div className="mx-auto max-w-2xl">
+        <Keyboard
+          keyboardRef={(r) => (keyboardRef.current = r)}
+          layout={layouts}
+          layoutName={layout}
+          onChange={handleChange}
+          onKeyPress={handleKeyPress}
+          display={display}
+          theme="hg-theme-default hg-layout-default kiosk-keyboard"
+          buttonTheme={[
+            {
+              class: "keyboard-key-large",
+              buttons: "1 2 3 4 5 6 7 8 9 0 q w e r t y u i o p a s d f g h j k l z x c v b n m Q W E R T Y U I O P A S D F G H J K L Z X C V B N M",
+            },
+            {
+              class: "keyboard-key-action",
+              buttons: "{bksp} {enter} {space} {shift}",
+            },
+          ]}
+        />
+      </div>
+    </div>
+  );
+}

@@ -97,7 +97,7 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
             )}
           </div>
 
-          <NumPad value={amount} onChange={setAmount} maxLength={7} showDot />
+          <NumPad value={amount} onChange={setAmount} maxLength={7} showDecimal />
 
           {settings.cash_box_instructions && (
             <p className="mt-4 text-center text-sm text-gray-500">

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ArrowLeft, UserPlus } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
+import KioskInput from "../components/KioskInput";
 import { kioskSignup } from "../../api/kiosk";
 
 export default function SignUpScreen({ setMember, goTo, goIdle }) {
@@ -84,88 +85,56 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
 
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  First Name *
-                </label>
-                <input
-                  type="text"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="John"
-                  autoFocus
-                  className="w-full rounded-xl border-0 bg-white py-3 px-4 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Last Name *
-                </label>
-                <input
-                  type="text"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Doe"
-                  className="w-full rounded-xl border-0 bg-white py-3 px-4 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Phone *
-              </label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="555-123-4567"
-                className="w-full rounded-xl border-0 bg-white py-3 px-4 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500"
+              <KioskInput
+                label="First Name *"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="John"
+                autoFocus
+              />
+              <KioskInput
+                label="Last Name *"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="Doe"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email (optional)
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="john@example.com"
-                className="w-full rounded-xl border-0 bg-white py-3 px-4 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500"
-              />
-            </div>
+            <KioskInput
+              label="Phone *"
+              type="tel"
+              numeric
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="5551234567"
+            />
+
+            <KioskInput
+              label="Email (optional)"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="john@example.com"
+            />
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  4-Digit PIN *
-                </label>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-                  placeholder="****"
-                  className="w-full rounded-xl border-0 bg-white py-3 px-4 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500 text-center tracking-widest"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Confirm PIN *
-                </label>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={confirmPin}
-                  onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ""))}
-                  placeholder="****"
-                  className="w-full rounded-xl border-0 bg-white py-3 px-4 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500 text-center tracking-widest"
-                />
-              </div>
+              <KioskInput
+                label="4-Digit PIN *"
+                numeric
+                maxLength={4}
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                placeholder="****"
+                className="text-center tracking-widest"
+              />
+              <KioskInput
+                label="Confirm PIN *"
+                numeric
+                maxLength={4}
+                value={confirmPin}
+                onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ""))}
+                placeholder="****"
+                className="text-center tracking-widest"
+              />
             </div>
           </div>
 
