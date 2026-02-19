@@ -161,6 +161,6 @@ export async function kioskSignup(memberData) {
 }
 
 export async function getSettings() {
-  const { data } = await axios.get("/api/settings");
+  const { data } = await kiosk.get("/settings");
   return data;
 }

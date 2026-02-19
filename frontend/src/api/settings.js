@@ -17,3 +17,11 @@ export const testEmail = () =>
 
 export const testSipCall = () =>
   client.post("/settings/sip-test").then((r) => r.data);
+
+export const uploadKioskBackground = (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  return client.post("/settings/upload-background", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  }).then((r) => r.data);
+};

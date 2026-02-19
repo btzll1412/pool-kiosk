@@ -196,6 +196,38 @@ def get_kiosk_plans(request: Request, db: Session = Depends(get_db)):
     ]
 
 
+@router.get("/settings")
+@limiter.limit("60/minute")
+def get_kiosk_settings(request: Request, db: Session = Depends(get_db)):
+    """Public endpoint for kiosk display settings."""
+    pool_name = get_setting(db, "pool_name", "Pool")
+    currency = get_setting(db, "currency_symbol", "$")
+    return {
+        "poolName": pool_name,
+        "currency": currency,
+        "checkin_return_seconds": get_setting(db, "checkin_return_seconds", "8"),
+        "inactivity_timeout_seconds": get_setting(db, "inactivity_timeout_seconds", "30"),
+        "inactivity_warning_seconds": get_setting(db, "inactivity_warning_seconds", "10"),
+        "family_max_guests": get_setting(db, "family_max_guests", "5"),
+        "cash_box_instructions": get_setting(db, "cash_box_instructions", ""),
+        "guest_visit_enabled": get_setting(db, "guest_visit_enabled", "true"),
+        "split_payment_enabled": get_setting(db, "split_payment_enabled", "true"),
+        # Kiosk display settings
+        "kiosk_welcome_title": get_setting(db, "kiosk_welcome_title", "Welcome to {pool_name}"),
+        "kiosk_welcome_subtitle": get_setting(db, "kiosk_welcome_subtitle", "Scan your membership card to get started"),
+        "kiosk_card_instruction": get_setting(db, "kiosk_card_instruction", "Hold your card near the reader"),
+        "kiosk_help_text": get_setting(db, "kiosk_help_text", "Need help? Please ask a staff member."),
+        "kiosk_overlay_enabled": get_setting(db, "kiosk_overlay_enabled", "false"),
+        "kiosk_overlay_text": get_setting(db, "kiosk_overlay_text", ""),
+        "kiosk_locked": get_setting(db, "kiosk_locked", "false"),
+        "kiosk_lock_message": get_setting(db, "kiosk_lock_message", "Kiosk is currently unavailable. Please see staff."),
+        "kiosk_bg_type": get_setting(db, "kiosk_bg_type", "gradient"),
+        "kiosk_bg_color": get_setting(db, "kiosk_bg_color", "#0284c7"),
+        "kiosk_bg_image": get_setting(db, "kiosk_bg_image", ""),
+        "kiosk_bg_image_mode": get_setting(db, "kiosk_bg_image_mode", "cover"),
+    }
+
+
 @router.post("/pay/cash", response_model=PaymentResponse)
 @limiter.limit("20/minute")
 def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(get_db)):

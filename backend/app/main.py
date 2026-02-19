@@ -14,6 +14,7 @@ logging.basicConfig(
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.orm import Session
@@ -191,6 +192,12 @@ app.include_router(guests.router, prefix="/api/guests", tags=["Guests"])
 app.include_router(settings_router.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(backup.router, prefix="/api/backup", tags=["Backup"])
 app.include_router(kiosk.router, prefix="/api/kiosk", tags=["Kiosk"])
+
+# Serve uploaded files
+import os
+UPLOAD_DIR = "/app/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/api/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 @app.get("/api/health")

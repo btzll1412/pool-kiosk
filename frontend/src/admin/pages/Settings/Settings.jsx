@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Database, Download, Eye, EyeOff, Save, Send, Settings2, CreditCard, Bell, Upload } from "lucide-react";
+import { AlertTriangle, Database, Download, Eye, EyeOff, Monitor, Save, Send, Settings2, CreditCard, Bell, Upload } from "lucide-react";
 import toast from "react-hot-toast";
-import { getSettings, updateSettings, testWebhook, testPaymentConnection, testEmail, testSipCall } from "../../../api/settings";
+import { getSettings, updateSettings, testWebhook, testPaymentConnection, testEmail, testSipCall, uploadKioskBackground } from "../../../api/settings";
 import { exportSystem, importSystem } from "../../../api/backup";
 import Button from "../../../shared/Button";
 import Card, { CardHeader } from "../../../shared/Card";
@@ -10,9 +10,27 @@ import { SkeletonLine } from "../../../shared/Skeleton";
 
 const CATEGORIES = [
   { id: "general", label: "General", icon: Settings2 },
+  { id: "kiosk", label: "Kiosk Display", icon: Monitor },
   { id: "payments", label: "Payments", icon: CreditCard },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "backup", label: "Backup", icon: Database },
+];
+
+const BACKGROUND_COLORS = [
+  { value: "#0284c7", label: "Ocean Blue" },
+  { value: "#0891b2", label: "Cyan" },
+  { value: "#0d9488", label: "Teal" },
+  { value: "#059669", label: "Emerald" },
+  { value: "#16a34a", label: "Green" },
+  { value: "#65a30d", label: "Lime" },
+  { value: "#ca8a04", label: "Yellow" },
+  { value: "#ea580c", label: "Orange" },
+  { value: "#dc2626", label: "Red" },
+  { value: "#db2777", label: "Pink" },
+  { value: "#9333ea", label: "Purple" },
+  { value: "#4f46e5", label: "Indigo" },
+  { value: "#1e293b", label: "Slate" },
+  { value: "#171717", label: "Black" },
 ];
 
 const settingGroups = [
@@ -53,6 +71,52 @@ const settingGroups = [
         options: [{ value: "4", label: "4 digits" }, { value: "6", label: "6 digits" }],
       },
       { key: "pin_max_attempts", label: "Max PIN Attempts", type: "number", helpText: "Failed attempts before lockout" },
+    ],
+  },
+  {
+    title: "Welcome Screen Text",
+    description: "Customize the text displayed on the kiosk home screen",
+    category: "kiosk",
+    fields: [
+      { key: "kiosk_welcome_title", label: "Welcome Title", type: "text", helpText: "Use {pool_name} to insert pool name" },
+      { key: "kiosk_welcome_subtitle", label: "Subtitle", type: "text" },
+      { key: "kiosk_card_instruction", label: "Card Reader Instruction", type: "text" },
+      { key: "kiosk_help_text", label: "Help Text (bottom)", type: "text" },
+    ],
+  },
+  {
+    title: "Overlay & Lock",
+    description: "Display overlay messages or lock the kiosk",
+    category: "kiosk",
+    fields: [
+      { key: "kiosk_locked", label: "Lock Kiosk", type: "toggle", helpText: "When enabled, kiosk shows locked message and disables all interactions" },
+      { key: "kiosk_lock_message", label: "Lock Message", type: "text", helpText: "Message shown when kiosk is locked" },
+      { key: "kiosk_overlay_enabled", label: "Show Overlay", type: "toggle", helpText: "Display a custom message overlay on the home screen" },
+      { key: "kiosk_overlay_text", label: "Overlay Text", type: "textarea", helpText: "Special announcement or notice to display" },
+    ],
+  },
+  {
+    title: "Background",
+    description: "Customize the kiosk background appearance",
+    category: "kiosk",
+    fields: [
+      {
+        key: "kiosk_bg_type", label: "Background Type", type: "select",
+        options: [
+          { value: "gradient", label: "Default Gradient" },
+          { value: "color", label: "Solid Color" },
+          { value: "image", label: "Custom Image" },
+        ],
+      },
+      { key: "kiosk_bg_color", label: "Background Color", type: "color" },
+      { key: "kiosk_bg_image", label: "Background Image", type: "image" },
+      {
+        key: "kiosk_bg_image_mode", label: "Image Display Mode", type: "select",
+        options: [
+          { value: "cover", label: "Cover (full screen)" },
+          { value: "tile", label: "Tile (repeat pattern)" },
+        ],
+      },
     ],
   },
   {
@@ -357,9 +421,11 @@ function TestConnectionButton({ action, settings }) {
   );
 }
 
-function SettingField({ field, value, onChange }) {
+function SettingField({ field, value, onChange, settings }) {
   const [testing, setTesting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const imageInputRef = useRef(null);
 
   if (field.type === "toggle") {
     const isOn = value === "true";
@@ -465,6 +531,100 @@ function SettingField({ field, value, onChange }) {
           >
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
+        </div>
+        {field.helpText && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{field.helpText}</p>}
+      </div>
+    );
+  }
+
+  if (field.type === "textarea") {
+    return (
+      <div>
+        <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">{field.label}</label>
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={3}
+          className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100 dark:ring-gray-600"
+        />
+        {field.helpText && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{field.helpText}</p>}
+      </div>
+    );
+  }
+
+  if (field.type === "color") {
+    return (
+      <div>
+        <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">{field.label}</label>
+        <div className="flex flex-wrap gap-2">
+          {BACKGROUND_COLORS.map((color) => (
+            <button
+              key={color.value}
+              type="button"
+              onClick={() => onChange(color.value)}
+              title={color.label}
+              className={`h-10 w-10 rounded-lg transition-all ${value === color.value ? "ring-2 ring-brand-600 ring-offset-2" : "ring-1 ring-gray-200 hover:scale-110"}`}
+              style={{ backgroundColor: color.value }}
+            />
+          ))}
+        </div>
+        {field.helpText && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{field.helpText}</p>}
+      </div>
+    );
+  }
+
+  if (field.type === "image") {
+    const handleUpload = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setUploading(true);
+      try {
+        const result = await uploadKioskBackground(file);
+        onChange(result.url);
+        toast.success("Background image uploaded");
+      } catch (err) {
+        toast.error(err.response?.data?.detail || "Upload failed");
+      } finally {
+        setUploading(false);
+      }
+    };
+
+    return (
+      <div>
+        <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">{field.label}</label>
+        <div className="flex items-center gap-4">
+          {value && (
+            <div className="relative h-20 w-32 overflow-hidden rounded-lg ring-1 ring-gray-200">
+              <img src={value} alt="Background" className="h-full w-full object-cover" />
+            </div>
+          )}
+          <div className="flex flex-col gap-2">
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleUpload}
+              className="hidden"
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Upload}
+              onClick={() => imageInputRef.current?.click()}
+              loading={uploading}
+            >
+              {uploading ? "Uploading..." : "Upload Image"}
+            </Button>
+            {value && (
+              <button
+                type="button"
+                onClick={() => onChange("")}
+                className="text-xs text-red-600 hover:text-red-700"
+              >
+                Remove Image
+              </button>
+            )}
+          </div>
         </div>
         {field.helpText && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{field.helpText}</p>}
       </div>
