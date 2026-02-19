@@ -15,6 +15,11 @@ export async function searchMembers(query) {
   return data;
 }
 
+export async function verifyPin(member_id, pin) {
+  const { data } = await kiosk.post("/verify-pin", { member_id, pin });
+  return data;
+}
+
 export async function checkin(member_id, guest_count = 0) {
   const { data } = await kiosk.post("/checkin", { member_id, guest_count });
   return data;

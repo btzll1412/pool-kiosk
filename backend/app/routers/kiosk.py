@@ -31,6 +31,7 @@ from app.schemas.kiosk import (
     MemberStatus,
     ActiveMembershipInfo,
     PaymentResponse,
+    PinVerifyRequest,
     SavedCardDetailResponse,
     SavedCardRequest,
     SavedCardResponse,
@@ -91,6 +92,13 @@ def search_members(data: SearchRequest, request: Request, db: Session = Depends(
         .all()
     )
     return [_build_member_status(db, m) for m in members]
+
+
+@router.post("/verify-pin")
+@limiter.limit("15/minute")
+def verify_pin_endpoint(data: PinVerifyRequest, request: Request, db: Session = Depends(get_db)):
+    verify_member_pin(db, data.member_id, data.pin)
+    return {"valid": True}
 
 
 @router.post("/checkin", response_model=KioskCheckinResponse)
