@@ -27,7 +27,7 @@ export default function IdleScreen({ goTo, settings }) {
           size="xl"
           icon={Search}
           onClick={() => goTo("search")}
-          className="min-w-[220px] bg-white/10 text-white ring-white/20 hover:bg-white/20 active:bg-white/30"
+          className="min-w-[200px] bg-white/10 text-white ring-white/20 hover:bg-white/20 active:bg-white/30"
         >
           Search Account
         </KioskButton>
@@ -35,8 +35,17 @@ export default function IdleScreen({ goTo, settings }) {
           variant="secondary"
           size="xl"
           icon={UserPlus}
+          onClick={() => goTo("signup")}
+          className="min-w-[200px] bg-white/10 text-white ring-white/20 hover:bg-white/20 active:bg-white/30"
+        >
+          New Member
+        </KioskButton>
+        <KioskButton
+          variant="secondary"
+          size="xl"
+          icon={UserPlus}
           onClick={() => goTo("guest")}
-          className="min-w-[220px] bg-white/10 text-white ring-white/20 hover:bg-white/20 active:bg-white/30"
+          className="min-w-[200px] bg-white/10 text-white ring-white/20 hover:bg-white/20 active:bg-white/30"
         >
           Guest Visit
         </KioskButton>

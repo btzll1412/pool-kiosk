@@ -170,3 +170,11 @@ class KioskFreezeRequest(BaseModel):
 class KioskUnfreezeRequest(BaseModel):
     member_id: uuid.UUID
     pin: str
+
+
+class KioskSignupRequest(BaseModel):
+    first_name: str
+    last_name: str
+    phone: str
+    email: str | None = None
+    pin: str

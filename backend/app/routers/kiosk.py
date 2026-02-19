@@ -27,6 +27,7 @@ from app.schemas.kiosk import (
     KioskCheckinRequest,
     KioskCheckinResponse,
     KioskFreezeRequest,
+    KioskSignupRequest,
     KioskUnfreezeRequest,
     MemberStatus,
     ActiveMembershipInfo,
@@ -51,6 +52,7 @@ from app.services.checkin_service import perform_checkin
 from app.services.membership_service import create_membership, freeze_membership, unfreeze_membership
 from app.services.notification_service import notify_checkin, send_change_notification
 from app.services.payment_service import get_payment_adapter, process_card_payment, process_cash_payment
+from app.services.auth_service import hash_pin
 from app.services.pin_service import verify_member_pin
 from app.services.rate_limit import limiter
 from app.services.settings_service import get_setting
@@ -99,6 +101,39 @@ def search_members(data: SearchRequest, request: Request, db: Session = Depends(
 def verify_pin_endpoint(data: PinVerifyRequest, request: Request, db: Session = Depends(get_db)):
     verify_member_pin(db, data.member_id, data.pin)
     return {"valid": True}
+
+
+@router.post("/signup", response_model=MemberStatus)
+@limiter.limit("10/minute")
+def kiosk_signup(data: KioskSignupRequest, request: Request, db: Session = Depends(get_db)):
+    # Check if phone already exists
+    existing = db.query(Member).filter(Member.phone == data.phone, Member.is_active.is_(True)).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this phone number already exists",
+        )
+
+    # Validate PIN
+    if len(data.pin) != 4 or not data.pin.isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PIN must be exactly 4 digits",
+        )
+
+    # Create member
+    member = Member(
+        first_name=data.first_name,
+        last_name=data.last_name,
+        phone=data.phone,
+        email=data.email,
+        pin_hash=hash_pin(data.pin),
+    )
+    db.add(member)
+    db.commit()
+    db.refresh(member)
+    logger.info("Kiosk signup: member=%s, name=%s %s", member.id, member.first_name, member.last_name)
+    return _build_member_status(db, member)
 
 
 @router.post("/checkin", response_model=KioskCheckinResponse)

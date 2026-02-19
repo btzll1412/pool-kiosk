@@ -150,6 +150,11 @@ export async function disableAutoCharge(card_id, member_id, pin) {
   return data;
 }
 
+export async function kioskSignup(memberData) {
+  const { data } = await kiosk.post("/signup", memberData);
+  return data;
+}
+
 export async function getSettings() {
   const { data } = await axios.get("/api/settings");
   return data;
