@@ -51,3 +51,7 @@ class MemberListResponse(BaseModel):
 class CreditAdjustRequest(BaseModel):
     amount: Decimal
     notes: str | None = None
+
+
+class PinResetRequest(BaseModel):
+    new_pin: str

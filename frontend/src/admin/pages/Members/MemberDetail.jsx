@@ -29,6 +29,7 @@ import {
   getMemberMemberships,
   getMemberPinStatus,
   getMemberSavedCards,
+  resetMemberPin,
   unlockMemberPin,
 } from "../../../api/members";
 import {
@@ -73,8 +74,12 @@ export default function MemberDetail() {
   const [swimAdjustLoading, setSwimAdjustLoading] = useState(false);
   const [deactivateMembershipTarget, setDeactivateMembershipTarget] = useState(null);
 
-  // PIN lockout
+  // PIN lockout and reset
   const [pinStatus, setPinStatus] = useState(null);
+  const [showResetPin, setShowResetPin] = useState(false);
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [resetPinLoading, setResetPinLoading] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -212,6 +217,30 @@ export default function MemberDetail() {
     }
   };
 
+  const handleResetPin = async () => {
+    if (newPin !== confirmPin) {
+      toast.error("PINs do not match");
+      return;
+    }
+    if (newPin.length < 4 || newPin.length > 6 || !/^\d+$/.test(newPin)) {
+      toast.error("PIN must be 4-6 digits");
+      return;
+    }
+    setResetPinLoading(true);
+    try {
+      await resetMemberPin(id, newPin);
+      toast.success("PIN reset successfully");
+      setShowResetPin(false);
+      setNewPin("");
+      setConfirmPin("");
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to reset PIN");
+    } finally {
+      setResetPinLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div>
@@ -254,6 +283,13 @@ export default function MemberDetail() {
                 onClick={() => setShowCredit(true)}
               >
                 Adjust Credit
+              </Button>
+              <Button
+                variant="secondary"
+                icon={Lock}
+                onClick={() => setShowResetPin(true)}
+              >
+                Reset PIN
               </Button>
               {member.is_active && (
                 <Button
@@ -586,6 +622,57 @@ export default function MemberDetail() {
               disabled={!creditAmount}
             >
               Apply
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Reset PIN Modal */}
+      <Modal
+        open={showResetPin}
+        onClose={() => {
+          setShowResetPin(false);
+          setNewPin("");
+          setConfirmPin("");
+        }}
+        title="Reset Member PIN"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <Input
+            label="New PIN"
+            type="password"
+            maxLength={6}
+            value={newPin}
+            onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+            placeholder="Enter 4-6 digit PIN"
+            helpText="PIN must be 4-6 digits"
+          />
+          <Input
+            label="Confirm PIN"
+            type="password"
+            maxLength={6}
+            value={confirmPin}
+            onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ""))}
+            placeholder="Confirm PIN"
+          />
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowResetPin(false);
+                setNewPin("");
+                setConfirmPin("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleResetPin}
+              loading={resetPinLoading}
+              disabled={!newPin || !confirmPin || newPin.length < 4}
+            >
+              Reset PIN
             </Button>
           </div>
         </div>

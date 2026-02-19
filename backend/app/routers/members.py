@@ -24,6 +24,7 @@ from app.schemas.member import (
     MemberListResponse,
     MemberResponse,
     MemberUpdate,
+    PinResetRequest,
 )
 from app.services.auth_service import get_current_user
 from app.services.member_service import (
@@ -255,6 +256,47 @@ def unlock_member_pin_endpoint(
     """Unlock a member's PIN after lockout (admin only)."""
     unlock_member_pin(db, member_id)
     return {"message": "PIN unlocked successfully"}
+
+
+@router.post("/{member_id}/reset-pin")
+def reset_member_pin_endpoint(
+    member_id: uuid.UUID,
+    data: PinResetRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reset a member's PIN (admin only)."""
+    # Validate PIN format
+    if len(data.new_pin) < 4 or len(data.new_pin) > 6 or not data.new_pin.isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PIN must be 4-6 digits"
+        )
+
+    member = db.query(Member).filter(Member.id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    # Log the PIN change
+    from app.models.activity_log import ActivityLog
+    activity = ActivityLog(
+        action_type="member.pin_reset",
+        entity_type="member",
+        entity_id=member_id,
+        user_id=current_user.id,
+        note=f"PIN reset by admin",
+    )
+    db.add(activity)
+
+    # Update PIN
+    member.pin_hash = hash_pin(data.new_pin)
+
+    # Also unlock the PIN if it was locked
+    unlock_member_pin(db, member_id)
+
+    db.commit()
+    logger.info("PIN reset for member=%s by user=%s", member_id, current_user.id)
+    return {"message": "PIN reset successfully"}
 
 
 @router.get("/export/csv")
