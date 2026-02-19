@@ -52,9 +52,8 @@ export default function SearchScreen({ setMember, goTo, goIdle }) {
           <KioskInput
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name or phone number..."
+            placeholder="Tap here to search by name or phone..."
             icon={Search}
-            autoFocus
           />
 
           <div className="mt-6">

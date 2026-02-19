@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { ArrowLeft, Loader2, UserPlus } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, UserPlus } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
+import KioskInput from "../components/KioskInput";
 import PlanCard from "../components/PlanCard";
 import { getPlans, guestVisit } from "../../api/kiosk";
 
@@ -89,31 +90,20 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
             </div>
 
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name *
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your name"
-                  autoFocus
-                  className="w-full rounded-2xl border-0 bg-white py-4 px-5 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone *
-                </label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="Phone number"
-                  className="w-full rounded-2xl border-0 bg-white py-4 px-5 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
+              <KioskInput
+                label="Name *"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Tap to enter your name"
+              />
+              <KioskInput
+                label="Phone *"
+                type="tel"
+                numeric
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Tap to enter phone number"
+              />
             </div>
 
             <KioskButton

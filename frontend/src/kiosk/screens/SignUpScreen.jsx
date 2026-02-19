@@ -89,8 +89,7 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
                 label="First Name *"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                placeholder="John"
-                autoFocus
+                placeholder="Tap to enter"
               />
               <KioskInput
                 label="Last Name *"
