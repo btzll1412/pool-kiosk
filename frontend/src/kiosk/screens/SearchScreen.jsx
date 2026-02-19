@@ -1,38 +1,30 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, Loader2, Search } from "lucide-react";
 import toast from "react-hot-toast";
-import { searchMembers } from "../../api/kiosk";
+import { getAllMembers } from "../../api/kiosk";
 
 export default function SearchScreen({ setMember, goTo, goIdle }) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const debounceRef = useRef(null);
+  const [allMembers, setAllMembers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    getAllMembers()
+      .then(setAllMembers)
+      .catch((err) => toast.error(err.response?.data?.detail || "Failed to load members"))
+      .finally(() => setLoading(false));
+  }, []);
 
-    if (query.trim().length < 2) {
-      setResults(null);
-      return;
-    }
-
-    debounceRef.current = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const data = await searchMembers(query.trim());
-        setResults(data);
-      } catch (err) {
-        toast.error(err.response?.data?.detail || "Search failed");
-      } finally {
-        setLoading(false);
-      }
-    }, 300);
-
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query]);
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? allMembers.filter(
+        (m) =>
+          m.first_name?.toLowerCase().includes(q) ||
+          m.last_name?.toLowerCase().includes(q) ||
+          (m.first_name + " " + m.last_name).toLowerCase().includes(q) ||
+          m.phone?.includes(q)
+      )
+    : allMembers;
 
   function selectMember(m) {
     setMember(m);
@@ -54,7 +46,7 @@ export default function SearchScreen({ setMember, goTo, goIdle }) {
         <div className="w-24" />
       </div>
 
-      <div className="flex flex-1 flex-col items-center px-6 py-8">
+      <div className="flex flex-1 flex-col items-center px-6 py-8 overflow-y-auto">
         <div className="w-full max-w-lg">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
@@ -62,7 +54,7 @@ export default function SearchScreen({ setMember, goTo, goIdle }) {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Start typing name or phone number..."
+              placeholder="Search by name or phone number..."
               autoFocus
               className="w-full rounded-2xl border-0 bg-white py-4 pl-12 pr-12 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500"
             />
@@ -71,51 +63,57 @@ export default function SearchScreen({ setMember, goTo, goIdle }) {
             )}
           </div>
 
-          {results !== null && (
-            <div className="mt-6">
-              {results.length === 0 ? (
-                <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
-                  <Search className="mx-auto h-10 w-10 text-gray-300" />
-                  <p className="mt-3 text-lg font-semibold text-gray-900">No results found</p>
-                  <p className="mt-1 text-sm text-gray-500">Try a different name or phone number</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {results.map((m) => (
-                    <button
-                      key={m.member_id}
-                      type="button"
-                      onClick={() => selectMember(m)}
-                      className="flex w-full items-center gap-4 rounded-2xl bg-white p-5 text-left shadow-sm ring-1 ring-gray-100 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.99]"
-                    >
-                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-100 text-lg font-bold text-brand-700">
-                        {m.first_name?.[0]}{m.last_name?.[0]}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-lg font-semibold text-gray-900">
-                          {m.first_name} {m.last_name}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {m.active_membership
-                            ? m.active_membership.plan_name
-                            : "No active plan"}
-                        </p>
-                      </div>
-                      <div
-                        className={`h-3 w-3 rounded-full ${
-                          m.is_frozen
-                            ? "bg-blue-500"
-                            : m.active_membership
-                              ? "bg-emerald-500"
-                              : "bg-amber-500"
-                        }`}
-                      />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <div className="mt-6">
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
+                <Search className="mx-auto h-10 w-10 text-gray-300" />
+                <p className="mt-3 text-lg font-semibold text-gray-900">
+                  {q ? "No results found" : "No members yet"}
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  {q ? "Try a different name or phone number" : "Members will appear here after signing up"}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filtered.map((m) => (
+                  <button
+                    key={m.member_id}
+                    type="button"
+                    onClick={() => selectMember(m)}
+                    className="flex w-full items-center gap-4 rounded-2xl bg-white p-5 text-left shadow-sm ring-1 ring-gray-100 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.99]"
+                  >
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-100 text-lg font-bold text-brand-700">
+                      {m.first_name?.[0]}{m.last_name?.[0]}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-lg font-semibold text-gray-900">
+                        {m.first_name} {m.last_name}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {m.active_membership
+                          ? m.active_membership.plan_name
+                          : "No active plan"}
+                      </p>
+                    </div>
+                    <div
+                      className={`h-3 w-3 rounded-full ${
+                        m.is_frozen
+                          ? "bg-blue-500"
+                          : m.active_membership
+                            ? "bg-emerald-500"
+                            : "bg-amber-500"
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

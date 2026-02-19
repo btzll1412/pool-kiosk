@@ -75,6 +75,18 @@ def scan_card(data: ScanRequest, request: Request, db: Session = Depends(get_db)
     return _build_member_status(db, member)
 
 
+@router.get("/members", response_model=list[MemberStatus])
+@limiter.limit("30/minute")
+def list_all_members(request: Request, db: Session = Depends(get_db)):
+    members = (
+        db.query(Member)
+        .filter(Member.is_active.is_(True))
+        .order_by(Member.first_name, Member.last_name)
+        .all()
+    )
+    return [_build_member_status(db, m) for m in members]
+
+
 @router.post("/search", response_model=list[MemberStatus])
 @limiter.limit("15/minute")
 def search_members(data: SearchRequest, request: Request, db: Session = Depends(get_db)):
