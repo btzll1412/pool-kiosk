@@ -635,6 +635,7 @@ def _build_member_status(db: Session, member: Member) -> MemberStatus:
         member_id=member.id,
         first_name=member.first_name,
         last_name=member.last_name,
+        phone=member.phone,
         credit_balance=member.credit_balance,
         has_pin=member.pin_hash is not None,
         active_membership=active_info,

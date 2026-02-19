@@ -21,6 +21,7 @@ class MemberStatus(BaseModel):
     member_id: uuid.UUID
     first_name: str
     last_name: str
+    phone: str | None = None
     credit_balance: Decimal
     has_pin: bool
     active_membership: "ActiveMembershipInfo | None" = None
