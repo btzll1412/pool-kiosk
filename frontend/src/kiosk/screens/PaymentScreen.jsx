@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Banknote, CreditCard, Loader2, Split } from "lucide-react";
 import toast from "react-hot-toast";
-import KioskButton from "../components/KioskButton";
 import PlanCard from "../components/PlanCard";
 import { getPlans } from "../../api/kiosk";
 
@@ -82,35 +81,33 @@ export default function PaymentScreen({ member, goTo, context, settings }) {
                       ` (${settings.currency}${Number(member.credit_balance).toFixed(2)} credit available)`}
                   </p>
                   <div className="grid gap-4 sm:grid-cols-3">
-                    <KioskButton
-                      variant="secondary"
-                      size="xl"
-                      icon={Banknote}
+                    <button
+                      type="button"
                       onClick={() => goPayMethod("cash")}
-                      className="flex-col gap-1 py-6"
+                      className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98]"
                     >
-                      Pay Cash
-                    </KioskButton>
-                    <KioskButton
-                      variant="secondary"
-                      size="xl"
-                      icon={CreditCard}
+                      <Banknote className="h-8 w-8 text-emerald-600" />
+                      <span className="text-lg font-semibold text-gray-900">Cash</span>
+                      <span className="text-xs text-amber-600 font-medium">Exact Change Only</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => goPayMethod("card")}
-                      className="flex-col gap-1 py-6"
+                      className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98]"
                     >
-                      Pay Card
-                    </KioskButton>
-                    {settings.split_payment_enabled === "true" && (
-                      <KioskButton
-                        variant="secondary"
-                        size="xl"
-                        icon={Split}
-                        onClick={() => goPayMethod("split")}
-                        className="flex-col gap-1 py-6"
-                      >
-                        Split Payment
-                      </KioskButton>
-                    )}
+                      <CreditCard className="h-8 w-8 text-blue-600" />
+                      <span className="text-lg font-semibold text-gray-900">Card</span>
+                      <span className="text-xs text-gray-400">Credit or Debit</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => goPayMethod("split")}
+                      className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98]"
+                    >
+                      <Split className="h-8 w-8 text-purple-600" />
+                      <span className="text-lg font-semibold text-gray-900">Split</span>
+                      <span className="text-xs text-gray-400">Cash + Card</span>
+                    </button>
                   </div>
                 </div>
               )}

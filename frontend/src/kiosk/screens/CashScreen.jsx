@@ -3,7 +3,7 @@ import { ArrowLeft, Banknote } from "lucide-react";
 import toast from "react-hot-toast";
 import NumPad from "../components/NumPad";
 import KioskButton from "../components/KioskButton";
-import { payCash, notifyChange } from "../../api/kiosk";
+import { payCash } from "../../api/kiosk";
 
 export default function CashScreen({ member, goTo, goIdle, context, settings }) {
   const plan = context.plan;
@@ -13,11 +13,10 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
   const [loading, setLoading] = useState(false);
 
   const amountNum = parseFloat(amount) || 0;
-  const isExact = amountNum === price;
   const isOver = amountNum > price;
   const overpay = isOver ? (amountNum - price).toFixed(2) : "0.00";
 
-  async function handlePay(wantsChange = false) {
+  async function handlePay() {
     if (amountNum <= 0) {
       toast.error("Enter the amount");
       return;
@@ -29,26 +28,16 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
 
     setLoading(true);
     try {
-      const data = await payCash(member.member_id, plan.id, amountNum, pin, wantsChange);
+      // Always add overpayment to credit (wantsChange = false)
+      const data = await payCash(member.member_id, plan.id, amountNum, pin, false);
 
-      if (data.change_due > 0) {
-        try {
-          await notifyChange(member.member_id, String(data.change_due));
-        } catch {
-          // notification failure is non-critical
-        }
-        goTo("change", {
-          changeDue: data.change_due,
-        });
-      } else {
-        goTo("status", {
-          statusType: "success",
-          statusTitle: "Payment Complete!",
-          statusMessage: data.credit_added > 0
-            ? `${settings.currency}${Number(data.credit_added).toFixed(2)} added to your account credit.`
-            : `Place ${settings.currency}${price.toFixed(2)} in the cash box. Thank you!`,
-        });
-      }
+      goTo("status", {
+        statusType: "success",
+        statusTitle: "Payment Complete!",
+        statusMessage: data.credit_added > 0
+          ? `${settings.currency}${Number(data.credit_added).toFixed(2)} added to your account credit.`
+          : `Place ${settings.currency}${price.toFixed(2)} in the cash box. Thank you!`,
+      });
     } catch (err) {
       toast.error(err.response?.data?.detail || "Payment failed");
     } finally {
@@ -83,6 +72,9 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
             <p className="mt-1 text-4xl font-extrabold text-gray-900">
               {settings.currency}{price.toFixed(2)}
             </p>
+            <p className="mt-2 text-xs font-medium text-amber-600">
+              Exact Change Only
+            </p>
           </div>
 
           <div className="mb-4 rounded-2xl bg-white p-5 text-center shadow-sm ring-1 ring-gray-100">
@@ -105,40 +97,17 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
             </p>
           )}
 
-          {isOver ? (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <KioskButton
-                variant="success"
-                size="xl"
-                icon={Banknote}
-                loading={loading}
-                onClick={() => handlePay(false)}
-              >
-                Add {settings.currency}{overpay} to Credit
-              </KioskButton>
-              <KioskButton
-                variant="secondary"
-                size="xl"
-                icon={Banknote}
-                loading={loading}
-                onClick={() => handlePay(true)}
-              >
-                I Need {settings.currency}{overpay} Change
-              </KioskButton>
-            </div>
-          ) : (
-            <KioskButton
-              variant="success"
-              size="xl"
-              icon={Banknote}
-              loading={loading}
-              disabled={amountNum < price}
-              onClick={() => handlePay(false)}
-              className="mt-4 w-full"
-            >
-              Confirm Payment
-            </KioskButton>
-          )}
+          <KioskButton
+            variant="success"
+            size="xl"
+            icon={Banknote}
+            loading={loading}
+            disabled={amountNum < price}
+            onClick={handlePay}
+            className="mt-4 w-full"
+          >
+            Confirm Payment
+          </KioskButton>
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, UserPlus } from "lucide-react";
+import { ArrowLeft, Banknote, CreditCard, UserPlus } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
 import KioskInput from "../components/KioskInput";
@@ -148,22 +148,26 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
                   {Number(selectedPlan.price).toFixed(2)}
                 </p>
                 <div className="flex justify-center gap-4">
-                  <KioskButton
-                    variant="secondary"
-                    size="xl"
-                    loading={loading}
+                  <button
+                    type="button"
+                    disabled={loading}
                     onClick={() => handlePay("cash")}
+                    className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
                   >
-                    Pay Cash
-                  </KioskButton>
-                  <KioskButton
-                    variant="primary"
-                    size="xl"
-                    loading={loading}
+                    <Banknote className="h-8 w-8 text-emerald-600" />
+                    <span className="text-lg font-semibold text-gray-900">Cash</span>
+                    <span className="text-xs text-amber-600 font-medium">Exact Change Only</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading}
                     onClick={() => handlePay("card")}
+                    className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
                   >
-                    Pay Card
-                  </KioskButton>
+                    <CreditCard className="h-8 w-8 text-blue-600" />
+                    <span className="text-lg font-semibold text-gray-900">Card</span>
+                    <span className="text-xs text-gray-400">Credit or Debit</span>
+                  </button>
                 </div>
               </div>
             )}
