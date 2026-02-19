@@ -92,10 +92,16 @@ def run_membership_expiry_check():
 
             if m.valid_until < today:
                 notify_membership_expired(db, member_name, str(member.id), plan_name)
+                if member.email:
+                    from app.services.email_service import send_membership_expired_email
+                    send_membership_expired_email(db, member.email, member_name, plan_name)
                 expired_count += 1
             elif m.valid_until <= warning_date:
                 days_remaining = (m.valid_until - today).days
                 notify_membership_expiring(db, member_name, str(member.id), days_remaining, plan_name)
+                if member.email:
+                    from app.services.email_service import send_membership_expiring_email
+                    send_membership_expiring_email(db, member.email, member_name, plan_name, days_remaining)
                 expiring_count += 1
 
         logger.info("Membership expiry check: %d expiring, %d expired", expiring_count, expired_count)

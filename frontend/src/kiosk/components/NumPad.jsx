@@ -32,7 +32,7 @@ export default function NumPad({ value, onChange, maxLength = 10, showDot = fals
             else if (key === "C") clear();
             else press(key);
           }}
-          className={`flex h-16 items-center justify-center rounded-xl text-2xl font-semibold transition-all active:scale-95
+          className={`flex h-16 items-center justify-center rounded-xl text-2xl font-semibold transition-all duration-150 active:scale-90 active:shadow-inner
             ${key === "DEL"
               ? "bg-red-50 text-red-600 hover:bg-red-100 active:bg-red-200"
               : key === "C"

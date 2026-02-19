@@ -11,6 +11,7 @@ import { getDashboard } from "../../api/reports";
 import StatCard from "../../shared/StatCard";
 import PageHeader from "../../shared/PageHeader";
 import Card from "../../shared/Card";
+import { SkeletonStatCards, SkeletonCard } from "../../shared/Skeleton";
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
@@ -25,8 +26,13 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-brand-600" />
+      <div>
+        <PageHeader title="Dashboard" description="Overview of today's pool activity" />
+        <SkeletonStatCards count={5} />
+        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       </div>
     );
   }
@@ -73,7 +79,7 @@ export default function Dashboard() {
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <Card>
-          <h3 className="text-base font-semibold text-gray-900 mb-4">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-4">
             Quick Actions
           </h3>
           <div className="grid grid-cols-2 gap-3">
@@ -101,7 +107,7 @@ export default function Dashboard() {
         </Card>
 
         <Card>
-          <h3 className="text-base font-semibold text-gray-900 mb-4">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-4">
             System Status
           </h3>
           <div className="space-y-3">
@@ -120,9 +126,9 @@ function QuickAction({ href, label, icon: Icon }) {
   return (
     <a
       href={href}
-      className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 transition-all hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700"
+      className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 transition-all hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700"
     >
-      <Icon className="h-4 w-4 text-gray-400" />
+      <Icon className="h-4 w-4 text-gray-400 dark:text-gray-500" />
       {label}
     </a>
   );
@@ -137,11 +143,11 @@ function StatusRow({ label, status }) {
   };
 
   return (
-    <div className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-2.5">
-      <span className="text-sm text-gray-600">{label}</span>
+    <div className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-gray-900 px-4 py-2.5">
+      <span className="text-sm text-gray-600 dark:text-gray-400">{label}</span>
       <div className="flex items-center gap-2">
         <div className={`h-2 w-2 rounded-full ${colors[status]}`} />
-        <span className="text-xs font-medium capitalize text-gray-500">
+        <span className="text-xs font-medium capitalize text-gray-500 dark:text-gray-400">
           {status}
         </span>
       </div>

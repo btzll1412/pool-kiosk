@@ -1,22 +1,22 @@
 export default function StatCard({ title, value, icon: Icon, trend, color = "brand" }) {
   const colors = {
-    brand: "bg-brand-50 text-brand-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-    amber: "bg-amber-50 text-amber-600",
-    purple: "bg-purple-50 text-purple-600",
-    rose: "bg-rose-50 text-rose-600",
+    brand: "bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400",
+    emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400",
+    amber: "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
+    purple: "bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400",
+    rose: "bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400",
   };
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-shadow dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-500">{title}</p>
-          <p className="mt-1.5 text-3xl font-bold tracking-tight text-gray-900">
+          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
+          <p className="mt-1.5 text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
             {value}
           </p>
           {trend && (
-            <p className="mt-1 text-xs text-gray-500">{trend}</p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{trend}</p>
           )}
         </div>
         {Icon && (

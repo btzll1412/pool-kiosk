@@ -35,13 +35,13 @@ export default function Modal({ open, onClose, title, children, size = "md" }) {
     >
       <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm" />
       <div
-        className={`relative w-full ${widths[size]} rounded-xl bg-white shadow-2xl ring-1 ring-gray-900/5 animate-in fade-in zoom-in-95`}
+        className={`relative w-full ${widths[size]} rounded-xl bg-white shadow-2xl ring-1 ring-gray-900/5 animate-in fade-in zoom-in-95 dark:bg-gray-800 dark:ring-gray-700`}
       >
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors dark:hover:bg-gray-700 dark:hover:text-gray-300"
           >
             <X className="h-5 w-5" />
           </button>

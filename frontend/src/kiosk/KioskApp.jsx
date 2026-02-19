@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Toaster } from "react-hot-toast";
 import RFIDListener from "./components/RFIDListener";
 import InactivityTimer from "./components/InactivityTimer";
+import ScreenTransition from "./components/ScreenTransition";
 import IdleScreen from "./screens/IdleScreen";
 import MemberScreen from "./screens/MemberScreen";
 import CheckinScreen from "./screens/CheckinScreen";
@@ -118,20 +119,22 @@ export default function KioskApp() {
         />
       )}
 
-      <Screen
-        member={member}
-        setMember={setMember}
-        context={context}
-        goTo={goTo}
-        goIdle={goIdle}
-        settings={{
-          poolName,
-          currency,
-          maxGuests,
-          returnSeconds: returnSec,
-          ...settings,
-        }}
-      />
+      <ScreenTransition screen={screen}>
+        <Screen
+          member={member}
+          setMember={setMember}
+          context={context}
+          goTo={goTo}
+          goIdle={goIdle}
+          settings={{
+            poolName,
+            currency,
+            maxGuests,
+            returnSeconds: returnSec,
+            ...settings,
+          }}
+        />
+      </ScreenTransition>
     </div>
   );
 }

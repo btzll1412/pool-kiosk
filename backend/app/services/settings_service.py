@@ -36,14 +36,57 @@ DEFAULT_SETTINGS = {
     # Webhook thresholds
     "low_balance_threshold": "5.00",
     "membership_expiry_warning_days": "7",
+    # Payment processor (Phase 8)
+    "payment_processor": "stub",
+    "stripe_api_key": "",
+    "stripe_secret_key": "",
+    "stripe_webhook_secret": "",
+    "square_access_token": "",
+    "square_location_id": "",
+    "square_environment": "sandbox",
+    "sola_api_key": "",
+    "sola_api_secret": "",
+    "sola_merchant_id": "",
+    "sola_environment": "sandbox",
+    # Email / SMTP (Phase 8)
+    "email_smtp_host": "",
+    "email_smtp_port": "587",
+    "email_smtp_username": "",
+    "email_smtp_password": "",
+    "email_from_address": "",
+    "email_from_name": "",
+    "email_tls_enabled": "true",
+    # SIP / Phone (Phase 8)
+    "sip_enabled": "false",
+    "sip_server": "",
+    "sip_port": "5060",
+    "sip_username": "",
+    "sip_password": "",
+    "sip_caller_id": "",
+    "sip_change_needed_number": "",
+    "sip_fusionpbx_api_url": "",
+    "sip_fusionpbx_api_key": "",
 }
 
 
-def get_all_settings(db: Session) -> dict[str, str]:
+SENSITIVE_KEYS = {
+    "stripe_api_key", "stripe_secret_key", "stripe_webhook_secret",
+    "square_access_token",
+    "sola_api_key", "sola_api_secret",
+    "email_smtp_password",
+    "sip_password", "sip_fusionpbx_api_key",
+}
+
+
+def get_all_settings(db: Session, mask_sensitive: bool = False) -> dict[str, str]:
     settings = db.query(Setting).all()
     result = dict(DEFAULT_SETTINGS)
     for s in settings:
         result[s.key] = s.value
+    if mask_sensitive:
+        for key in SENSITIVE_KEYS:
+            if result.get(key):
+                result[key] = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
     return result
 
 
@@ -56,6 +99,17 @@ def get_setting(db: Session, key: str, default: str | None = None) -> str:
 
 def get_setting_from_db(db: Session, key: str, default: str = "") -> str:
     return get_setting(db, key, default)
+
+
+def get_processor_config(db: Session, processor: str) -> dict[str, str]:
+    """Get processor-specific config dict from DB settings."""
+    prefix_map = {
+        "stripe": ["stripe_api_key", "stripe_secret_key", "stripe_webhook_secret"],
+        "square": ["square_access_token", "square_location_id", "square_environment"],
+        "sola": ["sola_api_key", "sola_api_secret", "sola_merchant_id", "sola_environment"],
+    }
+    keys = prefix_map.get(processor, [])
+    return {k: get_setting(db, k, "") for k in keys}
 
 
 def update_settings(db: Session, updates: dict[str, str]) -> dict[str, str]:

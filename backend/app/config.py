@@ -11,7 +11,6 @@ class Settings(BaseSettings):
     admin_default_username: str = "admin"
     admin_default_password: str = "changeme"
 
-    payment_adapter: str = "stub"
     pool_name: str = "My Pool"
 
     model_config = {"env_file": ".env", "extra": "ignore"}

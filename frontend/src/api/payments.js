@@ -9,10 +9,6 @@ export const createManualTransaction = (data) =>
 export const updateTransactionNotes = (id, data) =>
   client.put(`/transactions/${id}/notes`, data).then((r) => r.data);
 
-export const getMemberships = (memberId) =>
-  client
-    .get("/memberships", { params: { member_id: memberId } })
-    .then((r) => r.data);
 
 export const createMembership = (data) =>
   client.post("/memberships", data).then((r) => r.data);

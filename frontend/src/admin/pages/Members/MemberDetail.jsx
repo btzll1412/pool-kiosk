@@ -29,6 +29,7 @@ import ConfirmDialog from "../../../shared/ConfirmDialog";
 import Input from "../../../shared/Input";
 import Modal from "../../../shared/Modal";
 import PageHeader from "../../../shared/PageHeader";
+import { SkeletonLine, SkeletonCard } from "../../../shared/Skeleton";
 
 export default function MemberDetail() {
   const { id } = useParams();
@@ -112,8 +113,12 @@ export default function MemberDetail() {
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-brand-600" />
+      <div>
+        <SkeletonLine width="w-20" height="h-4" className="mb-4" />
+        <div className="space-y-6">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       </div>
     );
   }
@@ -125,7 +130,7 @@ export default function MemberDetail() {
       <div className="mb-6">
         <button
           onClick={() => navigate("/admin/members")}
-          className="mb-3 inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+          className="mb-3 inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to members
@@ -178,7 +183,7 @@ export default function MemberDetail() {
             <InfoRow label="Phone">{member.phone || "—"}</InfoRow>
             <InfoRow label="Email">{member.email || "—"}</InfoRow>
             <InfoRow label="Credit Balance">
-              <span className="text-lg font-bold text-gray-900">
+              <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
                 ${Number(member.credit_balance).toFixed(2)}
               </span>
             </InfoRow>
@@ -197,21 +202,21 @@ export default function MemberDetail() {
         <Card>
           <CardHeader title="RFID Cards" description={`${cards.length} card${cards.length !== 1 ? "s" : ""}`} />
           {cards.length === 0 ? (
-            <p className="text-sm text-gray-400">No cards assigned</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">No cards assigned</p>
           ) : (
             <div className="space-y-2">
               {cards.map((card) => (
                 <div
                   key={card.id}
-                  className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3"
+                  className="flex items-center justify-between rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-3"
                 >
                   <div className="flex items-center gap-3">
-                    <CreditCard className="h-4 w-4 text-gray-400" />
+                    <CreditCard className="h-4 w-4 text-gray-400 dark:text-gray-500" />
                     <div>
-                      <p className="text-sm font-mono font-medium text-gray-700">
+                      <p className="text-sm font-mono font-medium text-gray-700 dark:text-gray-300">
                         {card.rfid_uid}
                       </p>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
                         {new Date(card.assigned_at).toLocaleDateString()}
                       </p>
                     </div>
@@ -225,7 +230,7 @@ export default function MemberDetail() {
                     {card.is_active && (
                       <button
                         onClick={() => handleDeactivateCard(card.id)}
-                        className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                        className="rounded p-1 text-gray-400 dark:text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -241,22 +246,22 @@ export default function MemberDetail() {
         <Card>
           <CardHeader title="Saved Cards" description={`${savedCards.length} card${savedCards.length !== 1 ? "s" : ""}`} />
           {savedCards.length === 0 ? (
-            <p className="text-sm text-gray-400">No saved payment cards</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">No saved payment cards</p>
           ) : (
             <div className="space-y-2">
               {savedCards.map((sc) => (
                 <div
                   key={sc.id}
-                  className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3"
+                  className="rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-3"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <CreditCard className="h-4 w-4 text-gray-400" />
+                      <CreditCard className="h-4 w-4 text-gray-400 dark:text-gray-500" />
                       <div>
-                        <p className="text-sm font-medium text-gray-700">
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
                           {sc.friendly_name || `${sc.card_brand || "Card"} **** ${sc.card_last4}`}
                         </p>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-xs text-gray-400 dark:text-gray-500">
                           {sc.card_brand} **** {sc.card_last4}
                           {sc.is_default && " · Default"}
                         </p>
@@ -264,7 +269,7 @@ export default function MemberDetail() {
                     </div>
                     <button
                       onClick={() => handleDeleteSavedCard(sc.id)}
-                      className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                      className="rounded p-1 text-gray-400 dark:text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -286,22 +291,22 @@ export default function MemberDetail() {
         <Card>
           <CardHeader title="Activity Log" />
           {history.length === 0 ? (
-            <p className="text-sm text-gray-400">No activity yet</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">No activity yet</p>
           ) : (
             <div className="space-y-3 max-h-80 overflow-y-auto scrollbar-thin">
               {history.slice(0, 20).map((entry) => (
                 <div
                   key={entry.id}
-                  className="flex items-start gap-3 border-l-2 border-gray-200 pl-3"
+                  className="flex items-start gap-3 border-l-2 border-gray-200 dark:border-gray-700 pl-3"
                 >
                   <div>
-                    <p className="text-sm font-medium text-gray-700">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
                       {entry.action_type.replace(".", " ").replace(/\b\w/g, (c) => c.toUpperCase())}
                     </p>
                     {entry.note && (
-                      <p className="text-xs text-gray-500">{entry.note}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{entry.note}</p>
                     )}
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
                       {new Date(entry.created_at).toLocaleString()}
                     </p>
                   </div>
@@ -366,7 +371,7 @@ export default function MemberDetail() {
 function InfoRow({ label, children }) {
   return (
     <div className="flex items-start justify-between gap-4">
-      <dt className="text-sm text-gray-500">{label}</dt>
+      <dt className="text-sm text-gray-500 dark:text-gray-400">{label}</dt>
       <dd className="text-sm text-right">{children}</dd>
     </div>
   );

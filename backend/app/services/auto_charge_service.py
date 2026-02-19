@@ -30,7 +30,7 @@ def process_due_charges(db: Session) -> dict:
     )
 
     results = {"processed": 0, "succeeded": 0, "failed": 0}
-    adapter = get_payment_adapter()
+    adapter = get_payment_adapter(db)
 
     for card in due_cards:
         results["processed"] += 1
@@ -94,11 +94,18 @@ def process_due_charges(db: Session) -> dict:
         db.commit()
 
         logger.info("Auto-charge succeeded for member %s, plan %s", card.member_id, plan.name)
+        member_name = f"{member.first_name} {member.last_name}"
         notify_auto_charge_success(
-            db, member_name=f"{member.first_name} {member.last_name}",
+            db, member_name=member_name,
             member_id=str(card.member_id), plan_name=plan.name,
             amount=str(plan.price), card_last4=card.card_last4 or "",
         )
+        if member.email:
+            from app.services.email_service import send_auto_charge_receipt
+            send_auto_charge_receipt(
+                db, member.email, member_name, plan.name,
+                str(plan.price), card.card_last4 or "",
+            )
         results["succeeded"] += 1
 
     return results
@@ -172,7 +179,7 @@ def charge_saved_card_now(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
-    adapter = get_payment_adapter()
+    adapter = get_payment_adapter(db)
     charge_result = adapter.charge_saved_card(
         token=card.processor_token,
         amount=plan.price,

@@ -30,7 +30,7 @@ export default function CheckinScreen({ member, goTo, goIdle, settings }) {
   if (step === "success") {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-emerald-50 px-8 text-center">
-        <div className="flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100">
+        <div className="flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100 animate-checkmark-pop">
           <CheckCircle className="h-16 w-16 text-emerald-600" />
         </div>
         <h1 className="mt-6 text-4xl font-extrabold text-emerald-900">

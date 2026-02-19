@@ -16,6 +16,7 @@ import { getSwimReport } from "../../../api/reports";
 import Card, { CardHeader } from "../../../shared/Card";
 import PageHeader from "../../../shared/PageHeader";
 import StatCard from "../../../shared/StatCard";
+import { SkeletonStatCards, SkeletonCard } from "../../../shared/Skeleton";
 import { Activity, TrendingUp, Users } from "lucide-react";
 
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b"];
@@ -40,8 +41,10 @@ export default function SwimReport() {
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-brand-600" />
+      <div>
+        <PageHeader title="Swim Report" />
+        <SkeletonStatCards count={3} />
+        <div className="mt-6"><SkeletonCard className="h-64" /></div>
       </div>
     );
   }
@@ -62,7 +65,7 @@ export default function SwimReport() {
           <select
             value={range}
             onChange={(e) => setRange(e.target.value)}
-            className="rounded-lg border-0 py-2 pl-3 pr-8 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600"
+            className="rounded-lg border-0 py-2 pl-3 pr-8 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
           >
             <option value="7">Last 7 days</option>
             <option value="30">Last 30 days</option>
