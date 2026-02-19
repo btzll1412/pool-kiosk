@@ -608,12 +608,12 @@ def _build_member_status(db: Session, member: Member) -> MemberStatus:
                     valid_until=m.valid_until,
                 )
                 break
-        elif m.plan_type == PlanType.swim_pass:
+        elif m.plan_type in (PlanType.swim_pass, PlanType.single):
             remaining = (m.swims_total or 0) - m.swims_used
             if remaining > 0:
                 active_info = ActiveMembershipInfo(
                     membership_id=m.id,
-                    plan_name=m.plan.name if m.plan else "Swim Pass",
+                    plan_name=m.plan.name if m.plan else ("Swim Pass" if m.plan_type == PlanType.swim_pass else "Single Swim"),
                     plan_type=m.plan_type,
                     swims_remaining=remaining,
                 )
