@@ -342,6 +342,13 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 - Removed mousemove event to prevent constant timer resets
 - Dialog dismissible by clicking anywhere on screen
 
+### NFC Reader Integration
+- PC/SC smart card reader support via Python script (`static/nfc_reader.py`)
+- Dual-purpose: keyboard emulation for kiosk UI + WebSocket broadcast for admin
+- API endpoints: `/api/nfc/script`, `/api/nfc/broadcast`, `/api/nfc/ws`, `/api/nfc/status`
+- `useNFCReader` hook for admin card assignment (auto-populates UID on member detail page)
+- Documentation added to README.md and DESIGN.md
+
 ---
 
-## Last Updated: 2026-02-19 (Phase 9 — UX Polish & Admin Enhancements)
+## Last Updated: 2026-02-20 (NFC Documentation)

@@ -202,7 +202,48 @@ If you forget your password or username:
 
 ### RFID Reader
 
-Any USB HID RFID reader works (the reader acts as a keyboard -- it types the card UID and presses Enter). Plug it into the kiosk computer's USB port. No drivers needed.
+**Option 1: USB HID Reader (Recommended for simplicity)**
+
+Any USB HID RFID reader works (the reader acts as a keyboard — it types the card UID and presses Enter). Plug it into the kiosk computer's USB port. No drivers needed.
+
+**Option 2: PC/SC Smart Card Reader (ACR122U, etc.)**
+
+For PC/SC-compatible NFC readers that don't emulate a keyboard, use the included Python script. This script:
+- Reads card UIDs via the PC/SC API
+- Types the UID into the active window (keyboard emulation)
+- Broadcasts the UID to the backend for admin card assignment via WebSocket
+
+**Setup on the kiosk computer (Windows/Linux):**
+
+```bash
+# Install dependencies
+pip install pyscard pyautogui requests
+
+# Download the script from the running server
+curl -o nfc_reader.py http://<container-ip>/api/nfc/script
+
+# Or copy from the repo
+cp static/nfc_reader.py ./nfc_reader.py
+
+# Edit the BACKEND_URL in the script to match your server
+# BACKEND_URL = "http://192.168.1.153"  # Change to your container IP
+
+# Run the script
+python nfc_reader.py
+```
+
+**Windows auto-start:** Create a shortcut in `shell:startup` pointing to `pythonw nfc_reader.py`
+
+**Linux auto-start:** Add to your desktop environment's startup applications or create a systemd service.
+
+**Requirements:**
+- Python 3.7+
+- `pyscard` (PC/SC middleware — requires [pcscd](https://pcsclite.apdu.fr/) on Linux)
+- `pyautogui` (keyboard emulation)
+- `requests` (HTTP client)
+- A PC/SC compatible reader (ACR122U, HID Omnikey, etc.)
+
+**Admin card assignment:** When the script is running and an admin has a member's detail page open, tapping a card will automatically populate the UID in the "Assign Card" field via WebSocket.
 
 ### Kiosk Display
 
