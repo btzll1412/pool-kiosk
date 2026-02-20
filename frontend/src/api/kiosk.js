@@ -166,8 +166,18 @@ export async function disableAutoCharge(card_id, member_id, pin) {
   return data;
 }
 
+export async function checkCard(rfid_uid) {
+  const { data } = await kiosk.post("/check-card", { rfid_uid });
+  return data;
+}
+
 export async function kioskSignup(memberData) {
   const { data } = await kiosk.post("/signup", memberData);
+  return data;
+}
+
+export async function updateProfile(profileData) {
+  const { data } = await kiosk.post("/profile", profileData);
   return data;
 }
 

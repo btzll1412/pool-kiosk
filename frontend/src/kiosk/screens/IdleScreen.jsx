@@ -64,7 +64,7 @@ export default function IdleScreen({ goTo, settings }) {
       style={isCustomBg ? bgStyle : {}}
     >
       {/* Overlay for custom backgrounds */}
-      {isCustomBg && <div className="absolute inset-0 bg-black/40" />}
+      {isCustomBg && <div className="pointer-events-none absolute inset-0 bg-black/40" />}
 
       {/* Overlay message */}
       {overlayEnabled && overlayText && (
@@ -74,11 +74,11 @@ export default function IdleScreen({ goTo, settings }) {
       )}
 
       {/* Top right - New Member button */}
-      <div className="absolute right-6 top-6 z-10">
+      <div className="absolute right-6 top-6 z-30">
         <button
           type="button"
           onClick={() => goTo("signup")}
-          className="flex flex-col items-center rounded-2xl bg-white/10 px-6 py-4 backdrop-blur-sm transition-all hover:bg-white/20 active:scale-95"
+          className="flex cursor-pointer flex-col items-center rounded-2xl bg-white/10 px-6 py-4 backdrop-blur-sm transition-all hover:bg-white/20 active:scale-95"
         >
           <UserPlus className="h-8 w-8 text-white" />
           <span className="mt-2 text-lg font-bold text-white">New Member</span>

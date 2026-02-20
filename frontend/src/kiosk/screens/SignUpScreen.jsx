@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { ArrowLeft, UserPlus } from "lucide-react";
+import { ArrowLeft, CheckCircle, CreditCard, UserPlus, X } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
 import KioskInput from "../components/KioskInput";
-import { kioskSignup } from "../../api/kiosk";
+import RFIDListener from "../components/RFIDListener";
+import { checkCard, kioskSignup } from "../../api/kiosk";
 
 export default function SignUpScreen({ setMember, goTo, goIdle }) {
   const [firstName, setFirstName] = useState("");
@@ -12,7 +13,26 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
   const [email, setEmail] = useState("");
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
+  const [cardUid, setCardUid] = useState("");
   const [loading, setLoading] = useState(false);
+
+  async function handleCardScan(uid) {
+    try {
+      const result = await checkCard(uid);
+      if (result.available) {
+        setCardUid(uid);
+        toast.success("Card scanned and available!");
+      } else {
+        toast.error(result.message);
+      }
+    } catch (err) {
+      toast.error("Failed to check card");
+    }
+  }
+
+  function clearCard() {
+    setCardUid("");
+  }
 
   async function handleSubmit() {
     if (!firstName.trim() || !lastName.trim()) {
@@ -40,12 +60,15 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
         phone: phone.trim(),
         email: email.trim() || null,
         pin,
+        rfid_uid: cardUid || null,
       });
       setMember(data);
       goTo("status", {
         statusType: "success",
         statusTitle: "Welcome!",
-        statusMessage: "Your account has been created. You can now purchase a plan.",
+        statusMessage: cardUid
+          ? "Your account has been created and your card is linked. You can now purchase a plan."
+          : "Your account has been created. You can now purchase a plan.",
       });
     } catch (err) {
       toast.error(err.response?.data?.detail || "Sign up failed");
@@ -56,6 +79,9 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
 
   return (
     <div className="flex h-full flex-col bg-gray-50">
+      {/* RFID Listener - disabled once a card is scanned */}
+      <RFIDListener onScan={handleCardScan} disabled={!!cardUid} />
+
       <div className="flex items-center justify-between border-b border-gray-100 bg-white px-6 py-4">
         <button
           type="button"
@@ -134,6 +160,43 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
                 placeholder="****"
                 className="text-center tracking-widest"
               />
+            </div>
+
+            {/* Card Assignment Section */}
+            <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-white p-4">
+              <div className="flex items-center gap-3 mb-2">
+                <CreditCard className="h-5 w-5 text-gray-400" />
+                <span className="font-medium text-gray-700">Membership Card (Optional)</span>
+              </div>
+
+              {cardUid ? (
+                <div className="flex items-center justify-between rounded-xl bg-green-50 px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                    <div>
+                      <p className="font-medium text-green-800">Card Linked</p>
+                      <p className="text-sm font-mono text-green-600">{cardUid}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearCard}
+                    className="rounded-lg p-2 text-green-600 hover:bg-green-100 transition-colors"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-sm text-gray-500 mb-2">
+                    Take a card from the pile and scan it now
+                  </p>
+                  <div className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-4 py-2">
+                    <div className="h-2 w-2 rounded-full bg-brand-500 animate-pulse" />
+                    <span className="text-sm font-medium text-brand-700">Waiting for card scan...</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Toaster } from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import RFIDListener from "./components/RFIDListener";
 import InactivityTimer from "./components/InactivityTimer";
 import ScreenTransition from "./components/ScreenTransition";
@@ -23,6 +23,7 @@ import AutoChargeScreen from "./screens/AutoChargeScreen";
 import SplitPaymentScreen from "./screens/SplitPaymentScreen";
 import CreditPartialScreen from "./screens/CreditPartialScreen";
 import SignUpScreen from "./screens/SignUpScreen";
+import EditProfileScreen from "./screens/EditProfileScreen";
 
 const SCREENS = {
   idle: IdleScreen,
@@ -44,6 +45,7 @@ const SCREENS = {
   addCard: AddCardScreen,
   autoCharge: AutoChargeScreen,
   signup: SignUpScreen,
+  editProfile: EditProfileScreen,
 };
 
 // Refresh settings every 30 seconds when on idle screen
@@ -111,7 +113,9 @@ export default function KioskApp() {
         setMember(data);
         setScreen("member");
       } catch {
-        // Card not recognized — ignore silently on kiosk
+        toast.error(`Card ${rfid_uid} not recognized. Please see staff for assistance.`, {
+          id: "card-not-found",
+        });
       }
     },
     [screen]
@@ -128,25 +132,6 @@ export default function KioskApp() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-gray-50">
-      <Toaster
-        position="top-center"
-        toastOptions={{
-          duration: 3000,
-          style: {
-            borderRadius: "1rem",
-            padding: "1rem 1.25rem",
-            fontSize: "1rem",
-            fontWeight: 600,
-          },
-          success: {
-            style: { background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0" },
-          },
-          error: {
-            style: { background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca" },
-          },
-        }}
-      />
-
       <RFIDListener onScan={handleScan} disabled={!isIdle} />
 
       {!isIdle && (

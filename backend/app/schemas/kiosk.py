@@ -22,6 +22,7 @@ class MemberStatus(BaseModel):
     first_name: str
     last_name: str
     phone: str | None = None
+    email: str | None = None
     credit_balance: Decimal
     has_pin: bool
     active_membership: "ActiveMembershipInfo | None" = None
@@ -189,3 +190,13 @@ class KioskSignupRequest(BaseModel):
     phone: str
     email: str | None = None
     pin: str
+    rfid_uid: str | None = None
+
+
+class KioskUpdateProfileRequest(BaseModel):
+    member_id: uuid.UUID
+    pin: str
+    first_name: str | None = None
+    last_name: str | None = None
+    phone: str | None = None
+    email: str | None = None
