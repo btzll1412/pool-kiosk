@@ -31,6 +31,7 @@ from app.routers import (
     checkins,
     guests,
     kiosk,
+    nfc,
     members,
     memberships,
     payments,
@@ -192,6 +193,7 @@ app.include_router(guests.router, prefix="/api/guests", tags=["Guests"])
 app.include_router(settings_router.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(backup.router, prefix="/api/backup", tags=["Backup"])
 app.include_router(kiosk.router, prefix="/api/kiosk", tags=["Kiosk"])
+app.include_router(nfc.router, prefix="/api/nfc", tags=["NFC"])
 
 # Serve uploaded files
 import os

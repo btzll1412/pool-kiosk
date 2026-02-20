@@ -43,6 +43,7 @@ from app.schemas.kiosk import (
     SetDefaultCardRequest,
     SplitPaymentRequest,
     TokenizeCardRequest,
+    KioskUpdateProfileRequest,
 )
 from app.services.auto_charge_service import (
     charge_saved_card_now,
@@ -116,6 +117,23 @@ def verify_pin_endpoint(data: PinVerifyRequest, request: Request, db: Session = 
     return {"valid": True}
 
 
+@router.post("/check-card")
+@limiter.limit("30/minute")
+def check_card_available(data: ScanRequest, request: Request, db: Session = Depends(get_db)):
+    """Check if an RFID card is available for assignment (not already in use)."""
+    existing_card = db.query(Card).filter(Card.rfid_uid == data.rfid_uid).first()
+    if existing_card and existing_card.is_active:
+        # Get the member name for a helpful error message
+        member = db.query(Member).filter(Member.id == existing_card.member_id).first()
+        member_name = f"{member.first_name} {member.last_name}" if member else "another member"
+        return {
+            "available": False,
+            "message": f"This card is already assigned to {member_name}",
+            "member_id": str(existing_card.member_id) if existing_card.member_id else None,
+        }
+    return {"available": True, "message": "Card is available"}
+
+
 @router.post("/signup", response_model=MemberStatus)
 @limiter.limit("10/minute")
 def kiosk_signup(data: KioskSignupRequest, request: Request, db: Session = Depends(get_db)):
@@ -146,6 +164,46 @@ def kiosk_signup(data: KioskSignupRequest, request: Request, db: Session = Depen
     db.commit()
     db.refresh(member)
     logger.info("Kiosk signup: member=%s, name=%s %s", member.id, member.first_name, member.last_name)
+    return _build_member_status(db, member)
+
+
+@router.post("/profile", response_model=MemberStatus)
+@limiter.limit("20/minute")
+def kiosk_update_profile(data: KioskUpdateProfileRequest, request: Request, db: Session = Depends(get_db)):
+    """Update member profile from kiosk."""
+    # Verify PIN
+    verify_member_pin(db, data.member_id, data.pin)
+    
+    # Get member
+    member = db.query(Member).filter(Member.id == data.member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    
+    # Check if phone is being changed and if it's already taken
+    if data.phone and data.phone != member.phone:
+        existing = db.query(Member).filter(
+            Member.phone == data.phone, 
+            Member.id != data.member_id,
+            Member.is_active.is_(True)
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This phone number is already registered to another member"
+            )
+    
+    # Update fields
+    if data.first_name:
+        member.first_name = data.first_name
+    if data.last_name:
+        member.last_name = data.last_name
+    if data.phone:
+        member.phone = data.phone
+    member.email = data.email  # Can be None to clear email
+    
+    db.commit()
+    db.refresh(member)
+    logger.info("Kiosk profile update: member=%s, name=%s %s", member.id, member.first_name, member.last_name)
     return _build_member_status(db, member)
 
 

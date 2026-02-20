@@ -10,18 +10,25 @@ import {
   Lock,
   Minus,
   Plus,
+  Power,
+  PowerOff,
   Shield,
   Ticket,
   Trash2,
   Unlock,
   UserX,
+  Wifi,
+  WifiOff,
   Zap,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useTimezone, formatDate, formatDateTime } from "../../../context/TimezoneContext";
 import {
   adjustCredit,
+  assignCard,
   deactivateCard,
+  reactivateCard,
+  deleteCard,
   deactivateMember,
   deleteMemberSavedCard,
   getMember,
@@ -45,6 +52,7 @@ import Card, { CardHeader } from "../../../shared/Card";
 import ConfirmDialog from "../../../shared/ConfirmDialog";
 import Input from "../../../shared/Input";
 import Modal from "../../../shared/Modal";
+import useNFCReader from "../../../hooks/useNFCReader";
 import PageHeader from "../../../shared/PageHeader";
 import { SkeletonLine, SkeletonCard } from "../../../shared/Skeleton";
 
@@ -82,6 +90,23 @@ export default function MemberDetail() {
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [resetPinLoading, setResetPinLoading] = useState(false);
+
+  // Card management
+  const [deactivateCardTarget, setDeactivateCardTarget] = useState(null);
+  const [deleteCardTarget, setDeleteCardTarget] = useState(null);
+  const [showAssignCard, setShowAssignCard] = useState(false);
+  const [newCardUid, setNewCardUid] = useState("");
+  const [assignCardLoading, setAssignCardLoading] = useState(false);
+
+  // Listen for NFC scans when modal is open
+  const { connected: nfcConnected } = useNFCReader({
+    onScan: (uid) => {
+      if (showAssignCard) {
+        setNewCardUid(uid);
+      }
+    },
+    enabled: showAssignCard,
+  });
 
   const load = () => {
     setLoading(true);
@@ -139,13 +164,53 @@ export default function MemberDetail() {
     }
   };
 
-  const handleDeactivateCard = async (cardId) => {
+  const handleDeactivateCard = async () => {
+    if (!deactivateCardTarget) return;
     try {
-      await deactivateCard(id, cardId);
+      await deactivateCard(id, deactivateCardTarget.id);
       toast.success("Card deactivated");
+      setDeactivateCardTarget(null);
       load();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to deactivate card");
+    }
+  };
+
+  const handleReactivateCard = async (cardId) => {
+    try {
+      await reactivateCard(id, cardId);
+      toast.success("Card reactivated");
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to reactivate card");
+    }
+  };
+
+  const handleDeleteCard = async () => {
+    if (!deleteCardTarget) return;
+    try {
+      await deleteCard(id, deleteCardTarget.id);
+      toast.success("Card deleted");
+      setDeleteCardTarget(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to delete card");
+    }
+  };
+
+  const handleAssignCard = async () => {
+    if (!newCardUid.trim()) return;
+    setAssignCardLoading(true);
+    try {
+      await assignCard(id, { rfid_uid: newCardUid.trim() });
+      toast.success("Card assigned successfully");
+      setShowAssignCard(false);
+      setNewCardUid("");
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to assign card");
+    } finally {
+      setAssignCardLoading(false);
     }
   };
 
@@ -356,7 +421,17 @@ export default function MemberDetail() {
 
         {/* RFID Cards */}
         <Card>
-          <CardHeader title="RFID Cards" description={`${cards.length} card${cards.length !== 1 ? "s" : ""}`} />
+          <div className="flex items-center justify-between mb-4">
+            <CardHeader title="RFID Cards" description={`${cards.length} card${cards.length !== 1 ? "s" : ""}`} />
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Plus}
+              onClick={() => setShowAssignCard(true)}
+            >
+              Assign Card
+            </Button>
+          </div>
           {cards.length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-gray-500">No cards assigned</p>
           ) : (
@@ -383,14 +458,30 @@ export default function MemberDetail() {
                     ) : (
                       <Badge color="red">Inactive</Badge>
                     )}
-                    {card.is_active && (
+                    {card.is_active ? (
                       <button
-                        onClick={() => handleDeactivateCard(card.id)}
-                        className="rounded p-1 text-gray-400 dark:text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors"
+                        onClick={() => setDeactivateCardTarget(card)}
+                        className="rounded p-1 text-gray-400 dark:text-gray-500 hover:bg-amber-50 hover:text-amber-500 transition-colors"
+                        title="Deactivate card"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <PowerOff className="h-3.5 w-3.5" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleReactivateCard(card.id)}
+                        className="rounded p-1 text-gray-400 dark:text-gray-500 hover:bg-green-50 hover:text-green-500 transition-colors"
+                        title="Reactivate card"
+                      >
+                        <Power className="h-3.5 w-3.5" />
                       </button>
                     )}
+                    <button
+                      onClick={() => setDeleteCardTarget(card)}
+                      className="rounded p-1 text-gray-400 dark:text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors"
+                      title="Delete card"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -812,6 +903,96 @@ export default function MemberDetail() {
         message={`Are you sure you want to deactivate this ${deactivateMembershipTarget?.plan_name || "membership"}? The member will no longer be able to use it.`}
         confirmLabel="Deactivate"
       />
+
+      {/* Deactivate Card Confirmation */}
+      <ConfirmDialog
+        open={!!deactivateCardTarget}
+        onClose={() => setDeactivateCardTarget(null)}
+        onConfirm={handleDeactivateCard}
+        title="Deactivate Card"
+        message={`Are you sure you want to deactivate card ${deactivateCardTarget?.rfid_uid}? The card will no longer work for check-ins but can be reactivated later.`}
+        confirmLabel="Deactivate"
+      />
+
+      {/* Delete Card Confirmation */}
+      <ConfirmDialog
+        open={!!deleteCardTarget}
+        onClose={() => setDeleteCardTarget(null)}
+        onConfirm={handleDeleteCard}
+        title="Delete Card"
+        message={`Are you sure you want to permanently delete card ${deleteCardTarget?.rfid_uid}? This action cannot be undone. The card can be reassigned to another member after deletion.`}
+        confirmLabel="Delete"
+      />
+
+      {/* Assign Card Modal */}
+      <Modal
+        open={showAssignCard}
+        onClose={() => {
+          setShowAssignCard(false);
+          setNewCardUid("");
+        }}
+        title="Assign RFID Card"
+        size="sm"
+      >
+        <div className="space-y-4">
+          {/* NFC Connection Status */}
+          <div className="flex items-center gap-2 text-sm">
+            {nfcConnected ? (
+              <>
+                <Wifi className="h-4 w-4 text-green-500" />
+                <span className="text-green-600 dark:text-green-400">
+                  NFC reader connected - tap a card
+                </span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="h-4 w-4 text-gray-400" />
+                <span className="text-gray-500 dark:text-gray-400">
+                  NFC reader not connected
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* Scan Instructions */}
+          <div className="rounded-lg border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-6 text-center">
+            <CreditCard className="mx-auto h-10 w-10 text-gray-400 dark:text-gray-500 mb-3" />
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              {nfcConnected
+                ? "Tap a card on the NFC reader at the kiosk"
+                : "Enter the card UID manually below"}
+            </p>
+          </div>
+
+          {/* Manual UID Input */}
+          <Input
+            label="Card UID"
+            value={newCardUid}
+            onChange={(e) => setNewCardUid(e.target.value.toUpperCase())}
+            placeholder="Enter or scan card UID"
+            helpText="UID will appear automatically when a card is scanned"
+          />
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowAssignCard(false);
+                setNewCardUid("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAssignCard}
+              loading={assignCardLoading}
+              disabled={!newCardUid.trim()}
+            >
+              Assign Card
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

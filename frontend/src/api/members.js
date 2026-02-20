@@ -28,6 +28,12 @@ export const assignCard = (id, data) =>
   client.post(`/members/${id}/cards`, data).then((r) => r.data);
 
 export const deactivateCard = (memberId, cardId) =>
+  client.post(`/members/${memberId}/cards/${cardId}/deactivate`).then((r) => r.data);
+
+export const reactivateCard = (memberId, cardId) =>
+  client.post(`/members/${memberId}/cards/${cardId}/reactivate`).then((r) => r.data);
+
+export const deleteCard = (memberId, cardId) =>
   client.delete(`/members/${memberId}/cards/${cardId}`).then((r) => r.data);
 
 export const getMemberSavedCards = (memberId) =>

@@ -146,10 +146,16 @@ def get_member_cards(db: Session, member_id: uuid.UUID) -> list[Card]:
 
 def assign_card(db: Session, member_id: uuid.UUID, rfid_uid: str, user_id: uuid.UUID | None = None) -> Card:
     get_member(db, member_id)
-    existing = db.query(Card).filter(Card.rfid_uid == rfid_uid, Card.is_active.is_(True)).first()
+    existing = db.query(Card).filter(Card.rfid_uid == rfid_uid).first()
     if existing:
-        logger.warning("Card assignment failed — already in use: rfid=%s, existing_member=%s", rfid_uid, existing.member_id)
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card already assigned to a member")
+        if existing.is_active:
+            logger.warning("Card assignment failed — already in use: rfid=%s, existing_member=%s", rfid_uid, existing.member_id)
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card already assigned to a member")
+        else:
+            # Card exists but is deactivated - delete it so it can be reassigned
+            logger.info("Deleting deactivated card before reassignment: rfid=%s, old_member=%s", rfid_uid, existing.member_id)
+            db.delete(existing)
+            db.flush()
     card = Card(member_id=member_id, rfid_uid=rfid_uid)
     db.add(card)
     db.commit()
@@ -169,3 +175,27 @@ def deactivate_card(db: Session, member_id: uuid.UUID, card_id: uuid.UUID, user_
     log_activity(db, user_id=user_id, action="card.deactivate", entity_type="card", entity_id=card.id)
     logger.info("RFID card deactivated: card=%s, member=%s", card_id, member_id)
     return card
+
+
+def reactivate_card(db: Session, member_id: uuid.UUID, card_id: uuid.UUID, user_id: uuid.UUID | None = None) -> Card:
+    card = db.query(Card).filter(Card.id == card_id, Card.member_id == member_id).first()
+    if not card:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
+    card.is_active = True
+    db.commit()
+    db.refresh(card)
+    log_activity(db, user_id=user_id, action="card.reactivate", entity_type="card", entity_id=card.id)
+    logger.info("RFID card reactivated: card=%s, member=%s", card_id, member_id)
+    return card
+
+
+def delete_card(db: Session, member_id: uuid.UUID, card_id: uuid.UUID, user_id: uuid.UUID | None = None) -> dict:
+    card = db.query(Card).filter(Card.id == card_id, Card.member_id == member_id).first()
+    if not card:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
+    rfid_uid = card.rfid_uid
+    log_activity(db, user_id=user_id, action="card.delete", entity_type="card", entity_id=card_id, before={"rfid_uid": rfid_uid, "member_id": str(member_id)})
+    db.delete(card)
+    db.commit()
+    logger.info("RFID card deleted: card=%s, rfid=%s, member=%s", card_id, rfid_uid, member_id)
+    return {"message": "Card deleted", "rfid_uid": rfid_uid}
