@@ -29,8 +29,6 @@ These are the source of truth for this project. Do not guess or assume — read 
 - Route handlers should be thin — validate, call service, return response
 - Use SQLAlchemy models with proper relationships and constraints
 - Alembic for all schema changes — never modify the database manually
-- **14 routers:** auth, backup, cards, checkins, guests, kiosk, members, memberships, nfc, payments, plans, reports, settings, transactions
-- **16 services:** activity, auth, auto_charge, checkin, email, member, membership, nfc_reader, notification, payment, pin, rate_limit, report, seed, settings, sip
 
 ### Frontend (React / Tailwind)
 
@@ -50,8 +48,7 @@ These are the source of truth for this project. Do not guess or assume — read 
 
 ## Git Workflow
 
-- Main branch: `main`
-- Development branches: `local-vm-fixer`, `claude/*`
+- Develop on branch: `claude/pool-management-system-gxRaW`
 - Write clear, descriptive commit messages
 - Commit logically grouped changes — not everything in one giant commit
 - **CRITICAL: Before every commit**, run the full test suite (`pytest backend/tests/ -v`) and fix any failures. Never commit code that breaks existing tests. New features must include or pass all existing tests to ensure the new code works with the entire system.
@@ -60,11 +57,8 @@ These are the source of truth for this project. Do not guess or assume — read 
 
 ## Architecture Reminders
 
-- **Payment adapters** use the modular pattern in `app/payments/` — all processors implement the base interface (Stub, Cash, Stripe, Square, Sola)
+- **Payment adapters** use the modular pattern in `app/payments/` — all processors implement the base interface
 - **System settings** are stored in the database `settings` table, not hardcoded
 - **Activity logging** must cover all admin actions — before/after snapshots
 - **Kiosk endpoints** are unauthenticated but rate-limited
 - **Admin endpoints** require JWT authentication
-- **NFC reader** — PC/SC smart card support via `static/nfc_reader.py` with WebSocket broadcast to admin browsers for card assignment (see `docs/DESIGN.md` for details)
-- **Notifications** — 8 webhook event types, SMTP email, SIP/FusionPBX phone calls
-- **Scheduled jobs** — APScheduler runs auto-charge (06:00), expiry check (07:00), daily summary (21:00)

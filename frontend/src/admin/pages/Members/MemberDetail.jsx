@@ -30,6 +30,7 @@ import {
   reactivateCard,
   deleteCard,
   deactivateMember,
+  permanentlyDeleteMember,
   deleteMemberSavedCard,
   getMember,
   getMemberCards,
@@ -68,6 +69,7 @@ export default function MemberDetail() {
   const [loading, setLoading] = useState(true);
   const [showCredit, setShowCredit] = useState(false);
   const [showDeactivate, setShowDeactivate] = useState(false);
+  const [showPermanentDelete, setShowPermanentDelete] = useState(false);
   const [creditAmount, setCreditAmount] = useState("");
   const [creditNotes, setCreditNotes] = useState("");
   const [creditLoading, setCreditLoading] = useState(false);
@@ -161,6 +163,16 @@ export default function MemberDetail() {
       navigate("/admin/members");
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to deactivate member");
+    }
+  };
+
+  const handlePermanentDelete = async () => {
+    try {
+      await permanentlyDeleteMember(id);
+      toast.success("Member permanently deleted");
+      navigate("/admin/members");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to delete member");
     }
   };
 
@@ -365,6 +377,15 @@ export default function MemberDetail() {
                   onClick={() => setShowDeactivate(true)}
                 >
                   Deactivate
+                </Button>
+              )}
+              {!member.is_active && (
+                <Button
+                  variant="danger"
+                  icon={Trash2}
+                  onClick={() => setShowPermanentDelete(true)}
+                >
+                  Delete Permanently
                 </Button>
               )}
             </div>
@@ -779,6 +800,16 @@ export default function MemberDetail() {
         title="Deactivate Member"
         message={`Are you sure you want to deactivate ${member.first_name} ${member.last_name}? They will no longer be able to check in.`}
         confirmLabel="Deactivate"
+      />
+
+      {/* Permanent Delete Confirmation */}
+      <ConfirmDialog
+        open={showPermanentDelete}
+        onClose={() => setShowPermanentDelete(false)}
+        onConfirm={handlePermanentDelete}
+        title="Permanently Delete Member"
+        message={`Are you sure you want to PERMANENTLY delete ${member.first_name} ${member.last_name}? This will remove all their data including check-in history, memberships, and saved cards. This action cannot be undone.`}
+        confirmLabel="Delete Forever"
       />
 
       {/* Add Membership Modal */}

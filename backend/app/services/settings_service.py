@@ -24,6 +24,7 @@ DEFAULT_SETTINGS = {
     "pin_length": "4",
     "auto_charge_enabled": "true",
     "guest_visit_enabled": "true",
+    "senior_age_threshold": "65",
     "split_payment_enabled": "true",
     # Webhook URLs (Phase 7)
     "webhook_change_needed": "",

@@ -90,6 +90,37 @@ def deactivate_member_endpoint(
     return deactivate_member(db, member_id, user_id=current_user.id)
 
 
+@router.delete("/{member_id}/permanent")
+def permanently_delete_member(
+    member_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Permanently delete a deactivated member and all their data."""
+    member = db.query(Member).filter(Member.id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    
+    if member.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Member must be deactivated before permanent deletion"
+        )
+    
+    # Delete related records
+    db.query(Checkin).filter(Checkin.member_id == member_id).delete()
+    db.query(Membership).filter(Membership.member_id == member_id).delete()
+    db.query(SavedCard).filter(SavedCard.member_id == member_id).delete()
+    db.query(ActivityLog).filter(ActivityLog.entity_id == member_id).delete()
+    
+    # Delete the member
+    db.delete(member)
+    db.commit()
+    
+    logger.info("Member permanently deleted: id=%s, by_user=%s", member_id, current_user.id)
+    return {"message": "Member permanently deleted"}
+
+
 @router.get("/{member_id}/history")
 def get_member_history(
     member_id: uuid.UUID,

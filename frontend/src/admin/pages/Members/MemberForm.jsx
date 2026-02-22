@@ -21,11 +21,22 @@ export default function MemberForm() {
     email: "",
     pin: "",
     notes: "",
+    date_of_birth: "",
+    is_senior: false,
   });
+  const [seniorAgeThreshold, setSeniorAgeThreshold] = useState(65);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(isEdit);
 
   useEffect(() => {
+    // Fetch senior age threshold setting
+    fetch("/api/settings/senior_age_threshold")
+      .then(r => r.json())
+      .then(data => {
+        if (data.value) setSeniorAgeThreshold(parseInt(data.value, 10));
+      })
+      .catch(() => {});
+    
     if (isEdit) {
       getMember(id)
         .then((m) =>
@@ -36,12 +47,30 @@ export default function MemberForm() {
             email: m.email || "",
             pin: "",
             notes: m.notes || "",
+            date_of_birth: m.date_of_birth || "",
+            is_senior: m.is_senior || false,
           })
         )
         .catch((err) => toast.error(err.response?.data?.detail || "Failed to load member"))
         .finally(() => setFetching(false));
     }
   }, [id, isEdit]);
+
+  // Calculate age from DOB
+  function calculateAge(dob) {
+    if (!dob) return null;
+    const today = new Date();
+    const birthDate = new Date(dob);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  }
+
+  const age = calculateAge(form.date_of_birth);
+  const qualifiesForSenior = age !== null && age >= seniorAgeThreshold;
 
   const handleChange = (field) => (e) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -55,6 +84,7 @@ export default function MemberForm() {
       if (!payload.email) payload.email = null;
       if (!payload.pin) delete payload.pin;
       if (!payload.notes) payload.notes = null;
+      if (!payload.date_of_birth) payload.date_of_birth = null;
 
       if (isEdit) {
         delete payload.pin;
@@ -137,6 +167,51 @@ export default function MemberForm() {
               onChange={handleChange("email")}
               placeholder="john@example.com"
             />
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Date of Birth
+              </label>
+              <input
+                type="date"
+                value={form.date_of_birth}
+                onChange={(e) => {
+                  const newDob = e.target.value;
+                  setForm(f => {
+                    const newAge = calculateAge(newDob);
+                    return {
+                      ...f,
+                      date_of_birth: newDob,
+                      is_senior: newAge !== null && newAge >= seniorAgeThreshold ? true : f.is_senior
+                    };
+                  });
+                }}
+                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-inset focus:ring-brand-600 dark:bg-gray-800"
+              />
+              {age !== null && (
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Age: {age} years old</p>
+              )}
+            </div>
+            {qualifiesForSenior && (
+              <div className="flex items-center">
+                <label className="flex items-center gap-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 p-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.is_senior}
+                    onChange={(e) => setForm(f => ({ ...f, is_senior: e.target.checked }))}
+                    className="h-5 w-5 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  <div>
+                    <p className="font-medium text-amber-800 dark:text-amber-200">Senior Citizen</p>
+                    <p className="text-sm text-amber-600 dark:text-amber-400">
+                      Qualifies for senior pricing
+                    </p>
+                  </div>
+                </label>
+              </div>
+            )}
           </div>
 
           {!isEdit && (

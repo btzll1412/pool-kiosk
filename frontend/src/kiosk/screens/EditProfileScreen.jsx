@@ -1,16 +1,42 @@
-import { useState } from "react";
-import { ArrowLeft, Save, User } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, Calendar, Save, User } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
 import KioskInput from "../components/KioskInput";
-import { updateProfile } from "../../api/kiosk";
+import { getSettings, updateProfile } from "../../api/kiosk";
 
 export default function EditProfileScreen({ member, setMember, goTo, context }) {
   const [firstName, setFirstName] = useState(member?.first_name || "");
   const [lastName, setLastName] = useState(member?.last_name || "");
   const [phone, setPhone] = useState(member?.phone || "");
   const [email, setEmail] = useState(member?.email || "");
+  const [dateOfBirth, setDateOfBirth] = useState(member?.date_of_birth || "");
+  const [isSenior, setIsSenior] = useState(member?.is_senior || false);
+  const [seniorAgeThreshold, setSeniorAgeThreshold] = useState(65);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    getSettings().then((settings) => {
+      if (settings.senior_age_threshold) {
+        setSeniorAgeThreshold(parseInt(settings.senior_age_threshold, 10));
+      }
+    }).catch(() => {});
+  }, []);
+
+  function calculateAge(dob) {
+    if (!dob) return null;
+    const today = new Date();
+    const birthDate = new Date(dob);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  }
+
+  const age = calculateAge(dateOfBirth);
+  const qualifiesForSenior = age !== null && age >= seniorAgeThreshold;
 
   if (!member) return null;
 
@@ -33,6 +59,8 @@ export default function EditProfileScreen({ member, setMember, goTo, context }) 
         last_name: lastName.trim(),
         phone: phone.trim(),
         email: email.trim() || null,
+        date_of_birth: dateOfBirth || null,
+        is_senior: isSenior,
       });
       setMember(updated);
       toast.success("Profile updated successfully");
@@ -104,6 +132,49 @@ export default function EditProfileScreen({ member, setMember, goTo, context }) 
               onChange={(e) => setEmail(e.target.value)}
               placeholder="john@example.com"
             />
+
+            {/* Date of Birth */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Date of Birth (optional)
+              </label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  type="date"
+                  value={dateOfBirth}
+                  onChange={(e) => {
+                    setDateOfBirth(e.target.value);
+                    const newAge = calculateAge(e.target.value);
+                    if (newAge !== null && newAge >= seniorAgeThreshold) {
+                      setIsSenior(true);
+                    }
+                  }}
+                  className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                />
+              </div>
+              {age !== null && (
+                <p className="mt-1 text-sm text-gray-500">Age: {age} years old</p>
+              )}
+            </div>
+
+            {/* Senior Citizen Checkbox */}
+            {qualifiesForSenior && (
+              <label className="flex items-center gap-3 rounded-xl bg-amber-50 p-4 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isSenior}
+                  onChange={(e) => setIsSenior(e.target.checked)}
+                  className="h-5 w-5 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                <div>
+                  <p className="font-medium text-amber-800">Senior Citizen Discount</p>
+                  <p className="text-sm text-amber-600">
+                    You qualify for senior pricing ({seniorAgeThreshold}+ years)
+                  </p>
+                </div>
+              </label>
+            )}
           </div>
 
           <KioskButton

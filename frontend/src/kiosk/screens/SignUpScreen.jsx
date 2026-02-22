@@ -1,20 +1,52 @@
-import { useState } from "react";
-import { ArrowLeft, CheckCircle, CreditCard, UserPlus, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, ArrowRight, Calendar, CheckCircle, CreditCard, UserPlus, X } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
 import KioskInput from "../components/KioskInput";
 import RFIDListener from "../components/RFIDListener";
-import { checkCard, kioskSignup } from "../../api/kiosk";
+import { checkCard, getPlans, getSettings, kioskSignup } from "../../api/kiosk";
 
 export default function SignUpScreen({ setMember, goTo, goIdle }) {
+  
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [isSenior, setIsSenior] = useState(false);
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [cardUid, setCardUid] = useState("");
   const [loading, setLoading] = useState(false);
+  const [plans, setPlans] = useState([]);
+  const [seniorAgeThreshold, setSeniorAgeThreshold] = useState(65);
+  
+
+  useEffect(() => {
+    getSettings().then((settings) => {
+      if (settings.senior_age_threshold) {
+        setSeniorAgeThreshold(parseInt(settings.senior_age_threshold, 10));
+      }
+    }).catch(() => {});
+    
+    getPlans().then(setPlans).catch(() => {});
+  }, []);
+
+  // Calculate age from DOB
+  function calculateAge(dob) {
+    if (!dob) return null;
+    const today = new Date();
+    const birthDate = new Date(dob);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  }
+
+  const age = calculateAge(dateOfBirth);
+  const qualifiesForSenior = age !== null && age >= seniorAgeThreshold;
 
   async function handleCardScan(uid) {
     try {
@@ -34,7 +66,7 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
     setCardUid("");
   }
 
-  async function handleSubmit() {
+  async function handleCreateAccount() {
     if (!firstName.trim() || !lastName.trim()) {
       toast.error("Please enter your full name");
       return;
@@ -61,20 +93,30 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
         email: email.trim() || null,
         pin,
         rfid_uid: cardUid || null,
+        date_of_birth: dateOfBirth || null,
+        is_senior: isSenior,
       });
       setMember(data);
-      goTo("status", {
-        statusType: "success",
-        statusTitle: "Welcome!",
-        statusMessage: cardUid
-          ? "Your account has been created and your card is linked. You can now purchase a plan."
-          : "Your account has been created. You can now purchase a plan.",
-      });
+      toast.success("Account created successfully!");
+      // Go to plan selection
+      goTo("payment", { fromSignup: true, pin });
     } catch (err) {
       toast.error(err.response?.data?.detail || "Sign up failed");
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleSelectPlan(plan) {
+    goTo("payment", { plan, pin });
+  }
+
+  function handleSkipPlan() {
+    goTo("status", {
+      statusType: "success",
+      statusTitle: "Welcome!",
+      statusMessage: "Your account has been created. You can purchase a plan anytime.",
+    });
   }
 
   return (
@@ -96,20 +138,18 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
       </div>
 
       <div className="flex flex-1 flex-col items-center overflow-y-auto px-6 py-6">
-        <div className="w-full max-w-md">
-          <div className="mb-6 text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-50">
-              <UserPlus className="h-8 w-8 text-brand-600" />
+        <div className="w-full max-w-3xl">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50">
+              <UserPlus className="h-6 w-6 text-brand-600" />
             </div>
-            <h2 className="mt-4 text-2xl font-bold text-gray-900">
-              Create Your Account
-            </h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Join us to enjoy member benefits
-            </p>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Create Your Account</h2>
+              <p className="text-sm text-gray-500">Join us to enjoy member benefits</p>
+            </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <KioskInput
                 label="First Name *"
@@ -125,23 +165,48 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
               />
             </div>
 
-            <KioskInput
-              label="Phone *"
-              type="tel"
-              numeric
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="5551234567"
-            />
-
-            <KioskInput
-              label="Email (optional)"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="john@example.com"
-            />
-
             <div className="grid grid-cols-2 gap-3">
+              <KioskInput
+                label="Phone *"
+                type="tel"
+                numeric
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="5551234567"
+              />
+              <KioskInput
+                label="Email (optional)"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="john@example.com"
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              {/* Date of Birth - Optional */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Date of Birth (optional)
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <input
+                    type="date"
+                    value={dateOfBirth}
+                    onChange={(e) => {
+                      setDateOfBirth(e.target.value);
+                      const newAge = calculateAge(e.target.value);
+                      if (newAge !== null && newAge >= seniorAgeThreshold) {
+                        setIsSenior(true);
+                      }
+                    }}
+                    className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                  />
+                </div>
+                {age !== null && (
+                  <p className="mt-1 text-xs text-gray-500">Age: {age}</p>
+                )}
+              </div>
               <KioskInput
                 label="4-Digit PIN *"
                 numeric
@@ -161,6 +226,24 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
                 className="text-center tracking-widest"
               />
             </div>
+
+            {/* Senior Citizen Checkbox - only show if DOB entered and qualifies */}
+            {qualifiesForSenior && (
+              <label className="flex items-center gap-3 rounded-xl bg-amber-50 p-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isSenior}
+                  onChange={(e) => setIsSenior(e.target.checked)}
+                  className="h-5 w-5 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                <div>
+                  <p className="font-medium text-amber-800">Senior Citizen Discount</p>
+                  <p className="text-sm text-amber-600">You qualify ({seniorAgeThreshold}+ years)</p>
+                </div>
+              </label>
+            )}
+
+
 
             {/* Card Assignment Section */}
             <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-white p-4">
@@ -203,9 +286,9 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
           <KioskButton
             variant="primary"
             size="xl"
-            icon={UserPlus}
+            icon={ArrowRight}
             loading={loading}
-            onClick={handleSubmit}
+            onClick={handleCreateAccount}
             className="mt-6 w-full"
           >
             Create Account

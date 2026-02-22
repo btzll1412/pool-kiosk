@@ -31,14 +31,10 @@ A self-hosted, local kiosk-based pool management system with RFID membership car
 ## Project File Structure
 
 ```
-pool-kiosk/
+pool-management/
 ├── docker-compose.yml
 ├── .env.example
 ├── README.md
-├── CLAUDE.md                        # Claude Code instructions
-│
-├── static/
-│   └── nfc_reader.py                # PC/SC NFC reader script for kiosk
 │
 ├── backend/
 │   ├── Dockerfile
@@ -46,30 +42,21 @@ pool-kiosk/
 │   ├── alembic.ini
 │   ├── alembic/
 │   │   └── versions/
-│   ├── tests/                       # pytest test suite
-│   │   ├── test_auth.py
-│   │   ├── test_kiosk.py
-│   │   ├── test_payments.py
-│   │   └── test_pin.py
 │   ├── app/
-│   │   ├── main.py                  # FastAPI app entry point + APScheduler
+│   │   ├── main.py                  # FastAPI app entry point
 │   │   ├── config.py                # Settings from env vars
 │   │   ├── database.py              # DB connection & session
 │   │   │
-│   │   ├── models/                  # SQLAlchemy ORM models (13 models)
+│   │   ├── models/                  # SQLAlchemy ORM models
 │   │   │   ├── __init__.py
-│   │   │   ├── member.py            # Member with PIN hash
-│   │   │   ├── card.py              # RFID cards
-│   │   │   ├── plan.py              # Membership plans
-│   │   │   ├── membership.py        # Active memberships
-│   │   │   ├── membership_freeze.py # Freeze tracking
-│   │   │   ├── checkin.py           # Check-in records
-│   │   │   ├── transaction.py       # Payment transactions
-│   │   │   ├── saved_card.py        # Saved payment cards
-│   │   │   ├── guest_visit.py       # Walk-in guests
-│   │   │   ├── activity_log.py      # Admin audit trail
-│   │   │   ├── pin_lockout.py       # PIN attempt tracking
-│   │   │   ├── setting.py           # System settings
+│   │   │   ├── member.py
+│   │   │   ├── card.py
+│   │   │   ├── plan.py
+│   │   │   ├── membership.py
+│   │   │   ├── swim_pass.py
+│   │   │   ├── checkin.py
+│   │   │   ├── transaction.py
+│   │   │   ├── credit.py
 │   │   │   └── user.py              # Admin/staff users
 │   │   │
 │   │   ├── schemas/                 # Pydantic request/response schemas
@@ -80,52 +67,38 @@ pool-kiosk/
 │   │   │   ├── membership.py
 │   │   │   ├── checkin.py
 │   │   │   ├── transaction.py
-│   │   │   ├── kiosk.py
-│   │   │   ├── settings.py
-│   │   │   ├── report.py
 │   │   │   └── auth.py
 │   │   │
-│   │   ├── routers/                 # API route handlers (14 routers)
+│   │   ├── routers/                 # API route handlers
 │   │   │   ├── __init__.py
-│   │   │   ├── auth.py              # Login, token refresh, password reset
-│   │   │   ├── backup.py            # System backup/restore
+│   │   │   ├── auth.py              # Login, token refresh
+│   │   │   ├── members.py           # Member CRUD
 │   │   │   ├── cards.py             # Card management
-│   │   │   ├── checkins.py          # Check-in history + filtering
-│   │   │   ├── guests.py            # Guest visit history
-│   │   │   ├── kiosk.py             # Kiosk-specific endpoints
-│   │   │   ├── members.py           # Member CRUD + CSV import/export
-│   │   │   ├── memberships.py       # Assign/manage memberships
-│   │   │   ├── nfc.py               # NFC WebSocket + broadcast
-│   │   │   ├── payments.py          # Payment processing
 │   │   │   ├── plans.py             # Plan/pricing management
+│   │   │   ├── memberships.py       # Assign/manage memberships
+│   │   │   ├── checkins.py          # Check-in logic
+│   │   │   ├── payments.py          # Payment processing
+│   │   │   ├── transactions.py      # Transaction history
 │   │   │   ├── reports.py           # Analytics & reports
-│   │   │   ├── settings.py          # System settings + test endpoints
-│   │   │   └── transactions.py      # Transaction history
+│   │   │   ├── settings.py          # System settings
+│   │   │   └── kiosk.py             # Kiosk-specific endpoints
 │   │   │
-│   │   ├── services/                # Business logic layer (16 services)
+│   │   ├── services/                # Business logic layer
 │   │   │   ├── __init__.py
-│   │   │   ├── activity_service.py     # Admin audit logging
-│   │   │   ├── auth_service.py         # JWT + password hashing
-│   │   │   ├── auto_charge_service.py  # Recurring billing scheduler
-│   │   │   ├── checkin_service.py      # Check-in logic
-│   │   │   ├── email_service.py        # SMTP email sending
-│   │   │   ├── member_service.py       # Member CRUD
-│   │   │   ├── membership_service.py   # Membership management
-│   │   │   ├── nfc_reader_service.py   # WebSocket client management
-│   │   │   ├── notification_service.py # Webhook system (8 events)
-│   │   │   ├── payment_service.py      # Payment processing
-│   │   │   ├── pin_service.py          # PIN verification + lockout
-│   │   │   ├── rate_limit.py           # Kiosk rate limiting
-│   │   │   ├── report_service.py       # Reports + stats
-│   │   │   ├── seed.py                 # Default admin + settings
-│   │   │   ├── settings_service.py     # DB settings management
-│   │   │   └── sip_service.py          # FusionPBX SIP calls
+│   │   │   ├── member_service.py
+│   │   │   ├── checkin_service.py
+│   │   │   ├── payment_service.py
+│   │   │   ├── membership_service.py
+│   │   │   ├── notification_service.py  # Webhook notification system (8 event types)
+│   │   │   ├── email_service.py        # SMTP email sending + templates
+│   │   │   ├── sip_service.py          # FusionPBX SIP call origination
+│   │   │   └── report_service.py
 │   │   │
-│   │   └── payments/                # Modular payment adapters (5 adapters)
-│   │       ├── __init__.py          # get_payment_adapter()
+│   │   └── payments/                # Modular payment adapters
+│   │       ├── __init__.py
 │   │       ├── base.py              # Abstract base class
 │   │       ├── cash.py              # Cash payment handler
-│   │       ├── stub.py              # Test adapter (always succeeds)
+│   │       ├── stub.py              # Placeholder for testing
 │   │       ├── stripe_adapter.py    # Stripe SDK integration
 │   │       ├── square_adapter.py    # Square SDK integration
 │   │       └── sola_adapter.py      # Sola REST API integration
@@ -140,50 +113,36 @@ pool-kiosk/
 │       ├── main.jsx
 │       ├── App.jsx
 │       ├── context/
-│       │   ├── AuthContext.jsx       # Admin auth state
 │       │   └── ThemeContext.jsx      # Dark mode theme provider
-│       ├── hooks/
-│       │   └── useNFCReader.js       # WebSocket hook for NFC card scans
 │       ├── api/                     # API client functions
-│       │   ├── client.js            # Axios instance with JWT interceptor
-│       │   ├── auth.js
+│       │   ├── client.js            # Axios instance
 │       │   ├── members.js
 │       │   ├── plans.js
 │       │   ├── checkins.js
-│       │   ├── kiosk.js             # Kiosk API (21 endpoints)
 │       │   ├── payments.js
 │       │   ├── settings.js          # Settings + test connection APIs
 │       │   └── reports.js
 │       │
 │       ├── kiosk/                   # Kiosk UI (customer-facing)
-│       │   ├── KioskApp.jsx         # Main kiosk state machine
-│       │   ├── screens/             # 18 kiosk screens
-│       │   │   ├── IdleScreen.jsx
-│       │   │   ├── MemberScreen.jsx
-│       │   │   ├── CheckinScreen.jsx
-│       │   │   ├── SignUpScreen.jsx
-│       │   │   ├── SearchScreen.jsx
-│       │   │   ├── PinScreen.jsx
-│       │   │   ├── PaymentScreen.jsx
-│       │   │   ├── CashScreen.jsx
-│       │   │   ├── CardPaymentScreen.jsx
-│       │   │   ├── SplitPaymentScreen.jsx
-│       │   │   ├── ChangeScreen.jsx
-│       │   │   ├── StatusScreen.jsx
-│       │   │   ├── GuestScreen.jsx
-│       │   │   ├── ManageAccountScreen.jsx
-│       │   │   ├── FreezeScreen.jsx
-│       │   │   ├── SavedCardsScreen.jsx
-│       │   │   ├── AddCardScreen.jsx
-│       │   │   └── AutoChargeScreen.jsx
-│       │   └── components/          # 7 kiosk components
-│       │       ├── RFIDListener.jsx
-│       │       ├── NumPad.jsx
-│       │       ├── MemberCard.jsx
-│       │       ├── PlanCard.jsx
-│       │       ├── InactivityTimer.jsx
-│       │       ├── KioskButton.jsx
-│       │       └── AutoReturnBar.jsx
+│       │   ├── KioskApp.jsx         # Main kiosk router/state
+│       │   ├── screens/
+│       │   │   ├── IdleScreen.jsx       # Default welcome screen
+│       │   │   ├── MemberScreen.jsx     # After card scan / search
+│       │   │   ├── CheckinScreen.jsx    # Check-in confirmation
+│       │   │   ├── PaymentScreen.jsx    # Select plan to purchase
+│       │   │   ├── CashScreen.jsx       # Cash payment flow
+│       │   │   ├── CardPaymentScreen.jsx # Credit card flow
+│       │   │   ├── FamilyScreen.jsx     # Add family members
+│       │   │   ├── ChangeScreen.jsx     # Needs change notification
+│       │   │   ├── SearchScreen.jsx     # Search by name/phone
+│       │   │   └── StatusScreen.jsx     # Timed status display
+│       │   └── components/
+│       │       ├── RFIDListener.jsx     # Captures RFID keyboard input
+│       │       ├── NumPad.jsx           # Touch-friendly number pad
+│       │       ├── MemberCard.jsx       # Member info display widget
+│       │       ├── PlanCard.jsx         # Plan option display
+│       │       ├── ScreenTransition.jsx # Fade crossfade between screens
+│       │       └── StatusBadge.jsx      # Green/yellow/red status
 │       │
 │       ├── admin/                   # Admin Panel UI
 │       │   ├── AdminApp.jsx
@@ -192,29 +151,24 @@ pool-kiosk/
 │       │   │   ├── Header.jsx
 │       │   │   └── Layout.jsx
 │       │   └── pages/
-│       │       ├── Dashboard.jsx
-│       │       ├── Checkins/
-│       │       │   └── CheckinsList.jsx
+│       │       ├── Dashboard.jsx        # Overview stats
 │       │       ├── Members/
 │       │       │   ├── MembersList.jsx
-│       │       │   ├── MemberDetail.jsx  # Uses useNFCReader hook
+│       │       │   ├── MemberDetail.jsx
 │       │       │   └── MemberForm.jsx
 │       │       ├── Plans/
 │       │       │   ├── PlansList.jsx
 │       │       │   └── PlanForm.jsx
 │       │       ├── Transactions/
 │       │       │   └── TransactionsList.jsx
-│       │       ├── Guests/
-│       │       │   └── GuestsList.jsx
 │       │       ├── Reports/
 │       │       │   ├── RevenueReport.jsx
 │       │       │   └── SwimReport.jsx
 │       │       ├── Settings/
-│       │       │   └── Settings.jsx      # 4 tabs: General, Payments, Notifications, Backup
-│       │       ├── Setup.jsx             # First-time admin setup wizard
+│       │       │   └── Settings.jsx
 │       │       └── Login.jsx
 │       │
-│       └── shared/                  # Shared components (12)
+│       └── shared/                  # Shared components
 │           ├── Button.jsx
 │           ├── Modal.jsx
 │           ├── Table.jsx
@@ -226,15 +180,11 @@ pool-kiosk/
 │           ├── EmptyState.jsx
 │           ├── PageHeader.jsx
 │           ├── ConfirmDialog.jsx
-│           └── Skeleton.jsx
+│           └── Skeleton.jsx         # Loading skeleton components
 │
-├── nginx/
-│   ├── nginx.conf
-│   └── Dockerfile
-│
-└── docs/
-    ├── DESIGN.md                    # This file
-    └── STATUS.md                    # Development progress
+└── nginx/
+    ├── nginx.conf
+    └── Dockerfile
 ```
 
 ---
@@ -972,48 +922,7 @@ try {
 - **FusionPBX / SIP:** Outbound call origination for change-needed notifications via REST API
 - **Payment Processors:** Stripe (PaymentIntent + Customer API), Square (Payments + Customers API), Sola (REST API) — all configurable from admin
 - **Email (SMTP):** Auto-charge receipts, membership expiring/expired notifications — SMTP config in admin settings
-- **NFC/RFID Reader:** PC/SC smart card reader support with WebSocket broadcast to admin browsers
 - **Future:** SMS notifications, PIN reset via email link
-
----
-
-## NFC Reader Integration
-
-The system supports two methods for RFID card input:
-
-### Method 1: USB HID Keyboard Emulation
-
-Most RFID readers act as USB keyboards — they type the card UID and press Enter. The kiosk frontend's `RFIDListener` component captures this keyboard input. No additional software needed.
-
-### Method 2: PC/SC Smart Card Reader
-
-For PC/SC-compatible readers (ACR122U, HID Omnikey, etc.), a Python script runs on the kiosk computer:
-
-**Files:**
-- `static/nfc_reader.py` — The reader script
-- `backend/app/routers/nfc.py` — API endpoints
-- `backend/app/services/nfc_reader_service.py` — WebSocket client management
-- `frontend/src/hooks/useNFCReader.js` — React hook for admin browsers
-
-**Flow:**
-```
-[Card Tap] → [nfc_reader.py] → pyautogui.typewrite(uid) → [Kiosk UI]
-                            ↘ POST /api/nfc/broadcast → WebSocket → [Admin Browser]
-```
-
-**API Endpoints:**
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/nfc/script` | GET | Download the NFC reader Python script |
-| `/api/nfc/broadcast` | POST | Broadcast card scan to connected admin browsers |
-| `/api/nfc/ws` | WebSocket | Admin browsers connect here to receive card scans |
-| `/api/nfc/status` | GET | Get count of connected WebSocket clients |
-
-**Admin Card Assignment:**
-When viewing a member's detail page in admin, the `useNFCReader` hook connects to the WebSocket. When a card is tapped at the kiosk, the UID is automatically populated in the "Assign Card" field.
-
-**Configuration:**
-The `BACKEND_URL` in the script must be set to the pool-kiosk server address (e.g., `http://192.168.1.153`).
 
 ---
 
@@ -1037,7 +946,6 @@ The `BACKEND_URL` in the script must be set to the pool-kiosk server address (e.
 
 | Date | Change | Author |
 |---|---|---|
-| 2026-02-20 | Added NFC Reader Integration section documenting PC/SC reader support and WebSocket broadcast architecture | — |
 | 2026-02-19 | Phase 9: Added kiosk signup, PIN verify endpoint, backup/restore, member memberships management, swim pass stacking, guest visits page, settings tabs, admin PIN unlock, members CSV import/export | — |
 | 2026-02-18 | Phase 8: Added Stripe/Square/Sola payment adapters, email service, SIP service, dark mode, kiosk transitions, skeletons, 30+ new DB settings | — |
 | 2026-02-18 | Added Logging & Error Handling Standards section; consistent logging across all backend modules; frontend error handling audit | — |

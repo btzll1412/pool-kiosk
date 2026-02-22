@@ -18,7 +18,7 @@ export default function ManageAccountScreen({ member, goTo, context }) {
           <ArrowLeft className="h-5 w-5" />
           <span className="font-medium">Back</span>
         </button>
-        <h1 className="text-lg font-bold text-gray-900">Manage Account</h1>
+        <h1 className="text-lg font-bold text-gray-900">Manage My Account</h1>
         <div className="w-24" />
       </div>
 

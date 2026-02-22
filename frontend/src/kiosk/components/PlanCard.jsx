@@ -36,11 +36,22 @@ export default function PlanCard({ plan, selected, onSelect }) {
       <p className={`text-sm ${selected ? "text-brand-100" : "text-gray-500"}`}>
         {typeLabels[plan.plan_type]}
         {plan.swim_count ? ` \u2022 ${plan.swim_count} swims` : ""}
-        {plan.duration_days ? ` \u2022 ${plan.duration_days} days` : ""}
+        {plan.duration_months ? ` \u2022 ${plan.duration_months} month${plan.duration_months !== 1 ? "s" : ""}` : ""}
       </p>
       <p className="mt-2 text-3xl font-extrabold">
         ${Number(plan.price).toFixed(2)}
+        {plan.duration_months && <span className="text-base font-medium">/mo</span>}
       </p>
+      {plan.prorated && (
+        <p className={`text-sm font-semibold ${selected ? "text-green-200" : "text-green-600"}`}>
+          Pay today: ${Number(plan.prorated.prorated_price).toFixed(2)}
+        </p>
+      )}
+      {plan.prorated && (
+        <p className={`text-xs ${selected ? "text-brand-200" : "text-gray-400"}`}>
+          ({plan.prorated.days_remaining} days remaining this month)
+        </p>
+      )}
     </button>
   );
 }

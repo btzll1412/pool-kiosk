@@ -24,6 +24,8 @@ class Plan(Base):
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     swim_count: Mapped[int | None] = mapped_column(Integer)
     duration_days: Mapped[int | None] = mapped_column(Integer)
+    duration_months: Mapped[int | None] = mapped_column(Integer)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_senior_plan: Mapped[bool] = mapped_column(Boolean, default=False)
     display_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

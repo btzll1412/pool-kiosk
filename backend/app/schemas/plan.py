@@ -13,8 +13,10 @@ class PlanCreate(BaseModel):
     price: Decimal
     swim_count: int | None = None
     duration_days: int | None = None
+    duration_months: int | None = None
     is_active: bool = True
     display_order: int = 0
+    is_senior_plan: bool = False
 
 
 class PlanUpdate(BaseModel):
@@ -23,8 +25,10 @@ class PlanUpdate(BaseModel):
     price: Decimal | None = None
     swim_count: int | None = None
     duration_days: int | None = None
+    duration_months: int | None = None
     is_active: bool | None = None
     display_order: int | None = None
+    is_senior_plan: bool | None = None
 
 
 class PlanResponse(BaseModel):
@@ -34,8 +38,10 @@ class PlanResponse(BaseModel):
     price: Decimal
     swim_count: int | None
     duration_days: int | None
+    duration_months: int | None
     is_active: bool
     display_order: int
+    is_senior_plan: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}

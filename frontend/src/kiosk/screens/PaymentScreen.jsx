@@ -15,14 +15,16 @@ export default function PaymentScreen({ member, goTo, context, settings }) {
   const creditCoversAll = creditBalance >= planPrice && planPrice > 0;
 
   useEffect(() => {
-    getPlans()
+    // Fetch plans based on member's senior status
+    const isSenior = member?.is_senior || false;
+    getPlans(isSenior)
       .then((data) => {
         setPlans(data);
         if (data.length === 1) setSelectedPlan(data[0]);
       })
       .catch(() => toast.error("Failed to load plans"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [member?.is_senior]);
 
   function goPayMethod(method) {
     if (!selectedPlan) {
@@ -113,8 +115,17 @@ export default function PaymentScreen({ member, goTo, context, settings }) {
                     How would you like to pay?
                   </h2>
                   <p className="mb-4 text-sm text-gray-500">
-                    {selectedPlan.name} — {settings.currency}
-                    {Number(selectedPlan.price).toFixed(2)}
+                    {selectedPlan.name} — 
+                    {selectedPlan.prorated ? (
+                      <>
+                        <span className="font-semibold text-gray-700">
+                          {settings.currency}{Number(selectedPlan.prorated.prorated_price).toFixed(2)} due today
+                        </span>
+                        <span className="text-gray-400"> (then {settings.currency}{Number(selectedPlan.price).toFixed(2)}/mo)</span>
+                      </>
+                    ) : (
+                      <>{settings.currency}{Number(selectedPlan.price).toFixed(2)}</>
+                    )}
                     {creditBalance > 0 &&
                       ` (${settings.currency}${creditBalance.toFixed(2)} credit available)`}
                   </p>

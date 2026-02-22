@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import Boolean, DateTime, Numeric, String, Text
@@ -18,6 +18,8 @@ class Member(Base):
     email: Mapped[str | None] = mapped_column(String(255))
     photo_url: Mapped[str | None] = mapped_column(String(500))
     pin_hash: Mapped[str | None] = mapped_column(String(255))
+    date_of_birth: Mapped[date | None] = mapped_column(DateTime, nullable=True)
+    is_senior: Mapped[bool] = mapped_column(Boolean, default=False)
     credit_balance: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
     notes: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

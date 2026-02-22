@@ -30,8 +30,12 @@ export async function checkin(member_id, guest_count = 0) {
   return data;
 }
 
-export async function getPlans() {
-  const { data } = await kiosk.get("/plans");
+export async function getPlans(isSenior = null) {
+  const params = {};
+  if (isSenior !== null) {
+    params.is_senior = isSenior;
+  }
+  const { data } = await kiosk.get("/plans", { params });
   return data;
 }
 
