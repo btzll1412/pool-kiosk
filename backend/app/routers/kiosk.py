@@ -329,6 +329,8 @@ def get_kiosk_settings(request: Request, db: Session = Depends(get_db)):
         "kiosk_bg_color": get_setting(db, "kiosk_bg_color", "#0284c7"),
         "kiosk_bg_image": get_setting(db, "kiosk_bg_image", ""),
         "kiosk_bg_image_mode": get_setting(db, "kiosk_bg_image_mode", "cover"),
+        "staff_exit_pin": get_setting(db, "staff_exit_pin", "0000"),
+        "senior_age_threshold": get_setting(db, "senior_age_threshold", "65"),
     }
 
 

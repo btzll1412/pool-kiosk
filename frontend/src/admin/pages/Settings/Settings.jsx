@@ -117,6 +117,14 @@ const settingGroups = [
     ],
   },
   {
+    title: "Kiosk Hardware",
+    description: "Hardware and exit settings",
+    category: "kiosk",
+    fields: [
+      { key: "staff_exit_pin", label: "Staff Exit PIN", type: "password", helpText: "PIN to exit kiosk mode (tap bottom-left corner 5 times to access)" },
+    ],
+  },
+  {
     title: "Background",
     description: "Customize the kiosk background appearance",
     category: "kiosk",

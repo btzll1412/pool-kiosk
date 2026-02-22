@@ -3,6 +3,7 @@ import toast, { Toaster } from "react-hot-toast";
 import RFIDListener from "./components/RFIDListener";
 import InactivityTimer from "./components/InactivityTimer";
 import ScreenTransition from "./components/ScreenTransition";
+import SecretExitTrigger from "./components/SecretExitTrigger";
 import { getSettings, scanCard } from "../api/kiosk";
 import IdleScreen from "./screens/IdleScreen";
 import MemberScreen from "./screens/MemberScreen";
@@ -130,9 +131,12 @@ export default function KioskApp() {
   const currency = settings.currency_symbol || "$";
   const maxGuests = Number(settings.family_max_guests) || 5;
 
+  const staffExitPin = settings.staff_exit_pin || "0000";
+
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-gray-50">
-      <RFIDListener onScan={handleScan} disabled={!isIdle} />
+    <SecretExitTrigger staffExitPin={staffExitPin}>
+      <div className="flex h-screen w-screen flex-col overflow-hidden bg-gray-50">
+        <RFIDListener onScan={handleScan} disabled={!isIdle} />
 
       {!isIdle && (
         <InactivityTimer
@@ -159,6 +163,7 @@ export default function KioskApp() {
           }}
         />
       </ScreenTransition>
-    </div>
+      </div>
+    </SecretExitTrigger>
   );
 }
