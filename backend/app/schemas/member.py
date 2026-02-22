@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, EmailStr
@@ -13,6 +13,8 @@ class MemberCreate(BaseModel):
     photo_url: str | None = None
     pin: str | None = None
     notes: str | None = None
+    date_of_birth: date | None = None
+    is_senior: bool = False
 
 
 class MemberUpdate(BaseModel):
@@ -23,6 +25,8 @@ class MemberUpdate(BaseModel):
     photo_url: str | None = None
     notes: str | None = None
     is_active: bool | None = None
+    date_of_birth: date | None = None
+    is_senior: bool | None = None
 
 
 class MemberResponse(BaseModel):
@@ -35,6 +39,8 @@ class MemberResponse(BaseModel):
     credit_balance: Decimal
     notes: str | None
     is_active: bool
+    date_of_birth: date | None
+    is_senior: bool
     created_at: datetime
     updated_at: datetime
 

@@ -1,7 +1,8 @@
 import logging
 import uuid
+from calendar import monthrange
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -159,6 +160,8 @@ def kiosk_signup(data: KioskSignupRequest, request: Request, db: Session = Depen
         phone=data.phone,
         email=data.email,
         pin_hash=hash_pin(data.pin),
+        date_of_birth=data.date_of_birth,
+        is_senior=data.is_senior,
     )
     db.add(member)
     db.commit()
@@ -200,6 +203,10 @@ def kiosk_update_profile(data: KioskUpdateProfileRequest, request: Request, db: 
     if data.phone:
         member.phone = data.phone
     member.email = data.email  # Can be None to clear email
+    if data.date_of_birth is not None:
+        member.date_of_birth = data.date_of_birth
+    if data.is_senior is not None:
+        member.is_senior = data.is_senior
     
     db.commit()
     db.refresh(member)
@@ -238,10 +245,43 @@ def kiosk_checkin(data: KioskCheckinRequest, request: Request, db: Session = Dep
     )
 
 
+
+def calculate_prorated_price(plan_price: Decimal, duration_months: int = 1) -> dict:
+    """Calculate pro-rated price for remaining days in current month."""
+    today = date.today()
+    days_in_month = monthrange(today.year, today.month)[1]
+    days_remaining = days_in_month - today.day + 1  # Include today
+    
+    # Monthly rate per day
+    daily_rate = plan_price / Decimal(days_in_month)
+    prorated_amount = (daily_rate * Decimal(days_remaining)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    
+    return {
+        "prorated_price": str(prorated_amount),
+        "days_remaining": days_remaining,
+        "days_in_month": days_in_month,
+        "full_price": str(plan_price),
+    }
+
+
+
+def get_plan_effective_price(plan) -> Decimal:
+    """Get the effective price for a plan (prorated for monthly plans)."""
+    if plan.plan_type.value == "monthly":
+        prorated = calculate_prorated_price(plan.price, plan.duration_months or 1)
+        return Decimal(prorated["prorated_price"])
+    return plan.price
+
 @router.get("/plans")
 @limiter.limit("30/minute")
-def get_kiosk_plans(request: Request, db: Session = Depends(get_db)):
-    plans = db.query(Plan).filter(Plan.is_active.is_(True)).order_by(Plan.display_order, Plan.name).all()
+def get_kiosk_plans(request: Request, db: Session = Depends(get_db), is_senior: bool = None):
+    query = db.query(Plan).filter(Plan.is_active.is_(True))
+    
+    # Filter by senior status if specified
+    if is_senior is not None:
+        query = query.filter(Plan.is_senior_plan == is_senior)
+    
+    plans = query.order_by(Plan.display_order, Plan.name).all()
     return [
         {
             "id": str(p.id),
@@ -250,6 +290,9 @@ def get_kiosk_plans(request: Request, db: Session = Depends(get_db)):
             "price": str(p.price),
             "swim_count": p.swim_count,
             "duration_days": p.duration_days,
+            "duration_months": p.duration_months,
+            "is_senior_plan": p.is_senior_plan,
+            "prorated": calculate_prorated_price(p.price, p.duration_months or 1) if p.plan_type.value == "monthly" else None,
         }
         for p in plans
     ]
@@ -302,12 +345,13 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
 
     credit_used = Decimal("0.00")
-    effective_price = plan.price
+    base_price = get_plan_effective_price(plan)
+    effective_price = base_price
 
     # Apply account credit if requested
     if data.use_credit and member.credit_balance > 0:
-        credit_used = min(member.credit_balance, plan.price)
-        effective_price = plan.price - credit_used
+        credit_used = min(member.credit_balance, base_price)
+        effective_price = base_price - credit_used
         member.credit_balance -= credit_used
 
     # If credit covers entire amount, no cash needed
@@ -417,12 +461,13 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
 
     credit_used = Decimal("0.00")
-    effective_price = plan.price
+    base_price = get_plan_effective_price(plan)
+    effective_price = base_price
 
     # Apply account credit if requested
     if data.use_credit and member.credit_balance > 0:
-        credit_used = min(member.credit_balance, plan.price)
-        effective_price = plan.price - credit_used
+        credit_used = min(member.credit_balance, base_price)
+        effective_price = base_price - credit_used
         member.credit_balance -= credit_used
 
     # If credit covers entire amount, no card charge needed
@@ -958,8 +1003,11 @@ def _build_member_status(db: Session, member: Member) -> MemberStatus:
         first_name=member.first_name,
         last_name=member.last_name,
         phone=member.phone,
+        email=member.email,
         credit_balance=member.credit_balance,
         has_pin=member.pin_hash is not None,
+        date_of_birth=member.date_of_birth,
+        is_senior=member.is_senior,
         active_membership=active_info,
         is_frozen=is_frozen,
         frozen_until=frozen_until,

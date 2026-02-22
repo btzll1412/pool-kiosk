@@ -128,7 +128,7 @@ export default function MemberScreen({ member, goTo, goIdle }) {
                   onClick={handleManage}
                   className="flex-1"
                 >
-                  Manage Account
+                  Manage My Account
                 </KioskButton>
               )}
             </div>

@@ -66,6 +66,10 @@ def _get_active_membership(db: Session, member_id: uuid.UUID) -> Membership | No
         elif m.plan_type == PlanType.swim_pass:
             if m.swims_total and m.swims_used < m.swims_total:
                 return m
+        elif m.plan_type == PlanType.single:
+            # Single swim works like a 1-swim pass
+            if m.swims_total and m.swims_used < m.swims_total:
+                return m
     return None
 
 
@@ -77,7 +81,7 @@ def _process_membership_checkin(
     if membership.plan_type == PlanType.monthly:
         return CheckinType.membership, 0
 
-    if membership.plan_type == PlanType.swim_pass:
+    if membership.plan_type == PlanType.swim_pass or membership.plan_type == PlanType.single:
         remaining = (membership.swims_total or 0) - membership.swims_used
         if remaining < total_swims:
             logger.warning("Check-in failed — not enough swims: membership=%s, need=%d, remaining=%d", membership.id, total_swims, remaining)
@@ -86,7 +90,11 @@ def _process_membership_checkin(
                 detail=f"Not enough swims remaining. Need {total_swims}, have {remaining}.",
             )
         membership.swims_used += total_swims
-        logger.debug("Swim pass deducted: membership=%s, used=%d/%d", membership.id, membership.swims_used, membership.swims_total)
-        return CheckinType.swim_pass, total_swims
+        # Mark single swim as inactive after use
+        if membership.plan_type == PlanType.single and membership.swims_used >= membership.swims_total:
+            membership.is_active = False
+        checkin_type = CheckinType.paid_single if membership.plan_type == PlanType.single else CheckinType.swim_pass
+        logger.debug("Swim deducted: membership=%s, used=%d/%d", membership.id, membership.swims_used, membership.swims_total)
+        return checkin_type, total_swims
 
     return CheckinType.membership, 0

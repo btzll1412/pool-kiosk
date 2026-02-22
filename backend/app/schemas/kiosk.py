@@ -25,6 +25,8 @@ class MemberStatus(BaseModel):
     email: str | None = None
     credit_balance: Decimal
     has_pin: bool
+    date_of_birth: date | None = None
+    is_senior: bool = False
     active_membership: "ActiveMembershipInfo | None" = None
     is_frozen: bool = False
     frozen_until: date | None = None
@@ -191,6 +193,8 @@ class KioskSignupRequest(BaseModel):
     email: str | None = None
     pin: str
     rfid_uid: str | None = None
+    date_of_birth: date | None = None
+    is_senior: bool = False
 
 
 class KioskUpdateProfileRequest(BaseModel):
@@ -198,5 +202,7 @@ class KioskUpdateProfileRequest(BaseModel):
     pin: str
     first_name: str | None = None
     last_name: str | None = None
+    date_of_birth: date | None = None
+    is_senior: bool | None = None
     phone: str | None = None
     email: str | None = None

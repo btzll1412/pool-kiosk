@@ -93,9 +93,16 @@ export default function PlansList() {
           {plans.map((plan) => (
             <Card key={plan.id} className={!plan.is_active ? "opacity-60" : ""}>
               <div className="flex items-start justify-between mb-3">
-                <Badge color={typeColor[plan.plan_type]}>
-                  {typeLabel[plan.plan_type]}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge color={typeColor[plan.plan_type]}>
+                    {typeLabel[plan.plan_type]}
+                  </Badge>
+                  {plan.is_senior_plan && (
+                    <Badge color="amber">
+                      Senior
+                    </Badge>
+                  )}
+                </div>
                 <div className="flex gap-1">
                   <button
                     onClick={() => {
@@ -127,7 +134,7 @@ export default function PlansList() {
                 </span>
                 {plan.plan_type === "monthly" && (
                   <span className="text-sm text-gray-500 dark:text-gray-400">
-                    / {plan.duration_days} days
+                    / {plan.duration_months} month{plan.duration_months !== 1 ? 's' : ''}
                   </span>
                 )}
               </div>
@@ -136,7 +143,7 @@ export default function PlansList() {
                 {plan.plan_type === "swim_pass" &&
                   `${plan.swim_count} swim${plan.swim_count !== 1 ? "s" : ""} included`}
                 {plan.plan_type === "monthly" &&
-                  `Valid for ${plan.duration_days} days`}
+                  `${plan.duration_months} month${plan.duration_months !== 1 ? 's' : ''} membership`}
                 {plan.plan_type === "single" && "One-time swim"}
               </div>
 
@@ -184,8 +191,9 @@ function PlanForm({ plan, onClose, onSaved }) {
     plan_type: plan?.plan_type || "single",
     price: plan?.price || "",
     swim_count: plan?.swim_count || "",
-    duration_days: plan?.duration_days || "",
+    duration_months: plan?.duration_months || "",
     display_order: plan?.display_order ?? 0,
+    is_senior_plan: plan?.is_senior_plan || false,
   });
   const [loading, setLoading] = useState(false);
 
@@ -201,8 +209,9 @@ function PlanForm({ plan, onClose, onSaved }) {
         plan_type: form.plan_type,
         price: parseFloat(form.price),
         swim_count: form.plan_type === "swim_pass" ? parseInt(form.swim_count) : null,
-        duration_days: form.plan_type === "monthly" ? parseInt(form.duration_days) : null,
+        duration_months: form.plan_type === "monthly" ? parseInt(form.duration_months) : null,
         display_order: parseInt(form.display_order) || 0,
+        is_senior_plan: form.is_senior_plan,
       };
 
       if (plan) {
@@ -293,13 +302,13 @@ function PlanForm({ plan, onClose, onSaved }) {
           {form.plan_type === "monthly" && (
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Duration (days)
+                Duration (months)
               </label>
               <input
                 type="number"
                 min="1"
-                value={form.duration_days}
-                onChange={handleChange("duration_days")}
+                value={form.duration_months}
+                onChange={handleChange("duration_months")}
                 required
                 className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
               />
@@ -320,6 +329,19 @@ function PlanForm({ plan, onClose, onSaved }) {
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               Lower numbers appear first on the kiosk
             </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="is_senior_plan"
+              checked={form.is_senior_plan}
+              onChange={(e) => setForm((f) => ({ ...f, is_senior_plan: e.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-brand-600 focus:ring-brand-600"
+            />
+            <label htmlFor="is_senior_plan" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Senior Citizen Discount Plan
+            </label>
           </div>
 
           <div className="flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">

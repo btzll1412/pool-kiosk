@@ -1,31 +1,32 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ArrowLeft, Loader2, Search } from "lucide-react";
 import toast from "react-hot-toast";
-import { getAllMembers } from "../../api/kiosk";
+import { searchMembers } from "../../api/kiosk";
 import KioskInput from "../components/KioskInput";
 
 export default function SearchScreen({ setMember, goTo, goIdle }) {
   const [query, setQuery] = useState("");
-  const [allMembers, setAllMembers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
 
-  useEffect(() => {
-    getAllMembers()
-      .then(setAllMembers)
-      .catch((err) => toast.error(err.response?.data?.detail || "Failed to load members"))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? allMembers.filter(
-        (m) =>
-          m.first_name?.toLowerCase().includes(q) ||
-          m.last_name?.toLowerCase().includes(q) ||
-          (m.first_name + " " + m.last_name).toLowerCase().includes(q) ||
-          m.phone?.includes(q)
-      )
-    : allMembers;
+  function handleQueryChange(e) {
+    const value = e.target.value;
+    setQuery(value);
+    
+    // Only search after 3+ characters
+    if (value.trim().length >= 3) {
+      setLoading(true);
+      setHasSearched(true);
+      searchMembers(value.trim())
+        .then(setResults)
+        .catch((err) => toast.error(err.response?.data?.detail || "Search failed"))
+        .finally(() => setLoading(false));
+    } else {
+      setResults([]);
+      setHasSearched(false);
+    }
+  }
 
   function selectMember(m) {
     setMember(m);
@@ -51,29 +52,39 @@ export default function SearchScreen({ setMember, goTo, goIdle }) {
         <div className="w-full max-w-lg">
           <KioskInput
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Tap here to search by name or phone..."
+            onChange={handleQueryChange}
+            placeholder="Enter your name or phone number..."
             icon={Search}
           />
 
           <div className="mt-6">
-            {loading ? (
+            {!hasSearched && query.trim().length < 3 ? (
+              <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
+                <Search className="mx-auto h-10 w-10 text-brand-400" />
+                <p className="mt-3 text-lg font-semibold text-gray-900">
+                  Please search for your account
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  Enter at least 3 characters to search
+                </p>
+              </div>
+            ) : loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
               </div>
-            ) : filtered.length === 0 ? (
+            ) : results.length === 0 ? (
               <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
                 <Search className="mx-auto h-10 w-10 text-gray-300" />
                 <p className="mt-3 text-lg font-semibold text-gray-900">
-                  {q ? "No results found" : "No members yet"}
+                  No results found
                 </p>
                 <p className="mt-1 text-sm text-gray-500">
-                  {q ? "Try a different name or phone number" : "Members will appear here after signing up"}
+                  Try a different name or phone number
                 </p>
               </div>
             ) : (
               <div className="space-y-3">
-                {filtered.map((m) => (
+                {results.map((m) => (
                   <button
                     key={m.member_id}
                     type="button"

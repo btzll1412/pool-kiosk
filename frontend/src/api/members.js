@@ -15,6 +15,9 @@ export const updateMember = (id, data) =>
 export const deactivateMember = (id) =>
   client.delete(`/members/${id}`).then((r) => r.data);
 
+export const permanentlyDeleteMember = (id) =>
+  client.delete(`/members/${id}/permanent`).then((r) => r.data);
+
 export const getMemberHistory = (id) =>
   client.get(`/members/${id}/history`).then((r) => r.data);
 
