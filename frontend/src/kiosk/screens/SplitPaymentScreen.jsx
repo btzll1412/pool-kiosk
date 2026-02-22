@@ -8,7 +8,11 @@ import { getSavedCards, paySplit } from "../../api/kiosk";
 export default function SplitPaymentScreen({ member, goTo, context, settings }) {
   const plan = context.plan;
   const pin = context.pin;
-  const price = Number(plan?.price || 0);
+  // Use pro-rated price for monthly plans, otherwise full price
+  const fullPrice = Number(plan?.price || 0);
+  const proratedPrice = plan?.prorated ? Number(plan.prorated.prorated_price) : fullPrice;
+  const price = proratedPrice;
+  const isProrated = plan?.prorated && proratedPrice < fullPrice;
 
   const [cashAmount, setCashAmount] = useState("");
   const [loading, setLoading] = useState(false);
@@ -86,6 +90,16 @@ export default function SplitPaymentScreen({ member, goTo, context, settings }) 
           {/* Price breakdown */}
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
             <p className="text-center text-sm text-gray-500">{plan.name}</p>
+            {isProrated && (
+              <>
+                <p className="mt-1 text-center text-lg text-gray-400 line-through">
+                  {settings.currency}{fullPrice.toFixed(2)}/mo
+                </p>
+                <p className="text-center text-sm text-blue-600 font-medium">
+                  Pro-rated for {plan.prorated.days_remaining} days
+                </p>
+              </>
+            )}
             <p className="mt-1 text-center text-3xl font-extrabold text-gray-900">
               {settings.currency}{price.toFixed(2)}
             </p>
