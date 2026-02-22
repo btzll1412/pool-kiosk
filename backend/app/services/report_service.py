@@ -15,8 +15,10 @@ from app.models.transaction import PaymentMethod, Transaction, TransactionType
 
 
 def get_dashboard_stats(db: Session) -> dict:
-    today_start = datetime.combine(date.today(), datetime.min.time())
-    today_end = datetime.combine(date.today(), datetime.max.time())
+    # Use UTC for consistency with database timestamps
+    utc_now = datetime.utcnow()
+    today_start = datetime.combine(utc_now.date(), datetime.min.time())
+    today_end = datetime.combine(utc_now.date(), datetime.max.time())
 
     total_checkins = db.query(func.count(Checkin.id)).filter(
         Checkin.checked_in_at.between(today_start, today_end)
