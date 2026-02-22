@@ -10,6 +10,8 @@ A self-hosted pool management system with RFID membership cards, payment process
 - **Notifications** -- Webhooks (8 event types, Home Assistant compatible), SMTP email (receipts, expiry alerts), SIP/FusionPBX phone calls (change-needed)
 - **Dark Mode** -- Full dark mode support across the admin panel
 - **Recurring Billing** -- Auto-charge on saved cards with daily scheduler
+- **Senior Citizen Discounts** -- Age-based eligibility with configurable threshold, DOB tracking, senior-only plans
+- **Pro-rated Monthly Billing** -- First month charges only remaining days, then full price on 1st of each month
 
 ## Tech Stack
 
