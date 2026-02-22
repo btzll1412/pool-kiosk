@@ -4,7 +4,7 @@ import RFIDListener from "./components/RFIDListener";
 import InactivityTimer from "./components/InactivityTimer";
 import ScreenTransition from "./components/ScreenTransition";
 import SecretExitTrigger from "./components/SecretExitTrigger";
-import { getSettings, scanCard } from "../api/kiosk";
+import { getSettings, scanCard, checkin } from "../api/kiosk";
 import IdleScreen from "./screens/IdleScreen";
 import MemberScreen from "./screens/MemberScreen";
 import CheckinScreen from "./screens/CheckinScreen";
@@ -112,14 +112,31 @@ export default function KioskApp() {
       try {
         const data = await scanCard(rfid_uid);
         setMember(data);
-        setScreen("member");
+
+        // Auto check-in for monthly pass members
+        if (data.active_membership?.plan_type === "monthly" && !data.is_frozen) {
+          try {
+            await checkin(data.member_id, 0);
+            goTo("status", {
+              statusType: "success",
+              statusTitle: `Welcome, ${data.first_name}!`,
+              statusMessage: "Checked in successfully. Enjoy your swim!",
+            });
+          } catch {
+            // If check-in fails, go to member screen anyway
+            setScreen("member");
+          }
+        } else {
+          // Swim pass, single, or no active plan - go to member screen
+          setScreen("member");
+        }
       } catch {
         toast.error(`Card ${rfid_uid} not recognized. Please see staff for assistance.`, {
           id: "card-not-found",
         });
       }
     },
-    [screen]
+    [screen, goTo]
   );
 
   const Screen = SCREENS[screen] || IdleScreen;
