@@ -4,7 +4,7 @@
 
 ---
 
-## Current Phase: Phase 9 — UX Polish & Admin Enhancements
+## Current Phase: Phase 10 — Senior Discounts & Monthly Billing
 
 ### Overall Progress
 
@@ -18,7 +18,8 @@
 | Phase 6 — Docker + Nginx | **Complete** | docker-compose.yml, Dockerfiles, nginx.conf done |
 | Phase 7 — HA/Notification Hooks | **Complete** | 8 webhook events, scheduled expiry check + daily summary, admin webhook config UI |
 | Phase 8 — Payment Processors, Email, SIP & UI Polish | **Complete** | Stripe/Square/Sola adapters, SMTP email, SIP/FusionPBX, dark mode, kiosk transitions, skeletons |
-| Phase 9 — UX Polish & Admin Enhancements | **In Progress** | Kiosk UX improvements, swim pass stacking, signup, backup/restore, membership management |
+| Phase 9 — UX Polish & Admin Enhancements | **Complete** | Kiosk UX improvements, swim pass stacking, signup, backup/restore, membership management |
+| Phase 10 — Senior Discounts & Monthly Billing | **Complete** | Senior citizen discounts, DOB tracking, monthly pro-rated billing, permanent member delete |
 
 ---
 
@@ -344,4 +345,52 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-02-19 (Phase 9 — UX Polish & Admin Enhancements)
+---
+
+## Phase 10 Implementation Notes (2026-02-22)
+
+### Senior Citizen Discount System
+- Added `date_of_birth` (DATE, nullable) and `is_senior` (BOOLEAN, default false) fields to Member model
+- Added `senior_age_threshold` setting (default: 65) to configure senior eligibility age
+- SignUpScreen and EditProfileScreen allow members to enter DOB
+- When DOB qualifies for senior discount, checkbox auto-selects
+- Admin MemberForm also supports DOB and senior flag editing
+
+### Senior Plans
+- Added `is_senior_plan` (BOOLEAN, default false) field to Plan model
+- Admin plan form includes "Senior Citizen Discount Plan" checkbox
+- Senior badge shows on plan cards in admin list
+- Kiosk filters plans by member's senior status — senior members see senior plans
+
+### Monthly Billing Overhaul
+- Changed monthly plans from `duration_days` to `duration_months`
+- Added `duration_months` (INTEGER, nullable) field to Plan model
+- Added `next_billing_date` (DATE, nullable) field to Membership model
+- Pro-rated billing: first month charges only remaining days at daily rate
+- Plans endpoint returns `prorated` object with `prorated_price`, `days_remaining`, `days_in_month`, `full_price`
+- Plan cards show regular price large, "Pay today: $X.XX" in green below
+- Payment screen shows "amount due today" for monthly plans
+
+### Member Management
+- Added permanent delete option for deactivated members (removes all related data)
+- "Manage Account" renamed to "Manage My Account" in kiosk
+- Members can edit DOB from kiosk Edit Profile screen
+
+### Check-in Fixes
+- Single swim plan type now works for check-in (was only handling monthly and swim_pass)
+- Single swim membership marked inactive after use
+
+### Signup Flow Improvements
+- Card validation during signup checks if card is already assigned
+- Button changed from "Continue to Plans" to "Create Account"
+- Success toast "Account created successfully!" shown before redirect to plans
+- Search screen only searches after 3+ characters typed
+
+### Database Migrations Added
+- `b2c3d4e5f6g7_add_senior_fields.py` — date_of_birth, is_senior on members
+- `c3d4e5f6g7h8_add_senior_plan_field.py` — is_senior_plan on plans
+- `d4e5f6g7h8i9_add_monthly_billing_fields.py` — duration_months on plans, next_billing_date on memberships
+
+---
+
+## Last Updated: 2026-02-22 (Phase 10 — Senior Discounts & Monthly Billing)
