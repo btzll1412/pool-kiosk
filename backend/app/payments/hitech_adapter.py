@@ -74,12 +74,34 @@ class HiTechPaymentAdapter(BasePaymentAdapter):
 
             resp.raise_for_status()
 
+            response_text = resp.text.strip()
+
+            # Check if response is HTML (error page) instead of key=value pairs
+            if "<html" in response_text.lower() or "<!doctype" in response_text.lower():
+                logger.error("[HITECH ERROR] API returned HTML page instead of data - likely invalid credentials")
+                # Try to extract error message from HTML
+                error_detail = "API returned HTML error page"
+                if "invalid" in response_text.lower():
+                    error_detail = "Invalid credentials - check Merchant ID, User ID, and PIN"
+                elif "merchant" in response_text.lower() and "not found" in response_text.lower():
+                    error_detail = "Merchant ID not found - must be numeric Converge account ID (not business name)"
+                elif "user" in response_text.lower() and "not found" in response_text.lower():
+                    error_detail = "User ID not found or does not have API access"
+                elif "pin" in response_text.lower():
+                    error_detail = "Invalid PIN - must be 64-character terminal identifier"
+                return {"ssl_result": "1", "ssl_result_message": error_detail, "_html_error": "true"}
+
             # Converge returns key=value pairs, one per line
             result = {}
-            for line in resp.text.strip().split("\n"):
+            for line in response_text.split("\n"):
                 if "=" in line:
                     key, value = line.split("=", 1)
                     result[key.strip()] = value.strip()
+
+            # Check if we got any valid response data
+            if not result:
+                logger.error("[HITECH ERROR] Empty or unparseable response")
+                return {"ssl_result": "1", "ssl_result_message": "Empty response from API - check credentials"}
 
             # Log parsed response
             ssl_result = result.get("ssl_result", "?")
@@ -105,9 +127,32 @@ class HiTechPaymentAdapter(BasePaymentAdapter):
     def test_connection(self) -> tuple[bool, str]:
         logger.info("[HITECH] Testing connection to %s (env=%s)", self._base_url, self.config.get("hitech_environment", "sandbox"))
 
-        if not all([self._merchant_id, self._user_id, self._pin]):
-            logger.warning("[HITECH] Connection test failed: credentials not configured")
-            return False, "HiTech Merchants credentials not configured"
+        # Validate credentials are provided
+        missing = []
+        if not self._merchant_id:
+            missing.append("Merchant ID")
+        if not self._user_id:
+            missing.append("User ID")
+        if not self._pin:
+            missing.append("PIN")
+
+        if missing:
+            msg = f"Missing credentials: {', '.join(missing)}"
+            logger.warning("[HITECH] Connection test failed: %s", msg)
+            return False, msg
+
+        # Validate credential formats
+        warnings = []
+        if not self._merchant_id.isdigit():
+            warnings.append(f"Merchant ID '{self._merchant_id}' should be numeric (Converge account ID, not business name)")
+        if len(self._pin) < 32:
+            warnings.append(f"PIN appears too short ({len(self._pin)} chars) - should be 64-character terminal identifier")
+
+        if warnings:
+            msg = "Credential format issues: " + "; ".join(warnings)
+            logger.warning("[HITECH] %s", msg)
+            return False, msg
+
         try:
             # Use ccverify with minimal data to test credentials
             result = self._post_request({
@@ -115,15 +160,52 @@ class HiTechPaymentAdapter(BasePaymentAdapter):
                 "ssl_card_number": "4000000000000002",
                 "ssl_exp_date": "1225",
             })
+
+            # Check for HTML error response
+            if result.get("_html_error"):
+                error_msg = result.get("ssl_result_message", "Invalid credentials")
+                logger.warning("[HITECH] Connection test failed (HTML error): %s", error_msg)
+                return False, error_msg
+
             if result.get("ssl_result") == "0":
                 logger.info("[HITECH] Connection test successful")
                 return True, "Connected to HiTech Merchants successfully"
-            error_msg = result.get("ssl_result_message", "Unknown error")
-            logger.warning("[HITECH] Connection test failed: %s", error_msg)
-            return False, f"Connection test failed: {error_msg}"
+
+            # Parse specific error codes
+            error_code = result.get("errorCode", "")
+            error_msg = result.get("ssl_result_message", "")
+            error_name = result.get("errorName", "")
+
+            if error_code == "5000":
+                detailed_msg = "Authentication failed - verify Merchant ID, User ID, and PIN are correct"
+            elif error_code == "5001":
+                detailed_msg = "User ID not found or does not have API access enabled"
+            elif error_code == "5002":
+                detailed_msg = "Invalid PIN - must be the 64-character terminal identifier from Converge"
+            elif "merchant" in error_msg.lower():
+                detailed_msg = f"Merchant error: {error_msg}"
+            elif error_name:
+                detailed_msg = f"{error_name}: {error_msg}"
+            elif error_msg:
+                detailed_msg = error_msg
+            else:
+                detailed_msg = f"Connection failed (code: {result.get('ssl_result', 'unknown')})"
+
+            logger.warning("[HITECH] Connection test failed: %s", detailed_msg)
+            return False, detailed_msg
+
+        except httpx.TimeoutException:
+            msg = "Connection timed out - check network connectivity to Converge API"
+            logger.error("[HITECH] %s", msg)
+            return False, msg
         except httpx.RequestError as exc:
+            msg = f"Network error: {exc}"
             logger.error("[HITECH] Connection test error: %s", exc)
-            return False, f"HiTech Merchants connection failed: {exc}"
+            return False, msg
+        except Exception as exc:
+            msg = f"Unexpected error: {exc}"
+            logger.exception("[HITECH] Connection test unexpected error")
+            return False, msg
 
     def initiate_payment(self, amount: Decimal, member_id: str, description: str) -> PaymentSession:
         """
