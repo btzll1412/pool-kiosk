@@ -1,15 +1,56 @@
 import logging
+import logging.handlers
+import os
 import sys
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 
-# Configure logging format for the entire application
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    stream=sys.stdout,
+# Configure logging with both console and file output
+LOG_DIR = os.environ.get("LOG_DIR", "/app/logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# Create formatters
+log_format = logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
 )
+
+# Console handler
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(log_format)
+
+# File handler with rotation (10MB, keep 5 backups)
+file_handler = logging.handlers.RotatingFileHandler(
+    os.path.join(LOG_DIR, "pool-kiosk.log"),
+    maxBytes=10*1024*1024,
+    backupCount=5,
+    encoding="utf-8"
+)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(log_format)
+
+# Payment-specific log file for easier debugging
+payment_handler = logging.handlers.RotatingFileHandler(
+    os.path.join(LOG_DIR, "payments.log"),
+    maxBytes=5*1024*1024,
+    backupCount=3,
+    encoding="utf-8"
+)
+payment_handler.setLevel(logging.DEBUG)
+payment_handler.setFormatter(log_format)
+
+# Configure root logger
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
+root_logger.addHandler(console_handler)
+root_logger.addHandler(file_handler)
+
+# Configure payment-specific loggers with extra detail
+for logger_name in ["app.payments", "app.services.payment_service"]:
+    payment_logger = logging.getLogger(logger_name)
+    payment_logger.addHandler(payment_handler)
+    payment_logger.setLevel(logging.DEBUG)
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI

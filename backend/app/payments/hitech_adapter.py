@@ -41,26 +41,72 @@ class HiTechPaymentAdapter(BasePaymentAdapter):
             "ssl_pin": self._pin,
         }
 
+    def _mask_sensitive(self, params: dict[str, str]) -> dict[str, str]:
+        """Mask sensitive fields for logging."""
+        masked = dict(params)
+        sensitive_keys = ["ssl_pin", "ssl_card_number", "ssl_cvv2cvc2", "ssl_token"]
+        for key in sensitive_keys:
+            if key in masked and masked[key]:
+                masked[key] = "****" + masked[key][-4:] if len(masked[key]) > 4 else "****"
+        return masked
+
     def _post_request(self, params: dict[str, str]) -> dict[str, str]:
         """Send form-encoded POST to Converge and parse response."""
         all_params = {**self._base_params(), **params}
-        resp = httpx.post(
-            self._base_url,
-            data=all_params,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            timeout=30.0,
+        txn_type = params.get("ssl_transaction_type", "unknown")
+
+        # Log request (masked)
+        logger.info(
+            "[HITECH REQUEST] type=%s, url=%s, params=%s",
+            txn_type, self._base_url, self._mask_sensitive(all_params)
         )
-        resp.raise_for_status()
-        # Converge returns key=value pairs, one per line
-        result = {}
-        for line in resp.text.strip().split("\n"):
-            if "=" in line:
-                key, value = line.split("=", 1)
-                result[key.strip()] = value.strip()
-        return result
+
+        try:
+            resp = httpx.post(
+                self._base_url,
+                data=all_params,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=30.0,
+            )
+
+            # Log raw response
+            logger.debug("[HITECH RAW RESPONSE] status=%d, body=%s", resp.status_code, resp.text[:500])
+
+            resp.raise_for_status()
+
+            # Converge returns key=value pairs, one per line
+            result = {}
+            for line in resp.text.strip().split("\n"):
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    result[key.strip()] = value.strip()
+
+            # Log parsed response
+            ssl_result = result.get("ssl_result", "?")
+            ssl_result_msg = result.get("ssl_result_message", "")
+            ssl_txn_id = result.get("ssl_txn_id", "")
+            logger.info(
+                "[HITECH RESPONSE] type=%s, result=%s, message=%s, txn_id=%s",
+                txn_type, ssl_result, ssl_result_msg, ssl_txn_id
+            )
+
+            return result
+
+        except httpx.TimeoutException as exc:
+            logger.error("[HITECH TIMEOUT] type=%s, error=%s", txn_type, exc)
+            raise
+        except httpx.HTTPStatusError as exc:
+            logger.error("[HITECH HTTP ERROR] type=%s, status=%d, error=%s", txn_type, exc.response.status_code, exc)
+            raise
+        except Exception as exc:
+            logger.error("[HITECH ERROR] type=%s, error=%s", txn_type, exc)
+            raise
 
     def test_connection(self) -> tuple[bool, str]:
+        logger.info("[HITECH] Testing connection to %s (env=%s)", self._base_url, self.config.get("hitech_environment", "sandbox"))
+
         if not all([self._merchant_id, self._user_id, self._pin]):
+            logger.warning("[HITECH] Connection test failed: credentials not configured")
             return False, "HiTech Merchants credentials not configured"
         try:
             # Use ccverify with minimal data to test credentials
@@ -70,10 +116,13 @@ class HiTechPaymentAdapter(BasePaymentAdapter):
                 "ssl_exp_date": "1225",
             })
             if result.get("ssl_result") == "0":
+                logger.info("[HITECH] Connection test successful")
                 return True, "Connected to HiTech Merchants successfully"
             error_msg = result.get("ssl_result_message", "Unknown error")
+            logger.warning("[HITECH] Connection test failed: %s", error_msg)
             return False, f"Connection test failed: {error_msg}"
         except httpx.RequestError as exc:
+            logger.error("[HITECH] Connection test error: %s", exc)
             return False, f"HiTech Merchants connection failed: {exc}"
 
     def initiate_payment(self, amount: Decimal, member_id: str, description: str) -> PaymentSession:
