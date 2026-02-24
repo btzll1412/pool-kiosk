@@ -17,7 +17,9 @@ from app.models.membership import Membership
 from app.models.plan import Plan
 from app.models.saved_card import SavedCard
 from app.models.user import User
+from app.schemas.membership import SavedCardCreate, SavedCardResponse
 from app.services.auth_service import hash_pin
+from app.services.payment_service import get_payment_adapter
 from app.schemas.member import (
     CreditAdjustRequest,
     MemberCreate,
@@ -261,6 +263,49 @@ def get_member_saved_cards(
     return result
 
 
+@router.post("/{member_id}/saved-cards", response_model=SavedCardResponse, status_code=201)
+def add_member_saved_card(
+    member_id: uuid.UUID,
+    data: SavedCardCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Add a saved payment card for a member (admin action, no PIN required)."""
+    # Validate member exists
+    member = db.query(Member).filter(Member.id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    # Tokenize the card via payment adapter
+    adapter = get_payment_adapter(db)
+    token = adapter.tokenize_card(data.card_last4, data.card_brand, str(member_id))
+
+    # Create the saved card record
+    saved_card = SavedCard(
+        member_id=member_id,
+        processor_token=token,
+        card_last4=data.card_last4,
+        card_brand=data.card_brand,
+        friendly_name=data.friendly_name,
+        is_default=False,
+    )
+    db.add(saved_card)
+    db.commit()
+    db.refresh(saved_card)
+
+    logger.info("Admin added saved card: member=%s, card=%s, by=%s",
+               member_id, saved_card.id, current_user.id)
+
+    return SavedCardResponse(
+        id=saved_card.id,
+        card_last4=saved_card.card_last4,
+        card_brand=saved_card.card_brand,
+        friendly_name=saved_card.friendly_name,
+        is_default=saved_card.is_default,
+        created_at=saved_card.created_at,
+    )
+
+
 @router.delete("/{member_id}/saved-cards/{card_id}")
 def delete_member_saved_card(
     member_id: uuid.UUID,
@@ -274,6 +319,118 @@ def delete_member_saved_card(
     db.delete(card)
     db.commit()
     return {"message": "Saved card removed"}
+
+
+@router.post("/{member_id}/saved-cards/tokenize-swipe", response_model=SavedCardResponse, status_code=201)
+def admin_tokenize_card_from_swipe(
+    member_id: uuid.UUID,
+    track_data: str,
+    friendly_name: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Admin endpoint to tokenize a card from magnetic stripe track data.
+    No PIN required (admin action).
+    """
+    member = db.query(Member).filter(Member.id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    adapter = get_payment_adapter(db)
+
+    if not hasattr(adapter, 'tokenize_from_track_data'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current payment processor does not support card reader tokenization"
+        )
+
+    try:
+        token, last4, card_brand = adapter.tokenize_from_track_data(track_data, str(member_id))
+    except ValueError as e:
+        logger.warning("Failed to parse track data: member=%s, error=%s", member_id, e)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except RuntimeError as e:
+        logger.error("Failed to tokenize card: member=%s, error=%s", member_id, e)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+
+    friendly = friendly_name or f"{card_brand or 'Card'} ending {last4}"
+    saved_card = SavedCard(
+        member_id=member_id,
+        processor_token=token,
+        card_last4=last4,
+        card_brand=card_brand,
+        friendly_name=friendly,
+    )
+    db.add(saved_card)
+    db.commit()
+    db.refresh(saved_card)
+
+    logger.info("Admin tokenized card from swipe: member=%s, last4=%s, by=%s", member_id, last4, current_user.id)
+
+    return SavedCardResponse(
+        id=saved_card.id,
+        card_last4=saved_card.card_last4,
+        card_brand=saved_card.card_brand,
+        friendly_name=saved_card.friendly_name,
+        is_default=saved_card.is_default,
+        created_at=saved_card.created_at,
+    )
+
+
+@router.post("/{member_id}/saved-cards/tokenize-full", response_model=SavedCardResponse, status_code=201)
+def admin_tokenize_card_from_full(
+    member_id: uuid.UUID,
+    card_number: str,
+    exp_date: str,
+    friendly_name: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Admin endpoint to tokenize a card from full card details.
+    Used with hosted payment page callback. No PIN required.
+    """
+    member = db.query(Member).filter(Member.id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    adapter = get_payment_adapter(db)
+
+    if not hasattr(adapter, 'generate_card_token'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current payment processor does not support card tokenization"
+        )
+
+    try:
+        token, last4, card_brand = adapter.generate_card_token(card_number, exp_date, str(member_id))
+    except RuntimeError as e:
+        logger.error("Failed to tokenize card: member=%s, error=%s", member_id, e)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+
+    friendly = friendly_name or f"{card_brand or 'Card'} ending {last4}"
+    saved_card = SavedCard(
+        member_id=member_id,
+        processor_token=token,
+        card_last4=last4,
+        card_brand=card_brand,
+        friendly_name=friendly,
+    )
+    db.add(saved_card)
+    db.commit()
+    db.refresh(saved_card)
+
+    logger.info("Admin tokenized card from full details: member=%s, last4=%s, by=%s", member_id, last4, current_user.id)
+
+    return SavedCardResponse(
+        id=saved_card.id,
+        card_last4=saved_card.card_last4,
+        card_brand=saved_card.card_brand,
+        friendly_name=saved_card.friendly_name,
+        is_default=saved_card.is_default,
+        created_at=saved_card.created_at,
+    )
 
 
 @router.get("/{member_id}/pin-status")

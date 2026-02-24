@@ -153,6 +153,32 @@ class TokenizeCardRequest(BaseModel):
     pin: str
 
 
+class TokenizeTrackDataRequest(BaseModel):
+    """Request to tokenize card from magnetic stripe track data."""
+    track_data: str  # Raw track data from card reader
+    friendly_name: str | None = None
+    member_id: uuid.UUID
+    pin: str | None = None  # Optional for kiosk, not required for admin
+
+
+class TokenizeFullCardRequest(BaseModel):
+    """Request to tokenize card from full card details (via hosted payment callback)."""
+    card_number: str
+    exp_date: str  # MMYY format
+    friendly_name: str | None = None
+    member_id: uuid.UUID
+    pin: str | None = None  # Optional for kiosk, not required for admin
+
+
+class HostedPaymentSessionResponse(BaseModel):
+    """Response with hosted payment page configuration."""
+    merchant_id: str
+    user_id: str
+    pin: str
+    environment: str
+    lightbox_url: str
+
+
 class AutoChargeRequest(BaseModel):
     plan_id: uuid.UUID
     member_id: uuid.UUID

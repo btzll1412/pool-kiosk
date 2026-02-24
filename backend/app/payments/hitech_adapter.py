@@ -425,3 +425,76 @@ class HiTechPaymentAdapter(BasePaymentAdapter):
         except Exception as exc:
             logger.exception("HiTech void failed: tx=%s", transaction_id)
             return RefundResult(success=False, message=str(exc))
+
+    def get_hosted_payment_session(self, amount: Decimal | None = None) -> dict:
+        """
+        Get session parameters for Converge hosted payment page / lightbox.
+        Returns the merchant credentials needed for PayWithConverge.js
+        """
+        env = self.config.get("hitech_environment", "sandbox")
+
+        # Converge lightbox URLs
+        lightbox_urls = {
+            "sandbox": "https://api.demo.convergepay.com/hosted-payments/PayWithConverge.js",
+            "production": "https://api.convergepay.com/hosted-payments/PayWithConverge.js",
+        }
+
+        return {
+            "merchant_id": self._merchant_id,
+            "user_id": self._user_id,
+            "pin": self._pin,  # Note: In production, use a session token instead
+            "environment": env,
+            "lightbox_url": lightbox_urls.get(env, lightbox_urls["sandbox"]),
+        }
+
+    def tokenize_from_track_data(self, track_data: str, member_id: str) -> tuple[str, str, str]:
+        """
+        Parse magnetic stripe track data and generate a token.
+        Supports Track 1 (%B...) and Track 2 (;...) formats.
+        Returns (token, last4, card_brand).
+        """
+        card_number = None
+        exp_date = None
+
+        # Track 1 format: %B[card_number]^[name]^[YYMM]...?
+        if "%B" in track_data:
+            try:
+                # Extract between %B and ^
+                start = track_data.index("%B") + 2
+                end = track_data.index("^", start)
+                card_number = track_data[start:end]
+
+                # Find expiry after second ^
+                second_caret = track_data.index("^", end + 1)
+                exp_date = track_data[second_caret + 1:second_caret + 5]  # YYMM format
+                # Convert YYMM to MMYY for Converge
+                exp_date = exp_date[2:4] + exp_date[0:2]
+            except (ValueError, IndexError) as e:
+                logger.error("Failed to parse Track 1 data: %s", e)
+
+        # Track 2 format: ;[card_number]=[YYMM]...?
+        if not card_number and ";" in track_data:
+            try:
+                start = track_data.index(";") + 1
+                end = track_data.index("=", start)
+                card_number = track_data[start:end]
+
+                exp_date = track_data[end + 1:end + 5]  # YYMM format
+                # Convert YYMM to MMYY for Converge
+                exp_date = exp_date[2:4] + exp_date[0:2]
+            except (ValueError, IndexError) as e:
+                logger.error("Failed to parse Track 2 data: %s", e)
+
+        if not card_number or not exp_date:
+            raise ValueError("Could not parse card data from track data")
+
+        # Clean card number (remove any non-digits)
+        card_number = ''.join(filter(str.isdigit, card_number))
+
+        logger.info(
+            "Parsed track data: last4=%s, exp=%s, member=%s",
+            card_number[-4:], exp_date, member_id
+        )
+
+        # Tokenize using the existing method
+        return self.generate_card_token(card_number, exp_date, member_id)

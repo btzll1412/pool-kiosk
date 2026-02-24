@@ -24,6 +24,7 @@ import {
 import toast from "react-hot-toast";
 import { useTimezone, formatDate, formatDateTime } from "../../../context/TimezoneContext";
 import {
+  addMemberSavedCard,
   adjustCredit,
   assignCard,
   deactivateCard,
@@ -40,6 +41,8 @@ import {
   getMemberPinStatus,
   getMemberSavedCards,
   resetMemberPin,
+  tokenizeCardFromSwipe,
+  tokenizeCardFromFull,
   unlockMemberPin,
 } from "../../../api/members";
 import {
@@ -55,6 +58,7 @@ import ConfirmDialog from "../../../shared/ConfirmDialog";
 import Input from "../../../shared/Input";
 import Modal from "../../../shared/Modal";
 import useNFCReader from "../../../hooks/useNFCReader";
+import useCardReader from "../../../hooks/useCardReader";
 import PageHeader from "../../../shared/PageHeader";
 import { SkeletonLine, SkeletonCard } from "../../../shared/Skeleton";
 
@@ -87,6 +91,28 @@ export default function MemberDetail() {
   const [swimAdjustLoading, setSwimAdjustLoading] = useState(false);
   const [deactivateMembershipTarget, setDeactivateMembershipTarget] = useState(null);
 
+  // Payment options for Add Membership
+  const [chargeNow, setChargeNow] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [cashAmount, setCashAmount] = useState("");
+  const [useExistingCard, setUseExistingCard] = useState(true);
+  const [selectedSavedCardId, setSelectedSavedCardId] = useState("");
+  const [newCardLast4, setNewCardLast4] = useState("");
+  const [newCardBrand, setNewCardBrand] = useState("Visa");
+  const [saveNewCard, setSaveNewCard] = useState(false);
+  const [enableAutopay, setEnableAutopay] = useState(false);
+
+  // Add Card on File
+  const [showAddCard, setShowAddCard] = useState(false);
+  const [addCardMethod, setAddCardMethod] = useState("swipe"); // "swipe", "manual", "hosted"
+  const [addCardLast4, setAddCardLast4] = useState("");
+  const [addCardBrand, setAddCardBrand] = useState("Visa");
+  const [addCardName, setAddCardName] = useState("");
+  const [addCardLoading, setAddCardLoading] = useState(false);
+  const [swipeData, setSwipeData] = useState("");
+  const [fullCardNumber, setFullCardNumber] = useState("");
+  const [fullCardExp, setFullCardExp] = useState("");
+
   // PIN lockout and reset
   const [pinStatus, setPinStatus] = useState(null);
   const [showResetPin, setShowResetPin] = useState(false);
@@ -109,6 +135,17 @@ export default function MemberDetail() {
       }
     },
     enabled: showAssignCard,
+  });
+
+  // Listen for card swipes when add card modal is open in swipe mode
+  useCardReader({
+    onSwipe: (trackData) => {
+      if (showAddCard && addCardMethod === "swipe") {
+        setSwipeData(trackData);
+        toast.success("Card swiped! Click Save to tokenize.");
+      }
+    },
+    enabled: showAddCard && addCardMethod === "swipe",
   });
 
   const load = () => {
@@ -251,16 +288,116 @@ export default function MemberDetail() {
     if (!selectedPlanId) return;
     setAddMembershipLoading(true);
     try {
-      await createMembership({ member_id: id, plan_id: selectedPlanId });
-      toast.success("Membership added");
+      const payload = { member_id: id, plan_id: selectedPlanId };
+
+      // Build payment info if charging now
+      if (chargeNow) {
+        if (paymentMethod === "cash") {
+          payload.payment = {
+            payment_method: "cash",
+            amount_tendered: cashAmount ? parseFloat(cashAmount) : null,
+          };
+        } else if (paymentMethod === "card") {
+          if (useExistingCard && selectedSavedCardId) {
+            payload.payment = {
+              payment_method: "card",
+              saved_card_id: selectedSavedCardId,
+            };
+          } else if (!useExistingCard && newCardLast4) {
+            payload.payment = {
+              payment_method: "card",
+              card_last4: newCardLast4,
+              card_brand: newCardBrand,
+              save_card: saveNewCard,
+              enable_autopay: enableAutopay,
+            };
+          }
+        }
+      }
+
+      const result = await createMembership(payload);
+      toast.success(result.message || "Membership added");
       setShowAddMembership(false);
-      setSelectedPlanId("");
+      resetMembershipForm();
       load();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to add membership");
     } finally {
       setAddMembershipLoading(false);
     }
+  };
+
+  const resetMembershipForm = () => {
+    setSelectedPlanId("");
+    setChargeNow(false);
+    setPaymentMethod("cash");
+    setCashAmount("");
+    setUseExistingCard(true);
+    setSelectedSavedCardId("");
+    setNewCardLast4("");
+    setNewCardBrand("Visa");
+    setSaveNewCard(false);
+    setEnableAutopay(false);
+  };
+
+  const handleAddCard = async () => {
+    setAddCardLoading(true);
+    try {
+      if (addCardMethod === "swipe") {
+        // Tokenize from card swipe data
+        if (!swipeData) {
+          toast.error("Please swipe a card first");
+          setAddCardLoading(false);
+          return;
+        }
+        await tokenizeCardFromSwipe(id, swipeData, addCardName || null);
+        toast.success("Card tokenized and saved successfully");
+      } else if (addCardMethod === "hosted") {
+        // Tokenize from full card details (hosted form entry)
+        if (!fullCardNumber || fullCardNumber.length < 13) {
+          toast.error("Please enter a valid card number");
+          setAddCardLoading(false);
+          return;
+        }
+        if (!fullCardExp || fullCardExp.length !== 4) {
+          toast.error("Please enter expiry as MMYY (e.g., 1225)");
+          setAddCardLoading(false);
+          return;
+        }
+        await tokenizeCardFromFull(id, fullCardNumber, fullCardExp, addCardName || null);
+        toast.success("Card tokenized and saved successfully");
+      } else {
+        // Manual entry - just record last 4 (no real tokenization)
+        if (!addCardLast4 || addCardLast4.length !== 4) {
+          toast.error("Please enter exactly 4 digits");
+          setAddCardLoading(false);
+          return;
+        }
+        await addMemberSavedCard(id, {
+          card_last4: addCardLast4,
+          card_brand: addCardBrand,
+          friendly_name: addCardName || null,
+        });
+        toast.success("Card recorded successfully");
+      }
+      resetAddCardForm();
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to add card");
+    } finally {
+      setAddCardLoading(false);
+    }
+  };
+
+  const resetAddCardForm = () => {
+    setShowAddCard(false);
+    setAddCardMethod("swipe");
+    setAddCardLast4("");
+    setAddCardBrand("Visa");
+    setAddCardName("");
+    setSwipeData("");
+    setFullCardNumber("");
+    setFullCardExp("");
   };
 
   const handleAdjustSwims = async () => {
@@ -532,7 +669,17 @@ export default function MemberDetail() {
 
         {/* Saved Payment Cards */}
         <Card>
-          <CardHeader title="Saved Cards" description={`${savedCards.length} card${savedCards.length !== 1 ? "s" : ""}`} />
+          <div className="flex items-center justify-between mb-4">
+            <CardHeader title="Saved Cards" description={`${savedCards.length} card${savedCards.length !== 1 ? "s" : ""}`} />
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Plus}
+              onClick={() => setShowAddCard(true)}
+            >
+              Add Card
+            </Button>
+          </div>
           {savedCards.length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-gray-500">No saved payment cards</p>
           ) : (
@@ -837,12 +984,13 @@ export default function MemberDetail() {
         open={showAddMembership}
         onClose={() => {
           setShowAddMembership(false);
-          setSelectedPlanId("");
+          resetMembershipForm();
         }}
         title="Add Membership"
-        size="sm"
+        size="md"
       >
         <div className="space-y-4">
+          {/* Plan Selection */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
               Select Plan
@@ -864,12 +1012,190 @@ export default function MemberDetail() {
                 ))}
             </select>
           </div>
+
+          {/* Charge Now Checkbox */}
+          {selectedPlanId && (
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="chargeNow"
+                checked={chargeNow}
+                onChange={(e) => setChargeNow(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+              />
+              <label htmlFor="chargeNow" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Collect payment now
+              </label>
+            </div>
+          )}
+
+          {/* Payment Options */}
+          {chargeNow && selectedPlanId && (
+            <div className="space-y-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              {/* Payment Method Selection */}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Payment Method
+                </label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="cash"
+                      checked={paymentMethod === "cash"}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Cash</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="card"
+                      checked={paymentMethod === "card"}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Card</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Cash Payment Options */}
+              {paymentMethod === "cash" && (
+                <Input
+                  label="Amount Received"
+                  type="number"
+                  step="0.01"
+                  value={cashAmount}
+                  onChange={(e) => setCashAmount(e.target.value)}
+                  placeholder={`Plan price: $${Number(plans.find(p => p.id === selectedPlanId)?.price || 0).toFixed(2)}`}
+                  helpText="Leave blank to use plan price"
+                />
+              )}
+
+              {/* Card Payment Options */}
+              {paymentMethod === "card" && (
+                <div className="space-y-3">
+                  {/* Use Existing or New Card */}
+                  {savedCards.length > 0 && (
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="cardSource"
+                          checked={useExistingCard}
+                          onChange={() => setUseExistingCard(true)}
+                          className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Use saved card</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="cardSource"
+                          checked={!useExistingCard}
+                          onChange={() => setUseExistingCard(false)}
+                          className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Enter new card</span>
+                      </label>
+                    </div>
+                  )}
+
+                  {/* Saved Card Selection */}
+                  {useExistingCard && savedCards.length > 0 && (
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Select Saved Card
+                      </label>
+                      <select
+                        value={selectedSavedCardId}
+                        onChange={(e) => setSelectedSavedCardId(e.target.value)}
+                        className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                      >
+                        <option value="">Choose a card...</option>
+                        {savedCards.map((card) => (
+                          <option key={card.id} value={card.id}>
+                            {card.friendly_name || `${card.card_brand} **** ${card.card_last4}`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* New Card Entry */}
+                  {(!useExistingCard || savedCards.length === 0) && (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Input
+                          label="Last 4 Digits"
+                          maxLength={4}
+                          value={newCardLast4}
+                          onChange={(e) => setNewCardLast4(e.target.value.replace(/\D/g, ""))}
+                          placeholder="1234"
+                        />
+                        <div>
+                          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Card Brand
+                          </label>
+                          <select
+                            value={newCardBrand}
+                            onChange={(e) => setNewCardBrand(e.target.value)}
+                            className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                          >
+                            <option value="Visa">Visa</option>
+                            <option value="Mastercard">Mastercard</option>
+                            <option value="Amex">American Express</option>
+                            <option value="Discover">Discover</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Save Card Checkbox */}
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="saveNewCard"
+                          checked={saveNewCard}
+                          onChange={(e) => setSaveNewCard(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                        />
+                        <label htmlFor="saveNewCard" className="text-sm text-gray-700 dark:text-gray-300">
+                          Save card for future use
+                        </label>
+                      </div>
+
+                      {/* Enable Autopay (monthly plans only) */}
+                      {saveNewCard && plans.find(p => p.id === selectedPlanId)?.plan_type === "monthly" && (
+                        <div className="flex items-center gap-2 ml-6">
+                          <input
+                            type="checkbox"
+                            id="enableAutopay"
+                            checked={enableAutopay}
+                            onChange={(e) => setEnableAutopay(e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                          />
+                          <label htmlFor="enableAutopay" className="text-sm text-gray-700 dark:text-gray-300">
+                            Enable auto-renewal with this card
+                          </label>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-end gap-3 pt-2">
             <Button
               variant="secondary"
               onClick={() => {
                 setShowAddMembership(false);
-                setSelectedPlanId("");
+                resetMembershipForm();
               }}
             >
               Cancel
@@ -877,9 +1203,9 @@ export default function MemberDetail() {
             <Button
               onClick={handleAddMembership}
               loading={addMembershipLoading}
-              disabled={!selectedPlanId}
+              disabled={!selectedPlanId || (chargeNow && paymentMethod === "card" && useExistingCard && !selectedSavedCardId) || (chargeNow && paymentMethod === "card" && !useExistingCard && newCardLast4.length !== 4)}
             >
-              Add Membership
+              {chargeNow ? "Add & Charge" : "Add Membership"}
             </Button>
           </div>
         </div>
@@ -1040,6 +1366,177 @@ export default function MemberDetail() {
               disabled={!newCardUid.trim()}
             >
               Assign Card
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Add Saved Payment Card Modal */}
+      <Modal
+        open={showAddCard}
+        onClose={resetAddCardForm}
+        title="Add Payment Card"
+        size="md"
+      >
+        <div className="space-y-4">
+          {/* Method Selection */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              How do you want to add the card?
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setAddCardMethod("swipe")}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                  addCardMethod === "swipe"
+                    ? "border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400"
+                    : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                }`}
+              >
+                Swipe Card
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddCardMethod("hosted")}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                  addCardMethod === "hosted"
+                    ? "border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400"
+                    : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                }`}
+              >
+                Enter Card
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddCardMethod("manual")}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                  addCardMethod === "manual"
+                    ? "border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400"
+                    : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                }`}
+              >
+                Record Only
+              </button>
+            </div>
+          </div>
+
+          {/* Swipe Card Method */}
+          {addCardMethod === "swipe" && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-6 text-center">
+                <CreditCard className="mx-auto h-10 w-10 text-gray-400 dark:text-gray-500 mb-3" />
+                {swipeData ? (
+                  <div>
+                    <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                      Card swiped successfully
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Card data captured. Click Save to tokenize.
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Swipe the card through the card reader
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                      The card data will be captured automatically
+                    </p>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Card will be securely tokenized with HiTech/Converge. The actual card number is never stored.
+              </p>
+            </div>
+          )}
+
+          {/* Hosted/Full Card Entry Method */}
+          {addCardMethod === "hosted" && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Card data is sent directly to HiTech/Converge for tokenization.
+                  The card number is never stored on our servers.
+                </p>
+              </div>
+              <Input
+                label="Card Number"
+                value={fullCardNumber}
+                onChange={(e) => setFullCardNumber(e.target.value.replace(/\D/g, ""))}
+                placeholder="4111111111111111"
+                maxLength={19}
+              />
+              <Input
+                label="Expiry (MMYY)"
+                value={fullCardExp}
+                onChange={(e) => setFullCardExp(e.target.value.replace(/\D/g, ""))}
+                placeholder="1225"
+                maxLength={4}
+                helpText="Enter as 4 digits: MMYY (e.g., 1225 for Dec 2025)"
+              />
+            </div>
+          )}
+
+          {/* Manual/Record Only Method */}
+          {addCardMethod === "manual" && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-3">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  This only records the card info for reference. The card cannot be charged
+                  through our system. Use this after processing payment on an external terminal.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Last 4 Digits"
+                  maxLength={4}
+                  value={addCardLast4}
+                  onChange={(e) => setAddCardLast4(e.target.value.replace(/\D/g, ""))}
+                  placeholder="1234"
+                />
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Card Brand
+                  </label>
+                  <select
+                    value={addCardBrand}
+                    onChange={(e) => setAddCardBrand(e.target.value)}
+                    className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                  >
+                    <option value="Visa">Visa</option>
+                    <option value="Mastercard">Mastercard</option>
+                    <option value="Amex">American Express</option>
+                    <option value="Discover">Discover</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Card Nickname (all methods) */}
+          <Input
+            label="Card Nickname (optional)"
+            value={addCardName}
+            onChange={(e) => setAddCardName(e.target.value)}
+            placeholder="e.g., Personal Card, Work Card"
+          />
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="secondary" onClick={resetAddCardForm}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddCard}
+              loading={addCardLoading}
+              disabled={
+                (addCardMethod === "swipe" && !swipeData) ||
+                (addCardMethod === "hosted" && (fullCardNumber.length < 13 || fullCardExp.length !== 4)) ||
+                (addCardMethod === "manual" && addCardLast4.length !== 4)
+              }
+            >
+              {addCardMethod === "manual" ? "Record Card" : "Save Card"}
             </Button>
           </div>
         </div>
