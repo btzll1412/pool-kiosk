@@ -10,6 +10,7 @@ from app.payments.cash import CashPaymentAdapter
 from app.payments.stripe_adapter import StripePaymentAdapter
 from app.payments.square_adapter import SquarePaymentAdapter
 from app.payments.sola_adapter import SolaPaymentAdapter
+from app.payments.hitech_adapter import HiTechPaymentAdapter
 
 __all__ = [
     "BasePaymentAdapter",
@@ -22,4 +23,5 @@ __all__ = [
     "StripePaymentAdapter",
     "SquarePaymentAdapter",
     "SolaPaymentAdapter",
+    "HiTechPaymentAdapter",
 ]

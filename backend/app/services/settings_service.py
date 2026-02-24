@@ -50,6 +50,11 @@ DEFAULT_SETTINGS = {
     "sola_api_secret": "",
     "sola_merchant_id": "",
     "sola_environment": "sandbox",
+    # HiTech Merchants (Converge) settings
+    "hitech_merchant_id": "",
+    "hitech_user_id": "",
+    "hitech_pin": "",
+    "hitech_environment": "sandbox",
     # Email / SMTP (Phase 8)
     "email_smtp_host": "",
     "email_smtp_port": "587",
@@ -89,6 +94,7 @@ SENSITIVE_KEYS = {
     "stripe_api_key", "stripe_secret_key", "stripe_webhook_secret",
     "square_access_token",
     "sola_api_key", "sola_api_secret",
+    "hitech_pin",
     "email_smtp_password",
     "sip_password", "sip_fusionpbx_api_key",
 }
@@ -123,6 +129,7 @@ def get_processor_config(db: Session, processor: str) -> dict[str, str]:
         "stripe": ["stripe_api_key", "stripe_secret_key", "stripe_webhook_secret"],
         "square": ["square_access_token", "square_location_id", "square_environment"],
         "sola": ["sola_api_key", "sola_api_secret", "sola_merchant_id", "sola_environment"],
+        "hitech": ["hitech_merchant_id", "hitech_user_id", "hitech_pin", "hitech_environment"],
     }
     keys = prefix_map.get(processor, [])
     return {k: get_setting(db, k, "") for k in keys}

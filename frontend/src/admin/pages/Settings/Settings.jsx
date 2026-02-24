@@ -179,6 +179,7 @@ const settingGroups = [
           { value: "stripe", label: "Stripe" },
           { value: "square", label: "Square" },
           { value: "sola", label: "Sola" },
+          { value: "hitech", label: "HiTech Merchants" },
         ],
       },
     ],
@@ -222,6 +223,22 @@ const settingGroups = [
       { key: "sola_merchant_id", label: "Merchant ID", type: "text" },
       {
         key: "sola_environment", label: "Environment", type: "select",
+        options: [{ value: "sandbox", label: "Sandbox" }, { value: "production", label: "Production" }],
+      },
+    ],
+  },
+  {
+    title: "HiTech Merchants Configuration",
+    description: "HiTech Merchants (Converge) API credentials",
+    category: "payments",
+    showWhen: (s) => s.payment_processor === "hitech",
+    testAction: "hitech",
+    fields: [
+      { key: "hitech_merchant_id", label: "Merchant ID", type: "text", helpText: "Converge account ID" },
+      { key: "hitech_user_id", label: "User ID", type: "text", helpText: "Converge user ID with API access" },
+      { key: "hitech_pin", label: "PIN", type: "password", helpText: "64-character terminal identifier" },
+      {
+        key: "hitech_environment", label: "Environment", type: "select",
         options: [{ value: "sandbox", label: "Sandbox" }, { value: "production", label: "Production" }],
       },
     ],
