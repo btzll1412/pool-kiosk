@@ -104,6 +104,16 @@ def deactivate_member(db: Session, member_id: uuid.UUID, user_id: uuid.UUID | No
     return member
 
 
+def reactivate_member(db: Session, member_id: uuid.UUID, user_id: uuid.UUID | None = None) -> Member:
+    member = get_member(db, member_id)
+    member.is_active = True
+    db.commit()
+    db.refresh(member)
+    log_activity(db, user_id=user_id, action="member.reactivate", entity_type="member", entity_id=member.id)
+    logger.info("Member reactivated: id=%s, by_user=%s", member_id, user_id)
+    return member
+
+
 def adjust_credit(
     db: Session, member_id: uuid.UUID, data: CreditAdjustRequest, user_id: uuid.UUID | None = None
 ) -> Member:

@@ -181,6 +181,17 @@ export default function CheckinsList() {
     }));
   };
 
+  // Check if quick date filters are active
+  const todayStr = new Date().toISOString().split("T")[0];
+  const startOfWeekDate = new Date();
+  startOfWeekDate.setDate(startOfWeekDate.getDate() - startOfWeekDate.getDay());
+  const startOfWeekStr = startOfWeekDate.toISOString().split("T")[0];
+  const startOfMonthStr = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
+
+  const isTodayActive = filters.start_date === todayStr && filters.end_date === todayStr;
+  const isThisWeekActive = filters.start_date === startOfWeekStr && filters.end_date === todayStr;
+  const isThisMonthActive = filters.start_date === startOfMonthStr && filters.end_date === todayStr;
+
   return (
     <div>
       <PageHeader
@@ -206,19 +217,31 @@ export default function CheckinsList() {
       <div className="mb-4 flex flex-wrap gap-2">
         <button
           onClick={setToday}
-          className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+            isTodayActive
+              ? "bg-brand-500 text-white hover:bg-brand-600"
+              : "text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+          }`}
         >
           Today
         </button>
         <button
           onClick={setThisWeek}
-          className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+            isThisWeekActive
+              ? "bg-brand-500 text-white hover:bg-brand-600"
+              : "text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+          }`}
         >
           This Week
         </button>
         <button
           onClick={setThisMonth}
-          className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+            isThisMonthActive
+              ? "bg-brand-500 text-white hover:bg-brand-600"
+              : "text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+          }`}
         >
           This Month
         </button>
@@ -228,30 +251,38 @@ export default function CheckinsList() {
       <div className="mb-5 flex flex-wrap items-end gap-3">
         {/* Search */}
         <div className="flex-1 min-w-[200px] max-w-xs">
-          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
-            Search Member
+          <label className={`mb-1 block text-xs font-medium ${filters.search ? "text-brand-600 dark:text-brand-400" : "text-gray-500 dark:text-gray-400"}`}>
+            Search Member {filters.search && "●"}
           </label>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Search className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${filters.search ? "text-brand-500" : "text-gray-400"}`} />
             <input
               type="text"
               value={filters.search}
               onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
               placeholder="Search by name..."
-              className="w-full rounded-lg border-0 py-2 pl-9 pr-3 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100 placeholder:text-gray-400"
+              className={`w-full rounded-lg border-0 py-2 pl-9 pr-3 text-sm shadow-sm ring-1 ring-inset focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100 placeholder:text-gray-400 ${
+                filters.search
+                  ? "ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-950"
+                  : "ring-gray-300 dark:ring-gray-600"
+              }`}
             />
           </div>
         </div>
 
         {/* Type filter */}
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
-            Type
+          <label className={`mb-1 block text-xs font-medium ${filters.checkin_type ? "text-brand-600 dark:text-brand-400" : "text-gray-500 dark:text-gray-400"}`}>
+            Type {filters.checkin_type && "●"}
           </label>
           <select
             value={filters.checkin_type}
             onChange={(e) => setFilters((f) => ({ ...f, checkin_type: e.target.value }))}
-            className="rounded-lg border-0 py-2 pl-3 pr-8 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+            className={`rounded-lg border-0 py-2 pl-3 pr-8 text-sm shadow-sm ring-1 ring-inset focus:ring-2 focus:ring-brand-600 dark:text-gray-100 ${
+              filters.checkin_type
+                ? "ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-950"
+                : "ring-gray-300 dark:ring-gray-600 dark:bg-gray-800"
+            }`}
           >
             <option value="">All types</option>
             <option value="membership">Membership</option>
@@ -264,38 +295,50 @@ export default function CheckinsList() {
 
         {/* Date range */}
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
-            From
+          <label className={`mb-1 block text-xs font-medium ${filters.start_date ? "text-brand-600 dark:text-brand-400" : "text-gray-500 dark:text-gray-400"}`}>
+            From {filters.start_date && "●"}
           </label>
           <input
             type="date"
             value={filters.start_date}
             onChange={(e) => setFilters((f) => ({ ...f, start_date: e.target.value }))}
-            className="rounded-lg border-0 py-2 px-3 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+            className={`rounded-lg border-0 py-2 px-3 text-sm shadow-sm ring-1 ring-inset focus:ring-2 focus:ring-brand-600 dark:text-gray-100 ${
+              filters.start_date
+                ? "ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-950"
+                : "ring-gray-300 dark:ring-gray-600 dark:bg-gray-800"
+            }`}
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
-            To
+          <label className={`mb-1 block text-xs font-medium ${filters.end_date ? "text-brand-600 dark:text-brand-400" : "text-gray-500 dark:text-gray-400"}`}>
+            To {filters.end_date && "●"}
           </label>
           <input
             type="date"
             value={filters.end_date}
             onChange={(e) => setFilters((f) => ({ ...f, end_date: e.target.value }))}
-            className="rounded-lg border-0 py-2 px-3 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+            className={`rounded-lg border-0 py-2 px-3 text-sm shadow-sm ring-1 ring-inset focus:ring-2 focus:ring-brand-600 dark:text-gray-100 ${
+              filters.end_date
+                ? "ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-950"
+                : "ring-gray-300 dark:ring-gray-600 dark:bg-gray-800"
+            }`}
           />
         </div>
 
         {/* Unique toggle */}
-        <label className="flex items-center gap-2 rounded-lg bg-gray-50 dark:bg-gray-800 px-3 py-2 cursor-pointer ring-1 ring-inset ring-gray-200 dark:ring-gray-700">
+        <label className={`flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer ring-1 ring-inset transition-colors ${
+          filters.unique_only
+            ? "bg-brand-50 dark:bg-brand-950 ring-2 ring-brand-500"
+            : "bg-gray-50 dark:bg-gray-800 ring-gray-200 dark:ring-gray-700"
+        }`}>
           <input
             type="checkbox"
             checked={filters.unique_only}
             onChange={(e) => setFilters((f) => ({ ...f, unique_only: e.target.checked }))}
             className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
           />
-          <Users className="h-4 w-4 text-gray-500" />
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <Users className={`h-4 w-4 ${filters.unique_only ? "text-brand-500" : "text-gray-500"}`} />
+          <span className={`text-sm font-medium ${filters.unique_only ? "text-brand-700 dark:text-brand-300" : "text-gray-700 dark:text-gray-300"}`}>
             Unique Only
           </span>
         </label>

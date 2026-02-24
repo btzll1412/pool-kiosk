@@ -30,6 +30,7 @@ import {
   reactivateCard,
   deleteCard,
   deactivateMember,
+  reactivateMember,
   permanentlyDeleteMember,
   deleteMemberSavedCard,
   getMember,
@@ -163,6 +164,16 @@ export default function MemberDetail() {
       navigate("/admin/members");
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to deactivate member");
+    }
+  };
+
+  const handleReactivate = async () => {
+    try {
+      await reactivateMember(id);
+      toast.success("Member reactivated");
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to reactivate member");
     }
   };
 
@@ -380,13 +391,22 @@ export default function MemberDetail() {
                 </Button>
               )}
               {!member.is_active && (
-                <Button
-                  variant="danger"
-                  icon={Trash2}
-                  onClick={() => setShowPermanentDelete(true)}
-                >
-                  Delete Permanently
-                </Button>
+                <>
+                  <Button
+                    variant="primary"
+                    icon={Power}
+                    onClick={handleReactivate}
+                  >
+                    Reactivate
+                  </Button>
+                  <Button
+                    variant="danger"
+                    icon={Trash2}
+                    onClick={() => setShowPermanentDelete(true)}
+                  >
+                    Delete Permanently
+                  </Button>
+                </>
               )}
             </div>
           }

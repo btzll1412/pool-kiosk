@@ -25,3 +25,6 @@ export const uploadKioskBackground = (file) => {
     headers: { "Content-Type": "multipart/form-data" },
   }).then((r) => r.data);
 };
+
+export const revealSetting = (key) =>
+  client.get(`/settings/reveal/${encodeURIComponent(key)}`).then((r) => r.data);

@@ -1,8 +1,10 @@
 import logging
 import os
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,7 @@ from app.services.settings_service import (
     SENSITIVE_KEYS,
     get_all_settings,
     get_processor_config,
+    get_setting,
     update_settings,
 )
 
@@ -33,6 +36,23 @@ def get_settings(
     current_user: User = Depends(get_current_user),
 ):
     return get_all_settings(db, mask_sensitive=True)
+
+
+@router.get("/reveal/{key}")
+def reveal_setting(
+    key: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reveal the actual value of a sensitive setting (admin only)."""
+    if key not in SENSITIVE_KEYS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Key '{key}' is not a sensitive setting",
+        )
+    value = get_setting(db, key, "")
+    logger.info("Sensitive setting revealed: key=%s, by_user=%s", key, current_user.username)
+    return {"key": key, "value": value}
 
 
 @router.put("")
@@ -163,3 +183,58 @@ async def upload_kiosk_background(
 
     logger.info("Kiosk background uploaded: %s by user=%s", filename, current_user.username)
     return {"success": True, "url": image_url}
+
+
+LOG_DIR = os.environ.get("LOG_DIR", "/app/logs")
+
+
+@router.get("/logs")
+def get_logs(
+    log_type: Literal["all", "payments"] = Query("all", description="Which log file to read"),
+    lines: int = Query(100, ge=1, le=1000, description="Number of lines to return"),
+    current_user: User = Depends(get_current_user),
+):
+    """Get recent log entries for debugging."""
+    log_files = {
+        "all": "pool-kiosk.log",
+        "payments": "payments.log",
+    }
+    log_file = os.path.join(LOG_DIR, log_files[log_type])
+
+    if not os.path.exists(log_file):
+        return {"lines": [], "message": f"Log file not found: {log_file}"}
+
+    try:
+        with open(log_file, "r", encoding="utf-8") as f:
+            all_lines = f.readlines()
+            recent_lines = all_lines[-lines:]
+        logger.debug("Logs retrieved: type=%s, lines=%d, by_user=%s", log_type, len(recent_lines), current_user.username)
+        return {"lines": [line.rstrip() for line in recent_lines], "total_lines": len(all_lines)}
+    except Exception as exc:
+        logger.exception("Failed to read logs: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to read logs: {exc}")
+
+
+@router.get("/logs/download", response_class=PlainTextResponse)
+def download_logs(
+    log_type: Literal["all", "payments"] = Query("all", description="Which log file to download"),
+    current_user: User = Depends(get_current_user),
+):
+    """Download full log file."""
+    log_files = {
+        "all": "pool-kiosk.log",
+        "payments": "payments.log",
+    }
+    log_file = os.path.join(LOG_DIR, log_files[log_type])
+
+    if not os.path.exists(log_file):
+        raise HTTPException(status_code=404, detail=f"Log file not found: {log_file}")
+
+    try:
+        with open(log_file, "r", encoding="utf-8") as f:
+            content = f.read()
+        logger.info("Log file downloaded: type=%s, by_user=%s", log_type, current_user.username)
+        return content
+    except Exception as exc:
+        logger.exception("Failed to download logs: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to read logs: {exc}")

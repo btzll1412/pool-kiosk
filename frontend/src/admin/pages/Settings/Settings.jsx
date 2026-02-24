@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Database, Download, Eye, EyeOff, Monitor, Save, Send, Settings2, CreditCard, Bell, Upload } from "lucide-react";
 import toast from "react-hot-toast";
-import { getSettings, updateSettings, testWebhook, testPaymentConnection, testEmail, testSipCall, uploadKioskBackground } from "../../../api/settings";
+import { getSettings, updateSettings, testWebhook, testPaymentConnection, testEmail, testSipCall, uploadKioskBackground, revealSetting } from "../../../api/settings";
 import { exportSystem, importSystem } from "../../../api/backup";
 import Button from "../../../shared/Button";
 import Card, { CardHeader } from "../../../shared/Card";
@@ -470,6 +470,8 @@ function TestConnectionButton({ action, settings }) {
 function SettingField({ field, value, onChange, settings }) {
   const [testing, setTesting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [revealedValue, setRevealedValue] = useState(null);
+  const [revealing, setRevealing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const imageInputRef = useRef(null);
 
@@ -560,22 +562,55 @@ function SettingField({ field, value, onChange, settings }) {
   }
 
   if (field.type === "password") {
+    const isMasked = value === "••••••••";
+    const displayValue = showPassword && revealedValue !== null ? revealedValue : value;
+
+    const handleReveal = async () => {
+      if (showPassword) {
+        // Hide the password
+        setShowPassword(false);
+        return;
+      }
+      // If value is masked, fetch the real value
+      if (isMasked && revealedValue === null) {
+        setRevealing(true);
+        try {
+          const result = await revealSetting(field.key);
+          setRevealedValue(result.value);
+          setShowPassword(true);
+        } catch (err) {
+          toast.error("Failed to reveal value");
+        } finally {
+          setRevealing(false);
+        }
+      } else {
+        setShowPassword(true);
+      }
+    };
+
     return (
       <div>
         <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">{field.label}</label>
         <div className="relative">
           <input
             type={showPassword ? "text" : "password"}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
+            value={displayValue}
+            onChange={(e) => { onChange(e.target.value); setRevealedValue(null); }}
             className="block w-full rounded-lg border-0 px-3.5 py-2.5 pr-10 text-sm shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100 dark:ring-gray-600"
           />
           <button
             type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            onClick={handleReveal}
+            disabled={revealing}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50"
           >
-            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {revealing ? (
+              <span className="h-4 w-4 block animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+            ) : showPassword ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
           </button>
         </div>
         {field.helpText && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{field.helpText}</p>}
