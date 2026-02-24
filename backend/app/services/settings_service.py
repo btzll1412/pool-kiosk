@@ -76,6 +76,7 @@ DEFAULT_SETTINGS = {
     "kiosk_overlay_enabled": "false",
     "kiosk_overlay_text": "",
     "kiosk_locked": "false",
+    "staff_exit_pin": "0000",
     "kiosk_lock_message": "Kiosk is currently unavailable. Please see staff.",
     "kiosk_bg_type": "gradient",
     "kiosk_bg_color": "#0284c7",

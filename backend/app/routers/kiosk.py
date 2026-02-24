@@ -276,11 +276,14 @@ def get_plan_effective_price(plan) -> Decimal:
 @limiter.limit("30/minute")
 def get_kiosk_plans(request: Request, db: Session = Depends(get_db), is_senior: bool = None):
     query = db.query(Plan).filter(Plan.is_active.is_(True))
-    
-    # Filter by senior status if specified
-    if is_senior is not None:
-        query = query.filter(Plan.is_senior_plan == is_senior)
-    
+
+    # Filter by senior status:
+    # - Seniors can see ALL plans (regular + senior-only)
+    # - Non-seniors can only see regular plans (hide senior-only discounts)
+    if is_senior is False:
+        query = query.filter(Plan.is_senior_plan == False)
+    # If is_senior is True or None, show all plans
+
     plans = query.order_by(Plan.display_order, Plan.name).all()
     return [
         {
@@ -329,6 +332,8 @@ def get_kiosk_settings(request: Request, db: Session = Depends(get_db)):
         "kiosk_bg_color": get_setting(db, "kiosk_bg_color", "#0284c7"),
         "kiosk_bg_image": get_setting(db, "kiosk_bg_image", ""),
         "kiosk_bg_image_mode": get_setting(db, "kiosk_bg_image_mode", "cover"),
+        "staff_exit_pin": get_setting(db, "staff_exit_pin", "0000"),
+        "senior_age_threshold": get_setting(db, "senior_age_threshold", "65"),
     }
 
 

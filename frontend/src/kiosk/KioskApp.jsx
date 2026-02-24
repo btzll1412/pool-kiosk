@@ -3,7 +3,8 @@ import toast, { Toaster } from "react-hot-toast";
 import RFIDListener from "./components/RFIDListener";
 import InactivityTimer from "./components/InactivityTimer";
 import ScreenTransition from "./components/ScreenTransition";
-import { getSettings, scanCard } from "../api/kiosk";
+import SecretExitTrigger from "./components/SecretExitTrigger";
+import { getSettings, scanCard, checkin } from "../api/kiosk";
 import IdleScreen from "./screens/IdleScreen";
 import MemberScreen from "./screens/MemberScreen";
 import CheckinScreen from "./screens/CheckinScreen";
@@ -111,14 +112,31 @@ export default function KioskApp() {
       try {
         const data = await scanCard(rfid_uid);
         setMember(data);
-        setScreen("member");
+
+        // Auto check-in for monthly pass members
+        if (data.active_membership?.plan_type === "monthly" && !data.is_frozen) {
+          try {
+            await checkin(data.member_id, 0);
+            goTo("status", {
+              statusType: "success",
+              statusTitle: `Welcome, ${data.first_name}!`,
+              statusMessage: "Checked in successfully. Enjoy your swim!",
+            });
+          } catch {
+            // If check-in fails, go to member screen anyway
+            setScreen("member");
+          }
+        } else {
+          // Swim pass, single, or no active plan - go to member screen
+          setScreen("member");
+        }
       } catch {
         toast.error(`Card ${rfid_uid} not recognized. Please see staff for assistance.`, {
           id: "card-not-found",
         });
       }
     },
-    [screen]
+    [screen, goTo]
   );
 
   const Screen = SCREENS[screen] || IdleScreen;
@@ -130,9 +148,12 @@ export default function KioskApp() {
   const currency = settings.currency_symbol || "$";
   const maxGuests = Number(settings.family_max_guests) || 5;
 
+  const staffExitPin = settings.staff_exit_pin || "0000";
+
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-gray-50">
-      <RFIDListener onScan={handleScan} disabled={!isIdle} />
+    <SecretExitTrigger staffExitPin={staffExitPin}>
+      <div className="flex h-screen w-screen flex-col overflow-hidden bg-gray-50">
+        <RFIDListener onScan={handleScan} disabled={!isIdle} />
 
       {!isIdle && (
         <InactivityTimer
@@ -159,6 +180,7 @@ export default function KioskApp() {
           }}
         />
       </ScreenTransition>
-    </div>
+      </div>
+    </SecretExitTrigger>
   );
 }
