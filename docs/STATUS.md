@@ -4,7 +4,7 @@
 
 ---
 
-## Current Phase: Phase 10 — Senior Discounts & Monthly Billing
+## Current Phase: Phase 11 — Pool Scheduling
 
 ### Overall Progress
 
@@ -20,6 +20,7 @@
 | Phase 8 — Payment Processors, Email, SIP & UI Polish | **Complete** | Stripe/Square/Sola adapters, SMTP email, SIP/FusionPBX, dark mode, kiosk transitions, skeletons |
 | Phase 9 — UX Polish & Admin Enhancements | **Complete** | Kiosk UX improvements, swim pass stacking, signup, backup/restore, membership management |
 | Phase 10 — Senior Discounts & Monthly Billing | **Complete** | Senior citizen discounts, DOB tracking, monthly pro-rated billing, permanent member delete |
+| Phase 11 — Pool Scheduling | **Complete** | Weekly schedules, men's/women's hours, schedule overrides, gender-based check-in validation |
 
 ---
 
@@ -40,7 +41,7 @@
 - [x] Config from environment variables (`app/config.py`)
 - [x] Database connection and session management (`app/database.py`)
 - [x] FastAPI app with CORS, rate limiting, lifespan (`app/main.py`)
-- [x] **13 SQLAlchemy models:** Member, Card, Plan, Membership, Checkin, Transaction, User, Setting, GuestVisit, MembershipFreeze, SavedCard, ActivityLog, PinLockout
+- [x] **15 SQLAlchemy models:** Member, Card, Plan, Membership, Checkin, Transaction, User, Setting, GuestVisit, MembershipFreeze, SavedCard, ActivityLog, PinLockout, PoolSchedule, ScheduleOverride
 - [x] Alembic migration setup (env.py, script template, alembic.ini)
 - [x] **Auth system:** JWT access/refresh tokens, password hashing, role-based guards
 - [x] **PIN system:** PIN hashing, verification, lockout after max attempts
@@ -61,7 +62,7 @@
 - [x] **SIP service** (`services/sip_service.py`): FusionPBX REST API integration, originate_call(), call_for_change_needed(), test_sip_connection()
 - [x] **Sensitive settings masking** — GET endpoint returns masked values (••••••) for API keys and passwords; PUT filters out masked values to prevent overwriting secrets
 - [x] **10 Pydantic schema modules:** auth, member, card, plan, membership, checkin, transaction, kiosk, settings, report
-- [x] **11 API routers:** auth, members, cards, plans, memberships, checkins, payments, transactions, reports, settings, kiosk
+- [x] **12 API routers:** auth, members, cards, plans, memberships, checkins, payments, transactions, reports, settings, kiosk, schedules
 - [x] All kiosk endpoints: scan, search, checkin, plans, pay/cash, pay/card (with saved card support + save-after-payment), pay/split, freeze, unfreeze, saved-cards CRUD, tokenize, set-default, auto-charge enable/disable, guest visit, change notification, verify-pin, signup
 - [x] All admin endpoints: full CRUD for members/plans/memberships, transaction management, reports with CSV export, settings management, member saved cards view + delete, member memberships view + manage, full system backup/export, system restore/import, member PIN unlock, members CSV import/export
 - [x] Activity logging on all admin mutations
@@ -433,4 +434,64 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-02-24 (Admin Payment Flow Enhancement)
+## Pool Scheduling System (2026-02-24)
+
+### Weekly Schedule Management
+- New `pool_schedules` table for recurring weekly time blocks
+- Schedule types: Open Swim, Men Only, Women Only, Lap Swim, Lessons, Maintenance, Closed
+- Each block has: name, type, day_of_week (0-6), start_time, end_time, priority, notes, is_active
+- Higher priority blocks override lower priority when times overlap
+- Full CRUD API at `GET/POST/PUT/DELETE /api/schedules`
+- `GET /api/schedules/weekly` returns full week organized by day
+- `GET /api/schedules/current` returns current pool status with restrictions
+
+### Schedule Overrides
+- New `schedule_overrides` table for temporary date/time-based overrides
+- Overrides take precedence over regular weekly schedule when active
+- Fields: name, type, start_datetime, end_datetime, is_active, notes, created_by
+- Use cases: holidays, private events, special hours
+- Full CRUD API at `GET/POST/PUT/DELETE /api/schedules/overrides`
+
+### Gender-Based Check-in Validation
+- Added `gender` field to Member model (male/female/null)
+- During men_only or women_only hours, kiosk validates member gender before check-in
+- Friendly error messages: "Sorry, this is currently Men's/Women's Hours. Please come back during..."
+- Gender can be set in admin MemberForm and kiosk signup/profile
+
+### Admin UI
+- New "Schedules" page with sidebar navigation (Calendar icon)
+- Tab interface: Weekly Schedule | Special Overrides
+- Weekly view shows 7-day grid with color-coded time blocks per type
+- Legend displays all schedule type colors
+- Active override warning banner when override is in effect
+- Create/Edit/Delete modals for schedules and overrides
+- Bulk clear all schedules option
+
+### Database Changes
+- Migration `e5f6g7h8i9j0_add_schedules_and_gender.py`:
+  - Creates `scheduletype` enum
+  - Creates `pool_schedules` table
+  - Creates `schedule_overrides` table
+  - Adds `gender` column to `members` table
+
+### Files Added
+- `backend/app/models/pool_schedule.py` — PoolSchedule, ScheduleOverride, ScheduleType
+- `backend/app/schemas/pool_schedule.py` — Create/Update/Response schemas
+- `backend/app/routers/schedules.py` — Full CRUD + current/weekly endpoints
+- `frontend/src/api/schedules.js` — API functions
+- `frontend/src/admin/pages/Schedules/ScheduleManager.jsx` — Admin UI
+
+### Files Modified
+- `backend/app/main.py` — Added schedules router
+- `backend/app/models/__init__.py` — Export new models
+- `backend/app/routers/kiosk.py` — Gender-based check-in validation
+- `backend/app/schemas/kiosk.py` — Added gender to MemberStatus, signup, profile update
+- `backend/app/schemas/member.py` — Added gender to schemas
+- `backend/app/services/member_service.py` — Added gender to create_member
+- `frontend/src/App.jsx` — Added schedules route
+- `frontend/src/admin/layout/Sidebar.jsx` — Added Schedules nav item
+- `frontend/src/admin/pages/Members/MemberForm.jsx` — Added gender dropdown
+
+---
+
+## Last Updated: 2026-02-24 (Pool Scheduling System)
