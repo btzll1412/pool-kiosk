@@ -32,6 +32,7 @@ class CheckinWithMemberResponse(BaseModel):
     member_name: str
     membership_id: uuid.UUID | None
     checkin_type: CheckinType | str
+    plan_name: str | None = None
     guest_count: int
     checked_in_at: datetime
     notes: str | None

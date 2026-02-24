@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.checkin import Checkin, CheckinType
 from app.models.guest_visit import GuestVisit
 from app.models.member import Member
+from app.models.membership import Membership
 from app.models.user import User
 from app.schemas.checkin import CheckinListResponse, CheckinResponse, CheckinWithMemberResponse
 from app.services.auth_service import get_current_user
@@ -94,12 +95,21 @@ def list_checkins(
         for checkin in checkins:
             member = db.query(Member).filter(Member.id == checkin.member_id).first()
             member_name = f"{member.first_name} {member.last_name}" if member else "Unknown"
+
+            # Get plan name from membership if available
+            plan_name = None
+            if checkin.membership_id:
+                membership = db.query(Membership).filter(Membership.id == checkin.membership_id).first()
+                if membership and membership.plan:
+                    plan_name = membership.plan.name
+
             all_items.append({
                 "id": checkin.id,
                 "member_id": checkin.member_id,
                 "member_name": member_name,
                 "membership_id": checkin.membership_id,
                 "checkin_type": checkin.checkin_type.value,
+                "plan_name": plan_name,
                 "guest_count": checkin.guest_count,
                 "checked_in_at": checkin.checked_in_at,
                 "notes": checkin.notes,
@@ -127,6 +137,7 @@ def list_checkins(
                 "member_name": f"{guest.name} (Guest)",
                 "membership_id": None,
                 "checkin_type": "guest",
+                "plan_name": "Guest Visit",
                 "guest_count": 0,
                 "checked_in_at": guest.created_at,
                 "notes": f"Paid ${guest.amount_paid} ({guest.payment_method.value})",
