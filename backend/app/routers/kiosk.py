@@ -26,6 +26,7 @@ from app.schemas.kiosk import (
     CreditPaymentRequest,
     GuestVisitRequest,
     GuestVisitResponse,
+    HostedPaymentSessionResponse,
     KioskCheckinRequest,
     KioskCheckinResponse,
     KioskFreezeRequest,
@@ -44,6 +45,8 @@ from app.schemas.kiosk import (
     SetDefaultCardRequest,
     SplitPaymentRequest,
     TokenizeCardRequest,
+    TokenizeFullCardRequest,
+    TokenizeTrackDataRequest,
     KioskUpdateProfileRequest,
 )
 from app.services.auto_charge_service import (
@@ -832,6 +835,120 @@ def tokenize_and_save_card(data: TokenizeCardRequest, request: Request, db: Sess
     db.commit()
     db.refresh(card)
     return card
+
+
+@router.post("/saved-cards/tokenize-swipe", response_model=SavedCardResponse, status_code=201)
+@limiter.limit("10/minute")
+def tokenize_card_from_swipe(data: TokenizeTrackDataRequest, request: Request, db: Session = Depends(get_db)):
+    """
+    Tokenize a card from magnetic stripe track data (card reader swipe).
+    Parses Track 1 or Track 2 data and creates a real token via the payment processor.
+    """
+    if data.pin:
+        verify_member_pin(db, data.member_id, data.pin)
+
+    # Verify member exists
+    member = db.query(Member).filter(Member.id == data.member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    adapter = get_payment_adapter(db)
+
+    # Check if adapter supports track data tokenization
+    if not hasattr(adapter, 'tokenize_from_track_data'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current payment processor does not support card reader tokenization"
+        )
+
+    try:
+        token, last4, card_brand = adapter.tokenize_from_track_data(data.track_data, str(data.member_id))
+    except ValueError as e:
+        logger.warning("Failed to parse track data: member=%s, error=%s", data.member_id, e)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except RuntimeError as e:
+        logger.error("Failed to tokenize card: member=%s, error=%s", data.member_id, e)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+
+    friendly = data.friendly_name or f"{card_brand or 'Card'} ending {last4}"
+    card = SavedCard(
+        member_id=data.member_id,
+        processor_token=token,
+        card_last4=last4,
+        card_brand=card_brand,
+        friendly_name=friendly,
+    )
+    db.add(card)
+    db.commit()
+    db.refresh(card)
+
+    logger.info("Card tokenized from swipe: member=%s, last4=%s, brand=%s", data.member_id, last4, card_brand)
+    return card
+
+
+@router.post("/saved-cards/tokenize-full", response_model=SavedCardResponse, status_code=201)
+@limiter.limit("10/minute")
+def tokenize_card_from_full_details(data: TokenizeFullCardRequest, request: Request, db: Session = Depends(get_db)):
+    """
+    Tokenize a card from full card details (typically from hosted payment page callback).
+    Creates a real token via the payment processor.
+    """
+    if data.pin:
+        verify_member_pin(db, data.member_id, data.pin)
+
+    # Verify member exists
+    member = db.query(Member).filter(Member.id == data.member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    adapter = get_payment_adapter(db)
+
+    # Check if adapter supports full card tokenization
+    if not hasattr(adapter, 'generate_card_token'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current payment processor does not support card tokenization"
+        )
+
+    try:
+        token, last4, card_brand = adapter.generate_card_token(data.card_number, data.exp_date, str(data.member_id))
+    except RuntimeError as e:
+        logger.error("Failed to tokenize card: member=%s, error=%s", data.member_id, e)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+
+    friendly = data.friendly_name or f"{card_brand or 'Card'} ending {last4}"
+    card = SavedCard(
+        member_id=data.member_id,
+        processor_token=token,
+        card_last4=last4,
+        card_brand=card_brand,
+        friendly_name=friendly,
+    )
+    db.add(card)
+    db.commit()
+    db.refresh(card)
+
+    logger.info("Card tokenized from full details: member=%s, last4=%s, brand=%s", data.member_id, last4, card_brand)
+    return card
+
+
+@router.get("/hosted-payment-session", response_model=HostedPaymentSessionResponse)
+@limiter.limit("20/minute")
+def get_hosted_payment_session(request: Request, db: Session = Depends(get_db)):
+    """
+    Get hosted payment page configuration for PayWithConverge.js lightbox.
+    Only available when using HiTech/Converge payment processor.
+    """
+    adapter = get_payment_adapter(db)
+
+    if not hasattr(adapter, 'get_hosted_payment_session'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current payment processor does not support hosted payment pages"
+        )
+
+    session_data = adapter.get_hosted_payment_session()
+    return HostedPaymentSessionResponse(**session_data)
 
 
 @router.put("/saved-cards/{card_id}", response_model=SavedCardResponse)

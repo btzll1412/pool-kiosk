@@ -51,6 +51,16 @@ export const deleteMemberSavedCard = (memberId, cardId) =>
 export const addMemberSavedCard = (memberId, data) =>
   client.post(`/members/${memberId}/saved-cards`, data).then((r) => r.data);
 
+export const tokenizeCardFromSwipe = (memberId, trackData, friendlyName) =>
+  client.post(`/members/${memberId}/saved-cards/tokenize-swipe`, null, {
+    params: { track_data: trackData, friendly_name: friendlyName }
+  }).then((r) => r.data);
+
+export const tokenizeCardFromFull = (memberId, cardNumber, expDate, friendlyName) =>
+  client.post(`/members/${memberId}/saved-cards/tokenize-full`, null, {
+    params: { card_number: cardNumber, exp_date: expDate, friendly_name: friendlyName }
+  }).then((r) => r.data);
+
 export const getMemberMemberships = (memberId) =>
   client.get(`/members/${memberId}/memberships`).then((r) => r.data);
 

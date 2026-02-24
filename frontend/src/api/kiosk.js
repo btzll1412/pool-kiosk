@@ -189,3 +189,29 @@ export async function getSettings() {
   const { data } = await kiosk.get("/settings");
   return data;
 }
+
+export async function getHostedPaymentSession() {
+  const { data } = await kiosk.get("/hosted-payment-session");
+  return data;
+}
+
+export async function tokenizeCardFromSwipe(trackData, memberId, pin, friendlyName) {
+  const { data } = await kiosk.post("/saved-cards/tokenize-swipe", {
+    track_data: trackData,
+    member_id: memberId,
+    pin,
+    friendly_name: friendlyName,
+  });
+  return data;
+}
+
+export async function tokenizeCardFromFull(cardNumber, expDate, memberId, pin, friendlyName) {
+  const { data } = await kiosk.post("/saved-cards/tokenize-full", {
+    card_number: cardNumber,
+    exp_date: expDate,
+    member_id: memberId,
+    pin,
+    friendly_name: friendlyName,
+  });
+  return data;
+}
