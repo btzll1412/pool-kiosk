@@ -23,6 +23,7 @@ from app.services.settings_service import (
     SENSITIVE_KEYS,
     get_all_settings,
     get_processor_config,
+    get_setting,
     update_settings,
 )
 
@@ -35,6 +36,23 @@ def get_settings(
     current_user: User = Depends(get_current_user),
 ):
     return get_all_settings(db, mask_sensitive=True)
+
+
+@router.get("/reveal/{key}")
+def reveal_setting(
+    key: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reveal the actual value of a sensitive setting (admin only)."""
+    if key not in SENSITIVE_KEYS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Key '{key}' is not a sensitive setting",
+        )
+    value = get_setting(db, key, "")
+    logger.info("Sensitive setting revealed: key=%s, by_user=%s", key, current_user.username)
+    return {"key": key, "value": value}
 
 
 @router.put("")
