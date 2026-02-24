@@ -57,7 +57,8 @@ pool-management/
 │   │   │   ├── checkin.py
 │   │   │   ├── transaction.py
 │   │   │   ├── credit.py
-│   │   │   └── user.py              # Admin/staff users
+│   │   │   ├── user.py              # Admin/staff users
+│   │   │   └── pool_schedule.py     # PoolSchedule, ScheduleOverride
 │   │   │
 │   │   ├── schemas/                 # Pydantic request/response schemas
 │   │   │   ├── __init__.py
@@ -67,7 +68,8 @@ pool-management/
 │   │   │   ├── membership.py
 │   │   │   ├── checkin.py
 │   │   │   ├── transaction.py
-│   │   │   └── auth.py
+│   │   │   ├── auth.py
+│   │   │   └── pool_schedule.py
 │   │   │
 │   │   ├── routers/                 # API route handlers
 │   │   │   ├── __init__.py
@@ -81,7 +83,8 @@ pool-management/
 │   │   │   ├── transactions.py      # Transaction history
 │   │   │   ├── reports.py           # Analytics & reports
 │   │   │   ├── settings.py          # System settings
-│   │   │   └── kiosk.py             # Kiosk-specific endpoints
+│   │   │   ├── kiosk.py             # Kiosk-specific endpoints
+│   │   │   └── schedules.py         # Pool schedule management
 │   │   │
 │   │   ├── services/                # Business logic layer
 │   │   │   ├── __init__.py
@@ -121,7 +124,8 @@ pool-management/
 │       │   ├── checkins.js
 │       │   ├── payments.js
 │       │   ├── settings.js          # Settings + test connection APIs
-│       │   └── reports.js
+│       │   ├── reports.js
+│       │   └── schedules.js         # Pool schedule API
 │       │
 │       ├── kiosk/                   # Kiosk UI (customer-facing)
 │       │   ├── KioskApp.jsx         # Main kiosk router/state
@@ -166,6 +170,8 @@ pool-management/
 │       │       │   └── SwimReport.jsx
 │       │       ├── Settings/
 │       │       │   └── Settings.jsx
+│       │       ├── Schedules/
+│       │       │   └── ScheduleManager.jsx
 │       │       └── Login.jsx
 │       │
 │       └── shared/                  # Shared components
@@ -356,6 +362,35 @@ pool-management/
 | locked_until | TIMESTAMP | Null if not locked |
 | last_attempt_at | TIMESTAMP | |
 
+### pool_schedules
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| name | VARCHAR(100) | e.g. "Morning Men's Swim" |
+| schedule_type | ENUM | open / men_only / women_only / lap_swim / lessons / maintenance / closed |
+| day_of_week | SMALLINT | 0=Monday, 6=Sunday |
+| start_time | TIME | |
+| end_time | TIME | |
+| is_active | BOOLEAN | Default true |
+| priority | INTEGER | Higher priority overrides lower |
+| notes | VARCHAR(500) | Optional |
+| created_at | TIMESTAMP | |
+
+### schedule_overrides
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| name | VARCHAR(100) | e.g. "Holiday Hours" |
+| schedule_type | ENUM | Same as pool_schedules |
+| start_datetime | TIMESTAMP | When override begins |
+| end_datetime | TIMESTAMP | When override ends |
+| is_active | BOOLEAN | Default true |
+| notes | VARCHAR(500) | Optional |
+| created_at | TIMESTAMP | |
+| created_by | UUID | FK → users |
+
 ---
 
 ## API Endpoints
@@ -448,6 +483,22 @@ pool-management/
 ### Guests (admin auth)
 
 - `GET /api/guests` — List guest visits with pagination
+
+### Schedules (admin auth)
+
+- `GET /api/schedules` — List all weekly schedules
+- `POST /api/schedules` — Create schedule block
+- `GET /api/schedules/{id}` — Get schedule by ID
+- `PUT /api/schedules/{id}` — Update schedule
+- `DELETE /api/schedules/{id}` — Delete schedule
+- `DELETE /api/schedules` — Clear all schedules
+- `GET /api/schedules/weekly` — Get full week schedule organized by day
+- `GET /api/schedules/current` — Get current pool status (checks overrides first)
+- `GET /api/schedules/overrides` — List all schedule overrides
+- `POST /api/schedules/overrides` — Create override
+- `GET /api/schedules/overrides/{id}` — Get override by ID
+- `PUT /api/schedules/overrides/{id}` — Update override
+- `DELETE /api/schedules/overrides/{id}` — Delete override
 
 ---
 
@@ -946,6 +997,7 @@ try {
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-02-24 | Phase 11: Added pool scheduling system (pool_schedules, schedule_overrides tables), gender-based check-in validation, schedule API endpoints, ScheduleManager admin UI | — |
 | 2026-02-19 | Phase 9: Added kiosk signup, PIN verify endpoint, backup/restore, member memberships management, swim pass stacking, guest visits page, settings tabs, admin PIN unlock, members CSV import/export | — |
 | 2026-02-18 | Phase 8: Added Stripe/Square/Sola payment adapters, email service, SIP service, dark mode, kiosk transitions, skeletons, 30+ new DB settings | — |
 | 2026-02-18 | Added Logging & Error Handling Standards section; consistent logging across all backend modules; frontend error handling audit | — |
