@@ -171,7 +171,7 @@ export default function MemberDetail() {
     try {
       await reactivateMember(id);
       toast.success("Member reactivated");
-      loadMember();
+      load();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to reactivate member");
     }
