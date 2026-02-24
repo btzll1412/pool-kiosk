@@ -89,6 +89,21 @@ export default function CheckinsList() {
     guest: "Guest",
   };
 
+  // Generate consistent color for plan names
+  const planColors = [
+    "blue", "purple", "green", "amber", "cyan", "pink", "indigo", "teal", "orange", "lime"
+  ];
+
+  const getPlanColor = (planName) => {
+    if (!planName) return "gray";
+    // Simple hash to get consistent color for same plan name
+    let hash = 0;
+    for (let i = 0; i < planName.length; i++) {
+      hash = planName.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return planColors[Math.abs(hash) % planColors.length];
+  };
+
   const columns = [
     {
       key: "member_name",
@@ -107,11 +122,16 @@ export default function CheckinsList() {
     {
       key: "checkin_type",
       label: "Type",
-      render: (row) => (
-        <Badge color={typeColors[row.checkin_type] || "gray"}>
-          {typeLabels[row.checkin_type] || row.checkin_type}
-        </Badge>
-      ),
+      render: (row) => {
+        // Use plan name for color if available (membership check-ins)
+        const color = row.plan_name ? getPlanColor(row.plan_name) : typeColors[row.checkin_type] || "gray";
+        const label = row.plan_name || typeLabels[row.checkin_type] || row.checkin_type;
+        return (
+          <Badge color={color}>
+            {label}
+          </Badge>
+        );
+      },
     },
     {
       key: "guest_count",
