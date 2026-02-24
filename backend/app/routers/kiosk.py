@@ -16,8 +16,10 @@ from app.models.member import Member
 from app.models.membership import Membership
 from app.models.membership_freeze import MembershipFreeze
 from app.models.plan import Plan, PlanType
+from app.models.pool_schedule import PoolSchedule, ScheduleOverride, ScheduleType
 from app.models.saved_card import SavedCard
 from app.models.transaction import PaymentMethod, Transaction, TransactionType
+from datetime import datetime
 from app.schemas.kiosk import (
     AutoChargeDisableRequest,
     AutoChargeRequest,
@@ -165,6 +167,7 @@ def kiosk_signup(data: KioskSignupRequest, request: Request, db: Session = Depen
         pin_hash=hash_pin(data.pin),
         date_of_birth=data.date_of_birth,
         is_senior=data.is_senior,
+        gender=data.gender,
     )
     db.add(member)
     db.commit()
@@ -210,11 +213,66 @@ def kiosk_update_profile(data: KioskUpdateProfileRequest, request: Request, db: 
         member.date_of_birth = data.date_of_birth
     if data.is_senior is not None:
         member.is_senior = data.is_senior
-    
+    if data.gender is not None:
+        member.gender = data.gender
+
     db.commit()
     db.refresh(member)
     logger.info("Kiosk profile update: member=%s, name=%s %s", member.id, member.first_name, member.last_name)
     return _build_member_status(db, member)
+
+
+def _get_current_schedule_restrictions(db: Session) -> tuple[ScheduleType | None, str | None]:
+    """
+    Get current schedule restrictions based on active override or regular schedule.
+    Returns (schedule_type, restriction_message) or (None, None) if no restrictions.
+    """
+    now = datetime.now()
+    current_day = now.weekday()  # 0=Monday
+    current_time = now.time()
+
+    # First check for active schedule overrides
+    active_override = (
+        db.query(ScheduleOverride)
+        .filter(
+            ScheduleOverride.is_active == True,
+            ScheduleOverride.start_datetime <= now,
+            ScheduleOverride.end_datetime > now,
+        )
+        .first()
+    )
+
+    if active_override:
+        if active_override.schedule_type == ScheduleType.men_only:
+            return (ScheduleType.men_only, f"{active_override.name} - Men's Hours Only")
+        elif active_override.schedule_type == ScheduleType.women_only:
+            return (ScheduleType.women_only, f"{active_override.name} - Women's Hours Only")
+        elif active_override.schedule_type in [ScheduleType.closed, ScheduleType.maintenance]:
+            return (active_override.schedule_type, f"{active_override.name} - Pool Closed")
+        return (None, None)
+
+    # Check regular schedule
+    current_block = (
+        db.query(PoolSchedule)
+        .filter(
+            PoolSchedule.is_active == True,
+            PoolSchedule.day_of_week == current_day,
+            PoolSchedule.start_time <= current_time,
+            PoolSchedule.end_time > current_time,
+        )
+        .order_by(PoolSchedule.priority.desc())
+        .first()
+    )
+
+    if current_block:
+        if current_block.schedule_type == ScheduleType.men_only:
+            return (ScheduleType.men_only, f"{current_block.name} - Men's Hours Only")
+        elif current_block.schedule_type == ScheduleType.women_only:
+            return (ScheduleType.women_only, f"{current_block.name} - Women's Hours Only")
+        elif current_block.schedule_type in [ScheduleType.closed, ScheduleType.maintenance]:
+            return (current_block.schedule_type, f"{current_block.name} - Pool Closed")
+
+    return (None, None)
 
 
 @router.post("/checkin", response_model=KioskCheckinResponse)
@@ -226,6 +284,42 @@ def kiosk_checkin(data: KioskCheckinRequest, request: Request, db: Session = Dep
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Maximum {max_guests} guests allowed",
         )
+
+    # Check schedule restrictions
+    schedule_type, restriction_message = _get_current_schedule_restrictions(db)
+
+    if schedule_type in [ScheduleType.closed, ScheduleType.maintenance]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=restriction_message or "Pool is currently closed"
+        )
+
+    # Check gender-based restrictions
+    if schedule_type in [ScheduleType.men_only, ScheduleType.women_only]:
+        member = db.query(Member).filter(Member.id == data.member_id).first()
+        if member:
+            member_gender = (member.gender or "").lower()
+
+            if schedule_type == ScheduleType.men_only and member_gender not in ["male", "m"]:
+                if member_gender in ["female", "f"]:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Sorry, this is currently Men's Hours. Please come back during Women's Hours or Open Swim times."
+                    )
+                elif not member_gender:
+                    # Gender not set - allow but warn (or require gender)
+                    logger.warning("Check-in during men_only hours without gender set: member=%s", data.member_id)
+
+            elif schedule_type == ScheduleType.women_only and member_gender not in ["female", "f"]:
+                if member_gender in ["male", "m"]:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Sorry, this is currently Women's Hours. Please come back during Men's Hours or Open Swim times."
+                    )
+                elif not member_gender:
+                    # Gender not set - allow but warn (or require gender)
+                    logger.warning("Check-in during women_only hours without gender set: member=%s", data.member_id)
+
     checkin = perform_checkin(db, data.member_id, data.guest_count)
 
     member = db.query(Member).filter(Member.id == data.member_id).first()
@@ -1126,6 +1220,7 @@ def _build_member_status(db: Session, member: Member) -> MemberStatus:
         last_name=member.last_name,
         phone=member.phone,
         email=member.email,
+        gender=member.gender,
         credit_balance=member.credit_balance,
         has_pin=member.pin_hash is not None,
         date_of_birth=member.date_of_birth,

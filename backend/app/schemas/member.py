@@ -15,6 +15,7 @@ class MemberCreate(BaseModel):
     notes: str | None = None
     date_of_birth: date | None = None
     is_senior: bool = False
+    gender: str | None = None  # "male", "female", or None
 
 
 class MemberUpdate(BaseModel):
@@ -27,6 +28,7 @@ class MemberUpdate(BaseModel):
     is_active: bool | None = None
     date_of_birth: date | None = None
     is_senior: bool | None = None
+    gender: str | None = None  # "male", "female", or None
 
 
 class MemberResponse(BaseModel):
@@ -36,6 +38,7 @@ class MemberResponse(BaseModel):
     phone: str | None
     email: str | None
     photo_url: str | None
+    gender: str | None
     credit_balance: Decimal
     notes: str | None
     is_active: bool

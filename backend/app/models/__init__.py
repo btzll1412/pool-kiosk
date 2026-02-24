@@ -11,6 +11,7 @@ from app.models.membership_freeze import MembershipFreeze
 from app.models.saved_card import SavedCard
 from app.models.activity_log import ActivityLog
 from app.models.pin_lockout import PinLockout
+from app.models.pool_schedule import PoolSchedule, ScheduleOverride, ScheduleType
 
 __all__ = [
     "Member",
@@ -26,4 +27,7 @@ __all__ = [
     "SavedCard",
     "ActivityLog",
     "PinLockout",
+    "PoolSchedule",
+    "ScheduleOverride",
+    "ScheduleType",
 ]

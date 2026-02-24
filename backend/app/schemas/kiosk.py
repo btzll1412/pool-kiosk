@@ -23,6 +23,7 @@ class MemberStatus(BaseModel):
     last_name: str
     phone: str | None = None
     email: str | None = None
+    gender: str | None = None
     credit_balance: Decimal
     has_pin: bool
     date_of_birth: date | None = None
@@ -221,6 +222,7 @@ class KioskSignupRequest(BaseModel):
     rfid_uid: str | None = None
     date_of_birth: date | None = None
     is_senior: bool = False
+    gender: str | None = None  # "male", "female", or None
 
 
 class KioskUpdateProfileRequest(BaseModel):
@@ -232,3 +234,4 @@ class KioskUpdateProfileRequest(BaseModel):
     is_senior: bool | None = None
     phone: str | None = None
     email: str | None = None
+    gender: str | None = None  # "male", "female", or None
