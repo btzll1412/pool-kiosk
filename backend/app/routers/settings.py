@@ -85,7 +85,7 @@ def test_payment_connection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    valid_processors = ("stripe", "square", "sola", "stub")
+    valid_processors = ("stripe", "square", "sola", "hitech", "stub")
     if processor not in valid_processors:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -95,12 +95,14 @@ def test_payment_connection(
     from app.payments.stripe_adapter import StripePaymentAdapter
     from app.payments.square_adapter import SquarePaymentAdapter
     from app.payments.sola_adapter import SolaPaymentAdapter
+    from app.payments.hitech_adapter import HiTechPaymentAdapter
     from app.payments.stub import StubPaymentAdapter
 
     adapter_map = {
         "stripe": StripePaymentAdapter,
         "square": SquarePaymentAdapter,
         "sola": SolaPaymentAdapter,
+        "hitech": HiTechPaymentAdapter,
         "stub": StubPaymentAdapter,
     }
     adapter = adapter_map[processor](config=config)
