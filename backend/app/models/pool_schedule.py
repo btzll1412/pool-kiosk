@@ -18,12 +18,16 @@ class ScheduleType(str, enum.Enum):
     closed = "closed"  # Closed
 
 
+# Create enum type with create_type=False since it's created via migration
+schedule_type_enum = Enum(ScheduleType, name='scheduletype', create_type=False)
+
+
 class PoolSchedule(Base):
     __tablename__ = "pool_schedules"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(100))  # e.g., "Morning Men's Swim"
-    schedule_type: Mapped[ScheduleType] = mapped_column(Enum(ScheduleType))
+    schedule_type: Mapped[ScheduleType] = mapped_column(schedule_type_enum)
     day_of_week: Mapped[int] = mapped_column(SmallInteger)  # 0=Monday, 6=Sunday
     start_time: Mapped[time] = mapped_column(Time)
     end_time: Mapped[time] = mapped_column(Time)
@@ -39,7 +43,7 @@ class ScheduleOverride(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(100))  # e.g., "Holiday Hours", "Private Event"
-    schedule_type: Mapped[ScheduleType] = mapped_column(Enum(ScheduleType))
+    schedule_type: Mapped[ScheduleType] = mapped_column(schedule_type_enum)
     start_datetime: Mapped[datetime] = mapped_column(DateTime)  # When override starts
     end_datetime: Mapped[datetime] = mapped_column(DateTime)  # When override ends
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

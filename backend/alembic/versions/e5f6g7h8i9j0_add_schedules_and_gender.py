@@ -19,12 +19,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create ScheduleType enum
+    # Create ScheduleType enum using raw SQL with IF NOT EXISTS
+    conn = op.get_bind()
+    conn.execute(sa.text("""
+        DO $$ BEGIN
+            CREATE TYPE scheduletype AS ENUM ('open', 'men_only', 'women_only', 'lap_swim', 'lessons', 'maintenance', 'closed');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """))
+
     schedule_type = sa.Enum(
         'open', 'men_only', 'women_only', 'lap_swim', 'lessons', 'maintenance', 'closed',
-        name='scheduletype'
+        name='scheduletype',
+        create_type=False  # Don't try to create, we did it above
     )
-    schedule_type.create(op.get_bind(), checkfirst=True)
 
     # Create pool_schedules table
     op.create_table(
