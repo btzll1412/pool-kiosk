@@ -88,7 +88,7 @@
 - [x] **Login page:** Gradient background, branded card, form validation, JWT token storage, auto-redirect
 - [x] **Dashboard:** 5 stat cards (check-ins, swimmers, revenue, memberships, guests), quick action links, system status panel
 - [x] **Members list:** Search by name/phone/email, paginated table with avatar initials, status badges, click-to-detail
-- [x] **Member detail:** Info card, RFID cards list with deactivate, saved payment cards section with auto-charge status and admin delete, memberships section with swim progress bars and management (add/adjust/deactivate), activity log timeline, credit adjustment modal, deactivate confirmation dialog, edit/back navigation
+- [x] **Member detail:** Info card, RFID cards list with deactivate, saved payment cards section with auto-charge status and admin delete/add, memberships section with swim progress bars and management (add with payment/adjust/deactivate), activity log timeline, credit adjustment modal, deactivate confirmation dialog, edit/back navigation
 - [x] **Member form:** Create + edit mode, all fields, PIN on create, textarea for notes, validation
 - [x] **Plans list:** Card grid layout with type badges, pricing display, inline edit/deactivate, modal form for create/edit with plan-type-aware fields
 - [x] **Transactions list:** Filterable by type/method/date range, paginated table, color-coded badges, CSV export button, clear filters
@@ -393,4 +393,44 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-02-22 (Phase 10 — Senior Discounts & Monthly Billing)
+---
+
+## Admin Payment Flow Enhancement (2026-02-24)
+
+### Admin Payment Collection on Membership Add
+- Admins can now optionally collect payment when adding a membership to a member
+- `POST /memberships` endpoint extended with optional `payment` field
+- Payment options:
+  - **Cash payment** — Records transaction with amount tendered
+  - **Saved card** — Charges existing saved card via `charge_saved_card_now()`
+  - **New card** — Optionally tokenizes and saves card for future use
+  - **Autopay** — Can enable auto-charge for monthly plans when saving new card
+- Response includes `transaction_id`, `saved_card_id`, and status `message`
+
+### Admin Add Card on File
+- New `POST /members/{member_id}/saved-cards` endpoint for admin to add payment cards
+- No PIN required (admin action)
+- Accepts: card_last4, card_brand, friendly_name (optional)
+- Tokenizes card via payment adapter and creates SavedCard record
+
+### Frontend Updates
+- Add Membership modal expanded with payment collection options:
+  - "Collect payment now" checkbox
+  - Payment method selection (Cash/Card)
+  - Cash amount input
+  - Saved card selection or new card entry
+  - Save card checkbox
+  - Enable autopay checkbox (monthly plans only)
+- "Add Card" button added to Saved Cards section in member detail
+- New "Add Payment Card" modal for standalone card management
+
+### Files Modified
+- `backend/app/schemas/membership.py` — Added PaymentInfo, MembershipCreateWithPaymentResponse, SavedCardCreate, SavedCardResponse
+- `backend/app/routers/memberships.py` — Extended POST /memberships with payment processing
+- `backend/app/routers/members.py` — Added POST /members/{member_id}/saved-cards
+- `frontend/src/api/members.js` — Added addMemberSavedCard()
+- `frontend/src/admin/pages/Members/MemberDetail.jsx` — Added payment flow and add card UI
+
+---
+
+## Last Updated: 2026-02-24 (Admin Payment Flow Enhancement)
