@@ -89,9 +89,9 @@ export default function CheckinsList() {
     guest: "Guest",
   };
 
-  // Generate consistent color for plan names
+  // Generate consistent color for plan names (all must exist in Badge styles)
   const planColors = [
-    "blue", "purple", "green", "amber", "cyan", "pink", "indigo", "teal", "orange", "lime"
+    "blue", "purple", "cyan", "pink", "indigo", "teal", "orange", "lime", "amber", "rose"
   ];
 
   const getPlanColor = (planName) => {
