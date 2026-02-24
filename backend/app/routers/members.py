@@ -31,6 +31,7 @@ from app.services.member_service import (
     adjust_credit,
     create_member,
     deactivate_member,
+    reactivate_member,
     get_member,
     list_members,
     update_member,
@@ -88,6 +89,16 @@ def deactivate_member_endpoint(
     current_user: User = Depends(get_current_user),
 ):
     return deactivate_member(db, member_id, user_id=current_user.id)
+
+
+@router.post("/{member_id}/reactivate", response_model=MemberResponse)
+def reactivate_member_endpoint(
+    member_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reactivate a previously deactivated member."""
+    return reactivate_member(db, member_id, user_id=current_user.id)
 
 
 @router.delete("/{member_id}/permanent")
