@@ -181,6 +181,17 @@ export default function CheckinsList() {
     }));
   };
 
+  // Check if quick date filters are active
+  const todayStr = new Date().toISOString().split("T")[0];
+  const startOfWeekDate = new Date();
+  startOfWeekDate.setDate(startOfWeekDate.getDate() - startOfWeekDate.getDay());
+  const startOfWeekStr = startOfWeekDate.toISOString().split("T")[0];
+  const startOfMonthStr = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
+
+  const isTodayActive = filters.start_date === todayStr && filters.end_date === todayStr;
+  const isThisWeekActive = filters.start_date === startOfWeekStr && filters.end_date === todayStr;
+  const isThisMonthActive = filters.start_date === startOfMonthStr && filters.end_date === todayStr;
+
   return (
     <div>
       <PageHeader
@@ -206,19 +217,31 @@ export default function CheckinsList() {
       <div className="mb-4 flex flex-wrap gap-2">
         <button
           onClick={setToday}
-          className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+            isTodayActive
+              ? "bg-brand-500 text-white hover:bg-brand-600"
+              : "text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+          }`}
         >
           Today
         </button>
         <button
           onClick={setThisWeek}
-          className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+            isThisWeekActive
+              ? "bg-brand-500 text-white hover:bg-brand-600"
+              : "text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+          }`}
         >
           This Week
         </button>
         <button
           onClick={setThisMonth}
-          className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+            isThisMonthActive
+              ? "bg-brand-500 text-white hover:bg-brand-600"
+              : "text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+          }`}
         >
           This Month
         </button>
