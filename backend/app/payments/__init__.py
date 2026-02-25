@@ -11,6 +11,7 @@ from app.payments.stripe_adapter import StripePaymentAdapter
 from app.payments.square_adapter import SquarePaymentAdapter
 from app.payments.sola_adapter import SolaPaymentAdapter
 from app.payments.hitech_adapter import HiTechPaymentAdapter
+from app.payments.usaepay_adapter import UsaepayPaymentAdapter
 
 __all__ = [
     "BasePaymentAdapter",
@@ -24,4 +25,5 @@ __all__ = [
     "SquarePaymentAdapter",
     "SolaPaymentAdapter",
     "HiTechPaymentAdapter",
+    "UsaepayPaymentAdapter",
 ]

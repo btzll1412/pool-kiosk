@@ -55,7 +55,7 @@
 - [x] **Notification service:** Full webhook system with 8 event types, per-event URL configuration, fire-and-forget delivery
 - [x] **Seed service:** Auto-creates default admin and default settings on startup
 - [x] **Rate limiter:** slowapi-based per-IP limiting on kiosk endpoints
-- [x] **Payment adapters:** Base interface with tokenize/charge_saved_card/test_connection methods, Stub adapter (always succeeds), Cash adapter (rejects card ops), Stripe adapter (PaymentIntent + Customer API), Square adapter (Payments + Customers API), Sola adapter (REST/httpx)
+- [x] **Payment adapters:** Base interface with tokenize/charge_saved_card/test_connection methods, Stub adapter (always succeeds), Cash adapter (rejects card ops), Stripe adapter (PaymentIntent + Customer API), Square adapter (Payments + Customers API), Sola adapter (REST/httpx), USAePay adapter (REST API v2/httpx)
 - [x] **Auto-charge service** (`services/auto_charge_service.py`): process_due_charges (daily scheduler), enable/disable auto-charge, on-demand saved card charging, email receipt on success
 - [x] **APScheduler** integrated in app lifespan — 3 daily jobs: auto-charge (06:00), membership expiry check (07:00), daily summary (21:00)
 - [x] **Email service** (`services/email_service.py`): SMTP-based send_email(), test_email_connection(), send_auto_charge_receipt(), send_membership_expiring_email(), send_membership_expired_email()
@@ -494,4 +494,34 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-02-24 (Pool Scheduling System)
+---
+
+## USAePay Integration (2026-02-25)
+
+### USAePay Payment Adapter
+- Added `usaepay_adapter.py` implementing `BasePaymentAdapter`
+- Uses USAePay REST API v2 with Basic auth (API key + seed + SHA256 hash)
+- Supports sandbox and production environments
+- Endpoints: `/api/v2/transactions` for sales, refunds, tokenization
+
+### Implementation Details
+- Authentication: Generates seed, creates SHA256 hash of `apikey+seed+pin`, Base64 encodes auth header
+- Sales: `command: "sale"` with amount and creditcard
+- Tokenization: Uses `save_card: true` on sales, returns token for future use
+- Saved card charges: Token goes in `creditcard.number` field
+- Refunds: `command: "refund"` with `trankey` from original transaction
+- Test connection: Validates credentials by checking API response
+
+### Settings Added
+- `usaepay_api_key` — API key (masked in UI)
+- `usaepay_api_pin` — API PIN (masked in UI)
+- `usaepay_environment` — sandbox or production
+
+### Frontend
+- Added "USAePay" option to payment processor dropdown
+- Added USAePay Configuration section with API Key, PIN, and Environment fields
+- Test Connection button for verifying credentials
+
+---
+
+## Last Updated: 2026-02-25 (USAePay Integration)

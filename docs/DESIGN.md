@@ -21,7 +21,7 @@ A self-hosted, local kiosk-based pool management system with RFID membership car
 | ORM | SQLAlchemy + Alembic (migrations) |
 | Auth | JWT tokens (admin/staff login) |
 | RFID | USB HID reader (acts as keyboard input) |
-| Payment | Modular adapter pattern — Stub, Cash, Stripe, Square, Sola |
+| Payment | Modular adapter pattern — Stub, Cash, Stripe, Square, Sola, USAePay |
 | Containerization | Docker + Docker Compose |
 | Reverse Proxy | Nginx (serves frontend + proxies API) |
 | Notifications | Webhook system (8 events), SMTP email, SIP/FusionPBX calls |
@@ -104,7 +104,8 @@ pool-management/
 │   │       ├── stub.py              # Placeholder for testing
 │   │       ├── stripe_adapter.py    # Stripe SDK integration
 │   │       ├── square_adapter.py    # Square SDK integration
-│   │       └── sola_adapter.py      # Sola REST API integration
+│   │       ├── sola_adapter.py      # Sola REST API integration
+│   │       └── usaepay_adapter.py   # USAePay REST API integration
 │
 ├── frontend/
 │   ├── Dockerfile
@@ -533,7 +534,7 @@ pool-management/
 | low_balance_threshold | 5.00 | Balance threshold for low_balance webhook |
 | membership_expiry_warning_days | 7 | Days before expiry to fire warning webhook |
 | **Payment Processor** | | |
-| payment_processor | "stub" | Active processor: stub, cash, stripe, square, sola |
+| payment_processor | "stub" | Active processor: stub, cash, stripe, square, sola, usaepay |
 | stripe_api_key | "" | Stripe publishable API key |
 | stripe_secret_key | "" | Stripe secret key (masked in UI) |
 | stripe_webhook_secret | "" | Stripe webhook signing secret (masked) |
@@ -544,6 +545,9 @@ pool-management/
 | sola_api_secret | "" | Sola API secret (masked) |
 | sola_merchant_id | "" | Sola merchant ID |
 | sola_environment | "sandbox" | sandbox or production |
+| usaepay_api_key | "" | USAePay API key (masked) |
+| usaepay_api_pin | "" | USAePay API PIN (masked) |
+| usaepay_environment | "sandbox" | sandbox or production |
 | **Email (SMTP)** | | |
 | email_smtp_host | "" | SMTP server hostname |
 | email_smtp_port | "587" | SMTP port |
@@ -694,6 +698,7 @@ class BasePaymentAdapter:
 | `stripe` | DB settings (`stripe_*`) | `stripe` Python SDK |
 | `square` | DB settings (`square_*`) | `squareup` Python SDK |
 | `sola` | DB settings (`sola_*`) | `httpx` REST calls |
+| `usaepay` | DB settings (`usaepay_*`) | `httpx` REST calls |
 
 The active processor is configured via `payment_processor` DB setting (not env var). `get_payment_adapter(db)` reads the setting and instantiates the appropriate adapter with processor-specific config from the database.
 
@@ -997,7 +1002,9 @@ try {
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-02-25 | Added USAePay payment processor adapter with REST API v2 integration | — |
 | 2026-02-24 | Phase 11: Added pool scheduling system (pool_schedules, schedule_overrides tables), gender-based check-in validation, schedule API endpoints, ScheduleManager admin UI | — |
+| 2026-02-20 | Added NFC Reader Integration section documenting PC/SC reader support and WebSocket broadcast architecture | — |
 | 2026-02-19 | Phase 9: Added kiosk signup, PIN verify endpoint, backup/restore, member memberships management, swim pass stacking, guest visits page, settings tabs, admin PIN unlock, members CSV import/export | — |
 | 2026-02-18 | Phase 8: Added Stripe/Square/Sola payment adapters, email service, SIP service, dark mode, kiosk transitions, skeletons, 30+ new DB settings | — |
 | 2026-02-18 | Added Logging & Error Handling Standards section; consistent logging across all backend modules; frontend error handling audit | — |
