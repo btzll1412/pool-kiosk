@@ -25,6 +25,7 @@ import SplitPaymentScreen from "./screens/SplitPaymentScreen";
 import CreditPartialScreen from "./screens/CreditPartialScreen";
 import SignUpScreen from "./screens/SignUpScreen";
 import EditProfileScreen from "./screens/EditProfileScreen";
+import TerminalPaymentScreen from "./screens/TerminalPaymentScreen";
 
 const SCREENS = {
   idle: IdleScreen,
@@ -47,6 +48,7 @@ const SCREENS = {
   autoCharge: AutoChargeScreen,
   signup: SignUpScreen,
   editProfile: EditProfileScreen,
+  terminal: TerminalPaymentScreen,
 };
 
 // Refresh settings every 30 seconds when on idle screen

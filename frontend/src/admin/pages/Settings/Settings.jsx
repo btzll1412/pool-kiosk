@@ -253,6 +253,7 @@ const settingGroups = [
     fields: [
       { key: "usaepay_api_key", label: "API Key", type: "password" },
       { key: "usaepay_api_pin", label: "API PIN", type: "password" },
+      { key: "usaepay_device_key", label: "Terminal Device Key", type: "text", helpText: "Device key for Castles MP200 terminal (optional, for card-present transactions)" },
       {
         key: "usaepay_environment", label: "Environment", type: "select",
         options: [{ value: "sandbox", label: "Sandbox" }, { value: "production", label: "Production" }],

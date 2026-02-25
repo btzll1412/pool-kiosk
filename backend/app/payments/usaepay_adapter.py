@@ -19,8 +19,34 @@ from app.payments.base import (
 logger = logging.getLogger(__name__)
 
 
+class TerminalPaymentResult:
+    """Result of a terminal payment request."""
+
+    def __init__(
+        self,
+        request_key: str,
+        status: str,
+        complete: bool = False,
+        approved: bool = False,
+        transaction_key: str | None = None,
+        auth_code: str | None = None,
+        card_last4: str | None = None,
+        card_brand: str | None = None,
+        error: str | None = None,
+    ):
+        self.request_key = request_key
+        self.status = status
+        self.complete = complete
+        self.approved = approved
+        self.transaction_key = transaction_key
+        self.auth_code = auth_code
+        self.card_last4 = card_last4
+        self.card_brand = card_brand
+        self.error = error
+
+
 class UsaepayPaymentAdapter(BasePaymentAdapter):
-    """USAePay payment adapter using the REST API v2."""
+    """USAePay payment adapter using the REST API v2 and Payment Engine for terminals."""
 
     SANDBOX_URL = "https://sandbox.usaepay.com/api/v2"
     PRODUCTION_URL = "https://usaepay.com/api/v2"
@@ -29,6 +55,7 @@ class UsaepayPaymentAdapter(BasePaymentAdapter):
         super().__init__(config)
         self.api_key = self.config.get("usaepay_api_key", "")
         self.api_pin = self.config.get("usaepay_api_pin", "")
+        self.device_key = self.config.get("usaepay_device_key", "")
         environment = self.config.get("usaepay_environment", "sandbox")
         self.base_url = self.PRODUCTION_URL if environment == "production" else self.SANDBOX_URL
 
@@ -255,3 +282,149 @@ class UsaepayPaymentAdapter(BasePaymentAdapter):
         except httpx.RequestError as exc:
             logger.exception("USAePay saved card charge failed: member=%s, amount=$%s", member_id, amount)
             return SavedCardChargeResult(success=False, message=str(exc))
+
+    # ==================== TERMINAL PAYMENT METHODS ====================
+
+    def has_terminal(self) -> bool:
+        """Check if a terminal device is configured."""
+        return bool(self.device_key)
+
+    def initiate_terminal_payment(
+        self,
+        amount: Decimal,
+        member_id: str,
+        description: str,
+        timeout: int = 120,
+        save_card: bool = False,
+        prompt_tip: bool = False,
+    ) -> TerminalPaymentResult:
+        """
+        Initiate a payment on the physical terminal (Castles MP200).
+
+        The terminal will prompt the customer to tap/insert their card.
+        Use check_terminal_payment_status() to poll for the result.
+        """
+        if not self.device_key:
+            return TerminalPaymentResult(
+                request_key="",
+                status="error",
+                error="No terminal device configured",
+            )
+
+        try:
+            data = {
+                "devicekey": self.device_key,
+                "command": "sale",
+                "amount": str(amount),
+                "timeout": timeout,
+                "save_card": save_card,
+                "prompt_tip": prompt_tip,
+                "invoice": f"pool-{uuid.uuid4().hex[:8]}",
+                "description": description,
+            }
+
+            result = self._make_request("paymentengine/payrequests", data)
+
+            request_key = result.get("key", "")
+            status = result.get("status", "unknown")
+
+            logger.info(
+                "USAePay terminal payment initiated: request_key=%s, amount=$%s, member=%s, status=%s",
+                request_key, amount, member_id, status
+            )
+
+            return TerminalPaymentResult(
+                request_key=request_key,
+                status=status,
+            )
+
+        except httpx.HTTPStatusError as exc:
+            error_msg = "Terminal payment request failed"
+            try:
+                error_data = exc.response.json()
+                error_msg = error_data.get("error", error_msg)
+            except Exception:
+                pass
+            logger.exception("USAePay terminal payment failed: member=%s, amount=$%s", member_id, amount)
+            return TerminalPaymentResult(
+                request_key="",
+                status="error",
+                error=error_msg,
+            )
+        except httpx.RequestError as exc:
+            logger.exception("USAePay terminal payment failed: member=%s, amount=$%s", member_id, amount)
+            return TerminalPaymentResult(
+                request_key="",
+                status="error",
+                error=str(exc),
+            )
+
+    def check_terminal_payment_status(self, request_key: str) -> TerminalPaymentResult:
+        """
+        Check the status of a terminal payment request.
+
+        Poll this endpoint until 'complete' is True or the timeout expires.
+        """
+        try:
+            url = f"{self.base_url}/paymentengine/payrequests/{request_key}"
+            with httpx.Client(timeout=10.0) as client:
+                response = client.get(url, headers=self._get_headers())
+                response.raise_for_status()
+                result = response.json()
+
+            status = result.get("status", "unknown")
+            complete = result.get("complete", False)
+
+            # Extract transaction details if complete
+            transaction = result.get("transaction", {})
+            approved = transaction.get("result_code") == "A" if transaction else False
+            transaction_key = transaction.get("key", "") if transaction else None
+            auth_code = transaction.get("authcode", "") if transaction else None
+
+            # Extract card info
+            card_info = transaction.get("creditcard", {}) if transaction else {}
+            card_last4 = card_info.get("number", "")[-4:] if card_info.get("number") else None
+            card_brand = card_info.get("type", None)
+
+            # Check for errors
+            error = result.get("error") or (transaction.get("error") if transaction else None)
+
+            logger.debug(
+                "USAePay terminal status: request_key=%s, status=%s, complete=%s, approved=%s",
+                request_key, status, complete, approved
+            )
+
+            return TerminalPaymentResult(
+                request_key=request_key,
+                status=status,
+                complete=complete,
+                approved=approved,
+                transaction_key=transaction_key,
+                auth_code=auth_code,
+                card_last4=card_last4,
+                card_brand=card_brand,
+                error=error,
+            )
+
+        except httpx.RequestError as exc:
+            logger.exception("USAePay terminal status check failed: request_key=%s", request_key)
+            return TerminalPaymentResult(
+                request_key=request_key,
+                status="error",
+                error=str(exc),
+            )
+
+    def cancel_terminal_payment(self, request_key: str) -> bool:
+        """Cancel a pending terminal payment request."""
+        try:
+            url = f"{self.base_url}/paymentengine/payrequests/{request_key}"
+            with httpx.Client(timeout=10.0) as client:
+                response = client.delete(url, headers=self._get_headers())
+                response.raise_for_status()
+
+            logger.info("USAePay terminal payment cancelled: request_key=%s", request_key)
+            return True
+
+        except httpx.RequestError as exc:
+            logger.exception("USAePay terminal cancel failed: request_key=%s", request_key)
+            return False

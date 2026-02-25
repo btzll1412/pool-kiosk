@@ -235,3 +235,42 @@ class KioskUpdateProfileRequest(BaseModel):
     phone: str | None = None
     email: str | None = None
     gender: str | None = None  # "male", "female", or None
+
+
+# ==================== TERMINAL PAYMENT SCHEMAS ====================
+
+
+class TerminalPaymentRequest(BaseModel):
+    """Request to initiate a payment on a physical card terminal."""
+    member_id: uuid.UUID
+    plan_id: uuid.UUID
+    pin: str
+    save_card: bool = False
+    use_credit: bool = False
+
+
+class TerminalPaymentInitResponse(BaseModel):
+    """Response when initiating a terminal payment."""
+    request_key: str
+    status: str
+    amount: Decimal
+    error: str | None = None
+
+
+class TerminalPaymentStatusResponse(BaseModel):
+    """Response when checking terminal payment status."""
+    request_key: str
+    status: str
+    complete: bool
+    approved: bool = False
+    transaction_id: uuid.UUID | None = None
+    membership_id: uuid.UUID | None = None
+    card_last4: str | None = None
+    card_brand: str | None = None
+    error: str | None = None
+
+
+class TerminalInfoResponse(BaseModel):
+    """Response with terminal availability info."""
+    has_terminal: bool
+    terminal_name: str | None = None

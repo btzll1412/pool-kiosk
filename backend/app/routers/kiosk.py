@@ -50,6 +50,10 @@ from app.schemas.kiosk import (
     TokenizeFullCardRequest,
     TokenizeTrackDataRequest,
     KioskUpdateProfileRequest,
+    TerminalPaymentRequest,
+    TerminalPaymentInitResponse,
+    TerminalPaymentStatusResponse,
+    TerminalInfoResponse,
 )
 from app.services.auto_charge_service import (
     charge_saved_card_now,
@@ -1229,3 +1233,230 @@ def _build_member_status(db: Session, member: Member) -> MemberStatus:
         is_frozen=is_frozen,
         frozen_until=frozen_until,
     )
+
+
+# ==================== TERMINAL PAYMENT ENDPOINTS ====================
+
+# In-memory storage for pending terminal payments (request_key -> member_id, plan_id, etc.)
+_pending_terminal_payments: dict[str, dict] = {}
+
+
+@router.get("/terminal/info", response_model=TerminalInfoResponse)
+@limiter.limit("30/minute")
+def get_terminal_info(request: Request, db: Session = Depends(get_db)):
+    """Check if a physical payment terminal is configured."""
+    adapter = get_payment_adapter(db)
+
+    # Check if adapter supports terminals (has has_terminal method)
+    has_terminal = False
+    if hasattr(adapter, "has_terminal"):
+        has_terminal = adapter.has_terminal()
+
+    return TerminalInfoResponse(
+        has_terminal=has_terminal,
+        terminal_name="Castles MP200" if has_terminal else None,
+    )
+
+
+@router.post("/terminal/pay", response_model=TerminalPaymentInitResponse)
+@limiter.limit("10/minute")
+def initiate_terminal_payment(
+    data: TerminalPaymentRequest, request: Request, db: Session = Depends(get_db)
+):
+    """
+    Initiate a card payment on the physical terminal.
+
+    The terminal will prompt the customer to tap/insert their card.
+    Poll /terminal/status/{request_key} for the result.
+    """
+    verify_member_pin(db, data.member_id, data.pin)
+
+    plan = db.query(Plan).filter(Plan.id == data.plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    member = db.query(Member).filter(Member.id == data.member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    adapter = get_payment_adapter(db)
+    if not hasattr(adapter, "initiate_terminal_payment"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Terminal payments not supported by current payment processor",
+        )
+
+    if not adapter.has_terminal():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No payment terminal configured",
+        )
+
+    # Calculate effective price (apply credit if requested)
+    base_price = get_plan_effective_price(plan)
+    credit_used = Decimal("0.00")
+    effective_price = base_price
+
+    if data.use_credit and member.credit_balance > 0:
+        credit_used = min(member.credit_balance, base_price)
+        effective_price = base_price - credit_used
+
+    if effective_price <= 0:
+        # Credit covers entire amount - no terminal payment needed
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account credit covers entire purchase. Use credit payment instead.",
+        )
+
+    # Initiate payment on terminal
+    result = adapter.initiate_terminal_payment(
+        amount=effective_price,
+        member_id=str(data.member_id),
+        description=f"Purchase: {plan.name}",
+        save_card=data.save_card,
+    )
+
+    if result.error:
+        logger.warning(
+            "Terminal payment init failed: member=%s, plan=%s, error=%s",
+            data.member_id, plan.name, result.error
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.error,
+        )
+
+    # Store pending payment info for when it completes
+    _pending_terminal_payments[result.request_key] = {
+        "member_id": data.member_id,
+        "plan_id": data.plan_id,
+        "credit_used": credit_used,
+        "save_card": data.save_card,
+    }
+
+    logger.info(
+        "Terminal payment initiated: member=%s, plan=%s, amount=$%s, request_key=%s",
+        data.member_id, plan.name, effective_price, result.request_key
+    )
+
+    return TerminalPaymentInitResponse(
+        request_key=result.request_key,
+        status=result.status,
+        amount=effective_price,
+    )
+
+
+@router.get("/terminal/status/{request_key}", response_model=TerminalPaymentStatusResponse)
+@limiter.limit("60/minute")
+def check_terminal_payment_status(
+    request_key: str, request: Request, db: Session = Depends(get_db)
+):
+    """
+    Check the status of a terminal payment.
+
+    Poll this endpoint until 'complete' is True.
+    """
+    adapter = get_payment_adapter(db)
+    if not hasattr(adapter, "check_terminal_payment_status"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Terminal payments not supported",
+        )
+
+    result = adapter.check_terminal_payment_status(request_key)
+
+    response = TerminalPaymentStatusResponse(
+        request_key=request_key,
+        status=result.status,
+        complete=result.complete,
+        approved=result.approved,
+        card_last4=result.card_last4,
+        card_brand=result.card_brand,
+        error=result.error,
+    )
+
+    # If payment is complete and approved, finalize the transaction
+    if result.complete and result.approved:
+        pending = _pending_terminal_payments.get(request_key)
+        if pending:
+            try:
+                # Create membership and transaction
+                member = db.query(Member).filter(Member.id == pending["member_id"]).first()
+                plan = db.query(Plan).filter(Plan.id == pending["plan_id"]).first()
+
+                if member and plan:
+                    # Apply credit if used
+                    if pending["credit_used"] > 0:
+                        member.credit_balance -= pending["credit_used"]
+                        credit_tx = Transaction(
+                            member_id=pending["member_id"],
+                            transaction_type=TransactionType.credit_use,
+                            payment_method=PaymentMethod.credit,
+                            amount=pending["credit_used"],
+                            notes="Applied to terminal payment",
+                        )
+                        db.add(credit_tx)
+
+                    # Create membership
+                    membership = create_membership(db, pending["member_id"], pending["plan_id"])
+
+                    # Create card payment transaction
+                    effective_price = get_plan_effective_price(plan) - pending["credit_used"]
+                    tx = Transaction(
+                        member_id=pending["member_id"],
+                        transaction_type=TransactionType.payment,
+                        payment_method=PaymentMethod.card,
+                        amount=effective_price,
+                        plan_id=pending["plan_id"],
+                        membership_id=membership.id,
+                        reference_id=result.transaction_key,
+                        notes=f"Terminal payment - {result.card_brand or 'Card'} ****{result.card_last4 or '????'}",
+                    )
+                    db.add(tx)
+                    db.commit()
+
+                    response.transaction_id = tx.id
+                    response.membership_id = membership.id
+
+                    logger.info(
+                        "Terminal payment completed: member=%s, plan=%s, tx=%s",
+                        pending["member_id"], plan.name, tx.id
+                    )
+
+                # Clean up pending payment
+                del _pending_terminal_payments[request_key]
+
+            except Exception as exc:
+                logger.exception("Failed to finalize terminal payment: request_key=%s", request_key)
+                response.error = f"Payment approved but failed to create membership: {exc}"
+
+    return response
+
+
+@router.delete("/terminal/cancel/{request_key}")
+@limiter.limit("10/minute")
+def cancel_terminal_payment(
+    request_key: str, request: Request, db: Session = Depends(get_db)
+):
+    """Cancel a pending terminal payment."""
+    adapter = get_payment_adapter(db)
+    if not hasattr(adapter, "cancel_terminal_payment"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Terminal payments not supported",
+        )
+
+    success = adapter.cancel_terminal_payment(request_key)
+
+    # Clean up pending payment
+    if request_key in _pending_terminal_payments:
+        del _pending_terminal_payments[request_key]
+
+    if success:
+        logger.info("Terminal payment cancelled: request_key=%s", request_key)
+        return {"status": "cancelled"}
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to cancel payment",
+        )

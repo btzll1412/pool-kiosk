@@ -419,6 +419,10 @@ pool-management/
 - `POST /api/kiosk/pay/split` — Split payment between cash and card
 - `POST /api/kiosk/verify-pin` — Verify member PIN before sensitive operations
 - `POST /api/kiosk/signup` — Self-registration for new members
+- `GET /api/kiosk/terminal/info` — Check if payment terminal is available
+- `POST /api/kiosk/terminal/pay` — Initiate payment on physical terminal
+- `GET /api/kiosk/terminal/status/{request_key}` — Poll terminal payment status
+- `DELETE /api/kiosk/terminal/cancel/{request_key}` — Cancel pending terminal payment
 
 ### Members (admin auth)
 
@@ -547,6 +551,7 @@ pool-management/
 | sola_environment | "sandbox" | sandbox or production |
 | usaepay_api_key | "" | USAePay API key (masked) |
 | usaepay_api_pin | "" | USAePay API PIN (masked) |
+| usaepay_device_key | "" | USAePay terminal device key (for Castles MP200) |
 | usaepay_environment | "sandbox" | sandbox or production |
 | **Email (SMTP)** | | |
 | email_smtp_host | "" | SMTP server hostname |
@@ -1002,6 +1007,7 @@ try {
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-02-25 | Added USAePay terminal payment support (Payment Engine Cloud API, Castles MP200), terminal kiosk screen, terminal API endpoints | — |
 | 2026-02-25 | Added USAePay payment processor adapter with REST API v2 integration | — |
 | 2026-02-24 | Phase 11: Added pool scheduling system (pool_schedules, schedule_overrides tables), gender-based check-in validation, schedule API endpoints, ScheduleManager admin UI | — |
 | 2026-02-20 | Added NFC Reader Integration section documenting PC/SC reader support and WebSocket broadcast architecture | — |

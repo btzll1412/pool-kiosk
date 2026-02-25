@@ -58,6 +58,7 @@ DEFAULT_SETTINGS = {
     # USAePay
     "usaepay_api_key": "",
     "usaepay_api_pin": "",
+    "usaepay_device_key": "",
     "usaepay_environment": "sandbox",
     # Email / SMTP (Phase 8)
     "email_smtp_host": "",
@@ -135,7 +136,7 @@ def get_processor_config(db: Session, processor: str) -> dict[str, str]:
         "square": ["square_access_token", "square_location_id", "square_environment"],
         "sola": ["sola_api_key", "sola_api_secret", "sola_merchant_id", "sola_environment"],
         "hitech": ["hitech_merchant_id", "hitech_user_id", "hitech_pin", "hitech_environment"],
-        "usaepay": ["usaepay_api_key", "usaepay_api_pin", "usaepay_environment"],
+        "usaepay": ["usaepay_api_key", "usaepay_api_pin", "usaepay_device_key", "usaepay_environment"],
     }
     keys = prefix_map.get(processor, [])
     return {k: get_setting(db, k, "") for k in keys}

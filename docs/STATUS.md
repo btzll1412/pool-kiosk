@@ -524,4 +524,70 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-02-25 (USAePay Integration)
+## USAePay Terminal Integration (2026-02-25)
+
+### Terminal Payment Support
+- Added physical card terminal support via USAePay Payment Engine Cloud API
+- Compatible with Castles MP200 terminal (standalone WiFi, EMV, NFC, Bluetooth)
+- Terminal payments appear as "Tap to Pay" option in kiosk when terminal is configured
+
+### Backend Changes
+- **usaepay_adapter.py** — Added terminal payment methods:
+  - `has_terminal()` — Checks if device_key is configured
+  - `initiate_terminal_payment()` — Starts payment on physical terminal via Payment Engine
+  - `check_terminal_payment_status()` — Polls for payment completion
+  - `cancel_terminal_payment()` — Cancels pending terminal payment
+  - `TerminalPaymentResult` — Result class with request_key, status, card info
+
+- **kiosk.py router** — Added terminal endpoints:
+  - `GET /api/kiosk/terminal/info` — Returns terminal availability
+  - `POST /api/kiosk/terminal/pay` — Initiates terminal payment
+  - `GET /api/kiosk/terminal/status/{request_key}` — Checks payment status
+  - `DELETE /api/kiosk/terminal/cancel/{request_key}` — Cancels payment
+
+- **kiosk.py schemas** — Added terminal schemas:
+  - `TerminalPaymentRequest` — member_id, plan_id, pin, save_card, use_credit
+  - `TerminalPaymentInitResponse` — request_key, status, amount, error
+  - `TerminalPaymentStatusResponse` — complete, approved, transaction_id, card info
+  - `TerminalInfoResponse` — has_terminal, terminal_name
+
+- **settings_service.py** — Added `usaepay_device_key` setting for terminal configuration
+
+### Frontend Changes
+- **kiosk.js API** — Added terminal API functions:
+  - `getTerminalInfo()` — Check terminal availability
+  - `initiateTerminalPayment()` — Start terminal payment
+  - `checkTerminalPaymentStatus()` — Poll for result
+  - `cancelTerminalPayment()` — Cancel pending payment
+
+- **TerminalPaymentScreen.jsx** — New kiosk screen:
+  - Shows "Tap or Insert Card" with animated terminal icon
+  - Polls for payment completion every 1.5 seconds
+  - Handles success, failure, timeout, and cancellation
+  - Auto-navigates to success screen on approval
+
+- **PaymentScreen.jsx** — Added "Tap to Pay" button:
+  - Only shows when terminal is configured (has_terminal: true)
+  - Highlighted as recommended option with brand color ring
+  - Navigates to TerminalPaymentScreen
+
+- **KioskApp.jsx** — Registered terminal screen in SCREENS map
+
+- **Settings.jsx** — Added Terminal Device Key field in USAePay config section
+
+### Files Added
+- `frontend/src/kiosk/screens/TerminalPaymentScreen.jsx`
+
+### Files Modified
+- `backend/app/payments/usaepay_adapter.py`
+- `backend/app/routers/kiosk.py`
+- `backend/app/schemas/kiosk.py`
+- `backend/app/services/settings_service.py`
+- `frontend/src/api/kiosk.js`
+- `frontend/src/kiosk/KioskApp.jsx`
+- `frontend/src/kiosk/screens/PaymentScreen.jsx`
+- `frontend/src/admin/pages/Settings/Settings.jsx`
+
+---
+
+## Last Updated: 2026-02-25 (USAePay Terminal Integration)
