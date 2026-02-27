@@ -87,8 +87,9 @@ def process_due_charges(db: Session) -> dict:
             amount=plan.price,
             plan_id=plan.id,
             membership_id=membership.id,
+            saved_card_id=card.id,
             reference_id=charge_result.reference_id,
-            notes=f"Auto-charge via saved card {card.card_last4}",
+            notes="Auto-charge",
         )
         db.add(tx)
 
@@ -208,8 +209,8 @@ def charge_saved_card_now(
         amount=plan.price,
         plan_id=plan.id,
         membership_id=membership.id,
+        saved_card_id=card.id,
         reference_id=charge_result.reference_id,
-        notes=f"Saved card payment ({card.card_last4})",
     )
     db.add(tx)
     db.commit()

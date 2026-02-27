@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Database, Download, Eye, EyeOff, Monitor, Save, Send, Settings2, CreditCard, Bell, Upload } from "lucide-react";
+import { AlertTriangle, Calendar, Check, Clock, Database, Download, Eye, EyeOff, HardDrive, Monitor, Play, RefreshCw, Save, Send, Server, Settings2, CreditCard, Bell, Upload, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { getSettings, updateSettings, testWebhook, testPaymentConnection, testEmail, testSipCall, uploadKioskBackground, revealSetting } from "../../../api/settings";
-import { exportSystem, importSystem } from "../../../api/backup";
+import { exportSystem, importSystem, runBackupNow, getBackupStatus, listBackups, testBackupConnection } from "../../../api/backup";
 import Button from "../../../shared/Button";
 import Card, { CardHeader } from "../../../shared/Card";
 import PageHeader from "../../../shared/PageHeader";
@@ -406,7 +406,10 @@ export default function Settings() {
 
       <div className="space-y-6">
         {activeCategory === "backup" ? (
-          <BackupRestoreSection />
+          <>
+            <AutomaticBackupSection settings={settings} onSettingsChange={handleChange} />
+            <BackupRestoreSection />
+          </>
         ) : (
           filteredGroups.map((group) => (
             <Card key={group.title}>
@@ -740,6 +743,410 @@ function SettingField({ field, value, onChange, settings }) {
       />
       {field.helpText && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{field.helpText}</p>}
     </div>
+  );
+}
+
+function AutomaticBackupSection({ settings, onSettingsChange }) {
+  const [status, setStatus] = useState(null);
+  const [backups, setBackups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [testing, setTesting] = useState(false);
+  const [runningBackup, setRunningBackup] = useState(false);
+
+  useEffect(() => {
+    loadStatus();
+  }, []);
+
+  const loadStatus = async () => {
+    try {
+      const [statusData, backupsData] = await Promise.all([
+        getBackupStatus(),
+        listBackups().catch(() => ({ backups: [] })),
+      ]);
+      setStatus(statusData);
+      setBackups(backupsData.backups || []);
+    } catch (err) {
+      console.error("Failed to load backup status", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setTesting(true);
+    try {
+      const result = await testBackupConnection();
+      if (result.success) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Connection test failed");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleRunBackup = async () => {
+    setRunningBackup(true);
+    try {
+      const result = await runBackupNow();
+      toast.success(`Backup completed: ${result.filename}`);
+      loadStatus();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Backup failed");
+    } finally {
+      setRunningBackup(false);
+    }
+  };
+
+  const remoteType = settings.backup_remote_type || "local";
+
+  return (
+    <Card>
+      <CardHeader
+        title="Automatic Backups"
+        description="Configure scheduled backups to local or remote storage"
+      />
+      <div className="space-y-6">
+        {/* Enable/Disable */}
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Enable Automatic Backups
+            </label>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Automatically backup system data on a schedule
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onSettingsChange("backup_enabled", settings.backup_enabled === "true" ? "false" : "true")}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 ${
+              settings.backup_enabled === "true" ? "bg-brand-600" : "bg-gray-200 dark:bg-gray-700"
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                settings.backup_enabled === "true" ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* Schedule */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Schedule
+            </label>
+            <select
+              value={settings.backup_schedule || "daily"}
+              onChange={(e) => onSettingsChange("backup_schedule", e.target.value)}
+              className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="hourly">Hourly</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly (Sunday)</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Time (Hour)
+            </label>
+            <select
+              value={settings.backup_hour || "2"}
+              onChange={(e) => onSettingsChange("backup_hour", e.target.value)}
+              className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+            >
+              {[...Array(24)].map((_, h) => (
+                <option key={h} value={h}>
+                  {h === 0 ? "12:00 AM" : h < 12 ? `${h}:00 AM` : h === 12 ? "12:00 PM" : `${h - 12}:00 PM`}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Retention */}
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Keep Last N Backups
+          </label>
+          <select
+            value={settings.backup_retention_count || "7"}
+            onChange={(e) => onSettingsChange("backup_retention_count", e.target.value)}
+            className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100 sm:max-w-xs"
+          >
+            <option value="3">3 backups</option>
+            <option value="7">7 backups</option>
+            <option value="14">14 backups</option>
+            <option value="30">30 backups</option>
+            <option value="60">60 backups</option>
+            <option value="90">90 backups</option>
+          </select>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Older backups will be automatically deleted
+          </p>
+        </div>
+
+        {/* Storage Type */}
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Storage Location
+          </label>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {[
+              { value: "local", label: "Local Path", icon: HardDrive },
+              { value: "s3", label: "S3 / MinIO", icon: Server },
+              { value: "sftp", label: "SFTP Server", icon: Server },
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => onSettingsChange("backup_remote_type", opt.value)}
+                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                  remoteType === opt.value
+                    ? "border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400"
+                    : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                }`}
+              >
+                <opt.icon className="h-4 w-4" />
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Local Path Settings */}
+        {remoteType === "local" && (
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Local Path
+            </label>
+            <input
+              type="text"
+              value={settings.backup_local_path || "/backups"}
+              onChange={(e) => onSettingsChange("backup_local_path", e.target.value)}
+              placeholder="/backups"
+              className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+            />
+          </div>
+        )}
+
+        {/* S3 Settings */}
+        {remoteType === "s3" && (
+          <div className="space-y-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Bucket Name
+                </label>
+                <input
+                  type="text"
+                  value={settings.backup_s3_bucket || ""}
+                  onChange={(e) => onSettingsChange("backup_s3_bucket", e.target.value)}
+                  placeholder="my-backup-bucket"
+                  className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Prefix (Folder)
+                </label>
+                <input
+                  type="text"
+                  value={settings.backup_s3_prefix || "backups"}
+                  onChange={(e) => onSettingsChange("backup_s3_prefix", e.target.value)}
+                  placeholder="backups"
+                  className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Access Key
+                </label>
+                <input
+                  type="password"
+                  value={settings.backup_s3_access_key || ""}
+                  onChange={(e) => onSettingsChange("backup_s3_access_key", e.target.value)}
+                  className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Secret Key
+                </label>
+                <input
+                  type="password"
+                  value={settings.backup_s3_secret_key || ""}
+                  onChange={(e) => onSettingsChange("backup_s3_secret_key", e.target.value)}
+                  className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Region
+                </label>
+                <input
+                  type="text"
+                  value={settings.backup_s3_region || "us-east-1"}
+                  onChange={(e) => onSettingsChange("backup_s3_region", e.target.value)}
+                  placeholder="us-east-1"
+                  className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Custom Endpoint (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={settings.backup_s3_endpoint || ""}
+                  onChange={(e) => onSettingsChange("backup_s3_endpoint", e.target.value)}
+                  placeholder="https://minio.example.com"
+                  className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  For MinIO or other S3-compatible storage
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SFTP Settings */}
+        {remoteType === "sftp" && (
+          <div className="space-y-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Host
+                </label>
+                <input
+                  type="text"
+                  value={settings.backup_sftp_host || ""}
+                  onChange={(e) => onSettingsChange("backup_sftp_host", e.target.value)}
+                  placeholder="backup.example.com"
+                  className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Port
+                </label>
+                <input
+                  type="number"
+                  value={settings.backup_sftp_port || "22"}
+                  onChange={(e) => onSettingsChange("backup_sftp_port", e.target.value)}
+                  className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Username
+                </label>
+                <input
+                  type="text"
+                  value={settings.backup_sftp_username || ""}
+                  onChange={(e) => onSettingsChange("backup_sftp_username", e.target.value)}
+                  className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={settings.backup_sftp_password || ""}
+                  onChange={(e) => onSettingsChange("backup_sftp_password", e.target.value)}
+                  className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Remote Path
+              </label>
+              <input
+                type="text"
+                value={settings.backup_sftp_path || "/backups"}
+                onChange={(e) => onSettingsChange("backup_sftp_path", e.target.value)}
+                placeholder="/backups"
+                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex flex-wrap gap-3">
+          <Button variant="secondary" icon={RefreshCw} onClick={handleTestConnection} loading={testing}>
+            Test Connection
+          </Button>
+          <Button variant="secondary" icon={Play} onClick={handleRunBackup} loading={runningBackup}>
+            Run Backup Now
+          </Button>
+        </div>
+
+        {/* Status */}
+        {status && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
+            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Last Backup</h4>
+            {status.last_run ? (
+              <div className="space-y-1 text-sm">
+                <div className="flex items-center gap-2">
+                  {status.last_status === "success" ? (
+                    <Check className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <X className="h-4 w-4 text-red-500" />
+                  )}
+                  <span className={status.last_status === "success" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                    {status.last_status}
+                  </span>
+                </div>
+                <p className="text-gray-500 dark:text-gray-400">
+                  <Clock className="inline h-3 w-3 mr-1" />
+                  {new Date(status.last_run).toLocaleString()}
+                </p>
+                {status.last_location && (
+                  <p className="text-gray-500 dark:text-gray-400 text-xs truncate">
+                    {status.last_location}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 dark:text-gray-400">No backups yet</p>
+            )}
+          </div>
+        )}
+
+        {/* Recent Backups */}
+        {backups.length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Recent Backups</h4>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {backups.slice(0, 5).map((backup, i) => (
+                <div key={i} className="flex items-center justify-between text-sm rounded-lg bg-gray-50 dark:bg-gray-900 px-3 py-2">
+                  <span className="font-mono text-gray-700 dark:text-gray-300">{backup.filename}</span>
+                  <span className="text-gray-500 dark:text-gray-400">
+                    {(backup.size / 1024).toFixed(1)} KB
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 

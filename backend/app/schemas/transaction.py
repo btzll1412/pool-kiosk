@@ -17,6 +17,10 @@ class TransactionResponse(BaseModel):
     plan_id: uuid.UUID | None
     plan_name: str | None = None
     membership_id: uuid.UUID | None
+    saved_card_id: uuid.UUID | None = None
+    card_last4: str | None = None
+    card_brand: str | None = None
+    card_name: str | None = None
     reference_id: str | None
     notes: str | None
     created_by: uuid.UUID | None

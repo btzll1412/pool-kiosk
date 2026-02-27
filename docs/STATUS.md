@@ -590,4 +590,88 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-02-25 (USAePay Terminal Integration)
+---
+
+## Transaction Card Tracking (2026-02-27)
+
+### Card Name Display in Transactions
+- Added `saved_card_id` field to Transaction model to track which saved card was used
+- TransactionResponse schema now includes `card_last4`, `card_brand`, `card_name` fields
+- Member detail transactions list shows card info for card payments
+- Displays friendly name if set, otherwise shows "Visa ****1234" format
+
+### Database Changes
+- Migration `f6g7h8i9j0k1_add_transaction_saved_card.py`:
+  - Adds `saved_card_id` foreign key to transactions table
+
+### Files Modified
+- `backend/app/models/transaction.py` — Added saved_card_id field and relationship
+- `backend/app/schemas/transaction.py` — Added card info fields to response
+- `backend/app/routers/transactions.py` — Populate card info in list response
+- `backend/app/services/auto_charge_service.py` — Pass saved_card_id when creating transactions
+- `frontend/src/admin/pages/Members/MemberDetail.jsx` — Display card name in transactions
+
+---
+
+## Automatic Backup System (2026-02-27)
+
+### Scheduled Backups
+- New backup scheduler integrated with APScheduler
+- Configurable schedule: hourly, daily, or weekly
+- Configurable backup hour (0-23)
+- Runs automatically based on settings
+
+### Remote Storage Options
+- **Local path** — Save to local filesystem (e.g., `/backups`)
+- **S3/MinIO** — Save to Amazon S3 or S3-compatible storage
+  - Configurable: bucket, prefix, access key, secret key, region, custom endpoint
+- **SFTP** — Save to SFTP server
+  - Configurable: host, port, username, password, remote path
+
+### Retention Policy
+- Configurable retention count (3, 7, 14, 30, 60, or 90 backups)
+- Automatic deletion of old backups beyond retention limit
+- Works with all storage backends
+
+### Admin UI
+- New "Automatic Backups" section in Settings > Backup tab
+- Enable/disable toggle
+- Schedule and time configuration
+- Storage type selector with backend-specific config fields
+- Test Connection button to verify storage access
+- Run Backup Now button for manual triggers
+- Last backup status display with success/failure indicator
+- Recent backups list with filenames and sizes
+
+### Backend Changes
+- **backup_service.py** — New service with:
+  - `create_backup_data()` — Generates full system backup JSON
+  - `save_to_local()`, `save_to_s3()`, `save_to_sftp()` — Storage backends
+  - `cleanup_old_backups_*()` — Retention enforcement per backend
+  - `run_backup()` — Main backup function using current settings
+  - `list_backups_*()` — List available backups per backend
+
+- **backup.py router** — New endpoints:
+  - `POST /api/backup/run` — Trigger manual backup
+  - `GET /api/backup/status` — Get backup config and last run status
+  - `GET /api/backup/list` — List available backups
+  - `POST /api/backup/test` — Test storage connection
+
+- **main.py** — Added hourly backup scheduler job
+
+- **settings_service.py** — Added backup settings:
+  - `backup_enabled`, `backup_schedule`, `backup_hour`, `backup_retention_count`
+  - `backup_remote_type`, `backup_local_path`
+  - S3 settings: `backup_s3_bucket`, `backup_s3_prefix`, `backup_s3_access_key`, etc.
+  - SFTP settings: `backup_sftp_host`, `backup_sftp_port`, `backup_sftp_username`, etc.
+  - `backup_last_run`, `backup_last_status`, `backup_last_location`
+
+- **requirements.txt** — Added `boto3` and `paramiko` for S3 and SFTP support
+
+### Frontend Changes
+- **backup.js API** — Added: `runBackupNow()`, `getBackupStatus()`, `listBackups()`, `testBackupConnection()`
+- **Settings.jsx** — New `AutomaticBackupSection` component with full configuration UI
+
+---
+
+## Last Updated: 2026-02-27 (Automatic Backup System)

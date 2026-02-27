@@ -47,7 +47,7 @@ class StubPaymentAdapter(BasePaymentAdapter):
         return token
 
     def charge_saved_card(
-        self, token: str, amount: Decimal, member_id: str, description: str
+        self, token: str, amount: Decimal, member_id: str, description: str, customer_name: str | None = None
     ) -> SavedCardChargeResult:
         ref_id = f"stub_sc_{uuid.uuid4().hex[:12]}"
         logger.info("Stub saved card charged: amount=$%s, member=%s, ref=%s", amount, member_id, ref_id)

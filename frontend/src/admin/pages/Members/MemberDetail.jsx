@@ -951,6 +951,9 @@ export default function MemberDetail() {
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         {formatDateTime(tx.created_at, timezone)} · {tx.payment_method}
+                        {tx.payment_method === "card" && (tx.card_name || tx.card_last4) && (
+                          <span className="text-gray-400"> · {tx.card_name || `${tx.card_brand || "Card"} ****${tx.card_last4}`}</span>
+                        )}
                       </p>
                     </div>
                   </div>

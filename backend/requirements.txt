@@ -14,6 +14,8 @@ slowapi==0.1.9
 apscheduler==3.10.4
 stripe==8.0.0
 squareup>=38.1.0
+boto3==1.35.0
+paramiko==3.5.0
 
 # Test dependencies
 pytest==8.3.4

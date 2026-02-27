@@ -34,6 +34,7 @@ class Transaction(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     plan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("plans.id"))
     membership_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("memberships.id"))
+    saved_card_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("saved_cards.id"))
     reference_id: Mapped[str | None] = mapped_column(String(255))
     notes: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
@@ -41,4 +42,5 @@ class Transaction(Base):
 
     member: Mapped["Member | None"] = relationship("Member", back_populates="transactions")
     plan: Mapped["Plan | None"] = relationship("Plan", lazy="selectin")
+    saved_card: Mapped["SavedCard | None"] = relationship("SavedCard", lazy="selectin")
     creator: Mapped["User | None"] = relationship("User")
