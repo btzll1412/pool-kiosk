@@ -17,11 +17,13 @@ from app.models.membership import Membership
 from app.models.membership_freeze import MembershipFreeze
 from app.models.pin_lockout import PinLockout
 from app.models.plan import Plan
+from app.models.pool_schedule import PoolSchedule, ScheduleOverride
 from app.models.saved_card import SavedCard
 from app.models.setting import Setting
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.services.auth_service import get_current_user
+from app.services.settings_service import get_setting
 
 router = APIRouter()
 
@@ -343,3 +345,138 @@ async def import_system(
         db.rollback()
         logger.exception("System import failed")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post("/run")
+def run_backup_now(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Manually trigger a backup using current settings."""
+    from app.services.backup_service import run_backup
+
+    result = run_backup(db)
+
+    if result["success"]:
+        logger.info("Manual backup triggered by user=%s, location=%s", current_user.id, result.get("location"))
+        return result
+    else:
+        raise HTTPException(status_code=500, detail=result.get("error", "Backup failed"))
+
+
+@router.get("/status")
+def get_backup_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get current backup configuration and last backup status."""
+    return {
+        "enabled": get_setting(db, "backup_enabled", "false").lower() == "true",
+        "schedule": get_setting(db, "backup_schedule", "daily"),
+        "hour": int(get_setting(db, "backup_hour", "2")),
+        "retention_count": int(get_setting(db, "backup_retention_count", "7")),
+        "remote_type": get_setting(db, "backup_remote_type", "local"),
+        "last_run": get_setting(db, "backup_last_run", ""),
+        "last_status": get_setting(db, "backup_last_status", ""),
+        "last_location": get_setting(db, "backup_last_location", ""),
+    }
+
+
+@router.get("/list")
+def list_backups(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List available backups in configured storage."""
+    from app.services.backup_service import list_backups_local, list_backups_s3
+
+    backup_type = get_setting(db, "backup_remote_type", "local")
+
+    try:
+        if backup_type == "local":
+            path = get_setting(db, "backup_local_path", "/backups")
+            backups = list_backups_local(path)
+        elif backup_type == "s3":
+            bucket = get_setting(db, "backup_s3_bucket", "")
+            prefix = get_setting(db, "backup_s3_prefix", "backups")
+            access_key = get_setting(db, "backup_s3_access_key", "")
+            secret_key = get_setting(db, "backup_s3_secret_key", "")
+            region = get_setting(db, "backup_s3_region", "us-east-1")
+            endpoint_url = get_setting(db, "backup_s3_endpoint", "") or None
+            backups = list_backups_s3(bucket, prefix, access_key, secret_key, region, endpoint_url)
+        else:
+            # SFTP listing not implemented yet
+            backups = []
+
+        return {"backups": backups, "type": backup_type}
+
+    except Exception as e:
+        logger.exception("Failed to list backups")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/test")
+def test_backup_connection(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Test the backup storage connection."""
+    backup_type = get_setting(db, "backup_remote_type", "local")
+
+    try:
+        if backup_type == "local":
+            from pathlib import Path
+            path = get_setting(db, "backup_local_path", "/backups")
+            full_path = Path(path)
+            full_path.mkdir(parents=True, exist_ok=True)
+            # Test write
+            test_file = full_path / ".backup_test"
+            test_file.write_text("test")
+            test_file.unlink()
+            return {"success": True, "message": f"Local path {path} is writable"}
+
+        elif backup_type == "s3":
+            import boto3
+            from botocore.config import Config
+
+            bucket = get_setting(db, "backup_s3_bucket", "")
+            access_key = get_setting(db, "backup_s3_access_key", "")
+            secret_key = get_setting(db, "backup_s3_secret_key", "")
+            region = get_setting(db, "backup_s3_region", "us-east-1")
+            endpoint_url = get_setting(db, "backup_s3_endpoint", "") or None
+
+            config = Config(signature_version='s3v4')
+            client_kwargs = {
+                'aws_access_key_id': access_key,
+                'aws_secret_access_key': secret_key,
+                'region_name': region,
+                'config': config,
+            }
+            if endpoint_url:
+                client_kwargs['endpoint_url'] = endpoint_url
+
+            s3 = boto3.client('s3', **client_kwargs)
+            s3.head_bucket(Bucket=bucket)
+            return {"success": True, "message": f"S3 bucket {bucket} is accessible"}
+
+        elif backup_type == "sftp":
+            import paramiko
+
+            host = get_setting(db, "backup_sftp_host", "")
+            port = int(get_setting(db, "backup_sftp_port", "22"))
+            username = get_setting(db, "backup_sftp_username", "")
+            password = get_setting(db, "backup_sftp_password", "")
+
+            transport = paramiko.Transport((host, port))
+            transport.connect(username=username, password=password)
+            sftp = paramiko.SFTPClient.from_transport(transport)
+            sftp.listdir('/')
+            transport.close()
+            return {"success": True, "message": f"SFTP connection to {host} successful"}
+
+        else:
+            return {"success": False, "message": f"Unknown backup type: {backup_type}"}
+
+    except Exception as e:
+        logger.exception("Backup connection test failed")
+        return {"success": False, "message": str(e)}

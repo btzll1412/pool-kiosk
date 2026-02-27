@@ -92,6 +92,31 @@ DEFAULT_SETTINGS = {
     "kiosk_bg_color": "#0284c7",
     "kiosk_bg_image": "",
     "kiosk_bg_image_mode": "cover",
+    # Backup settings
+    "backup_enabled": "false",
+    "backup_schedule": "daily",
+    "backup_hour": "2",
+    "backup_retention_count": "7",
+    "backup_remote_type": "local",
+    "backup_local_path": "/backups",
+    # S3 backup settings
+    "backup_s3_bucket": "",
+    "backup_s3_prefix": "backups",
+    "backup_s3_access_key": "",
+    "backup_s3_secret_key": "",
+    "backup_s3_region": "us-east-1",
+    "backup_s3_endpoint": "",
+    # SFTP backup settings
+    "backup_sftp_host": "",
+    "backup_sftp_port": "22",
+    "backup_sftp_username": "",
+    "backup_sftp_password": "",
+    "backup_sftp_path": "/backups",
+    "backup_sftp_key_path": "",
+    # Last backup info
+    "backup_last_run": "",
+    "backup_last_status": "",
+    "backup_last_location": "",
 }
 
 
@@ -103,6 +128,8 @@ SENSITIVE_KEYS = {
     "usaepay_api_key", "usaepay_api_pin",
     "email_smtp_password",
     "sip_password", "sip_fusionpbx_api_key",
+    "backup_s3_access_key", "backup_s3_secret_key",
+    "backup_sftp_password",
 }
 
 
@@ -127,6 +154,17 @@ def get_setting(db: Session, key: str, default: str | None = None) -> str:
 
 def get_setting_from_db(db: Session, key: str, default: str = "") -> str:
     return get_setting(db, key, default)
+
+
+def set_setting(db: Session, key: str, value: str) -> None:
+    """Set a single setting value."""
+    setting = db.query(Setting).filter(Setting.key == key).first()
+    if setting:
+        setting.value = value
+    else:
+        setting = Setting(key=key, value=value)
+        db.add(setting)
+    db.commit()
 
 
 def get_processor_config(db: Session, processor: str) -> dict[str, str]:
