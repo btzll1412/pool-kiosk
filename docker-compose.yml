@@ -64,7 +64,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
-      - "8080:80"
+      - "80:80"
     depends_on:
       - backend
       - frontend

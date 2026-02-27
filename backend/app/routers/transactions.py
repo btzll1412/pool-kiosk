@@ -51,7 +51,7 @@ def list_transactions(
     total = query.count()
     transactions = query.order_by(Transaction.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
 
-    # Build response with member and plan names
+    # Build response with member, plan, and card names
     items = []
     for tx in transactions:
         item = TransactionResponse(
@@ -64,6 +64,10 @@ def list_transactions(
             plan_id=tx.plan_id,
             plan_name=tx.plan.name if tx.plan else None,
             membership_id=tx.membership_id,
+            saved_card_id=tx.saved_card_id,
+            card_last4=tx.saved_card.card_last4 if tx.saved_card else None,
+            card_brand=tx.saved_card.card_brand if tx.saved_card else None,
+            card_name=tx.saved_card.friendly_name if tx.saved_card else None,
             reference_id=tx.reference_id,
             notes=tx.notes,
             created_by=tx.created_by,
