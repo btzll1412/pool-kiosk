@@ -86,6 +86,15 @@ export default function TransactionsList() {
         }),
     },
     {
+      key: "member_name",
+      label: "Member",
+      render: (row) => (
+        <span className="font-medium text-gray-900 dark:text-gray-100">
+          {row.member_name || <span className="text-gray-400">Guest</span>}
+        </span>
+      ),
+    },
+    {
       key: "transaction_type",
       label: "Type",
       render: (row) => (
@@ -118,6 +127,15 @@ export default function TransactionsList() {
             ? "-"
             : ""}
           ${Number(row.amount).toFixed(2)}
+        </span>
+      ),
+    },
+    {
+      key: "plan_name",
+      label: "Plan",
+      render: (row) => (
+        <span className="text-gray-600 dark:text-gray-400">
+          {row.plan_name || "—"}
         </span>
       ),
     },

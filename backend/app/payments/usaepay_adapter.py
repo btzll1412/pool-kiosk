@@ -258,7 +258,7 @@ class UsaepayPaymentAdapter(BasePaymentAdapter):
             raise RuntimeError(f"USAePay tokenization failed: {exc}")
 
     def charge_saved_card(
-        self, token: str, amount: Decimal, member_id: str, description: str
+        self, token: str, amount: Decimal, member_id: str, description: str, customer_name: str | None = None
     ) -> SavedCardChargeResult:
         try:
             data = {
@@ -272,6 +272,9 @@ class UsaepayPaymentAdapter(BasePaymentAdapter):
                     "member_id": member_id,
                 },
             }
+            # Add billing info with customer name if provided
+            if customer_name:
+                data["billing"] = {"name": customer_name}
             result = self._make_request("transactions", data)
 
             result_code = result.get("result_code", "E")
@@ -441,3 +444,90 @@ class UsaepayPaymentAdapter(BasePaymentAdapter):
         except httpx.RequestError as exc:
             logger.exception("USAePay terminal cancel failed: request_key=%s", request_key)
             return False
+
+    # ==================== MANUAL CARD ENTRY METHODS ====================
+
+    def process_manual_card_sale(
+        self,
+        card_number: str,
+        exp_date: str,
+        cvv: str,
+        amount: Decimal,
+        member_id: str,
+        description: str,
+        save_card: bool = False,
+        customer_name: str | None = None,
+    ) -> SavedCardChargeResult:
+        """
+        Process a card-not-present sale with manual card entry.
+
+        This is used when the terminal is not available and card details
+        are entered manually (e.g., phone orders, backup payment method).
+        """
+        try:
+            data = {
+                "command": "sale",
+                "amount": str(amount),
+                "creditcard": {
+                    "number": card_number,
+                    "expiration": exp_date,
+                    "cvv": cvv,
+                },
+                "description": description,
+                "invoice": f"pool-{uuid.uuid4().hex[:8]}",
+                "save_card": save_card,
+                "custom_fields": {
+                    "member_id": member_id,
+                },
+            }
+            # Add billing info with customer name if provided
+            if customer_name:
+                data["billing"] = {"name": customer_name}
+
+            result = self._make_request("transactions", data)
+
+            result_code = result.get("result_code", "E")
+            transaction_key = result.get("key", "")
+
+            if result_code == "A":
+                # Extract saved card token if requested
+                card_token = None
+                if save_card:
+                    card_token = result.get("savedcard", {}).get("key", "")
+                    if not card_token:
+                        card_token = result.get("creditcard", {}).get("token", "")
+
+                logger.info(
+                    "USAePay manual card sale processed: key=%s, amount=$%s, member=%s",
+                    transaction_key, amount, member_id
+                )
+                return SavedCardChargeResult(
+                    success=True,
+                    reference_id=transaction_key,
+                    message="Payment successful",
+                    card_token=card_token,
+                )
+            else:
+                error_msg = result.get("error", "Payment declined")
+                logger.warning(
+                    "USAePay manual card sale declined: member=%s, amount=$%s, error=%s",
+                    member_id, amount, error_msg
+                )
+                return SavedCardChargeResult(
+                    success=False,
+                    message=error_msg,
+                )
+
+        except httpx.HTTPStatusError as exc:
+            error_msg = "Payment processing failed"
+            try:
+                error_data = exc.response.json()
+                error_msg = error_data.get("error", error_msg)
+            except Exception:
+                pass
+            logger.exception("USAePay manual card sale failed: member=%s, amount=$%s", member_id, amount)
+            return SavedCardChargeResult(success=False, message=error_msg)
+
+        except httpx.RequestError as exc:
+            logger.exception("USAePay manual card sale failed: member=%s, amount=$%s", member_id, amount)
+            return SavedCardChargeResult(success=False, message=str(exc))

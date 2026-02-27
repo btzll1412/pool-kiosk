@@ -216,6 +216,22 @@ export async function tokenizeCardFromFull(cardNumber, expDate, memberId, pin, f
   return data;
 }
 
+// ==================== MANUAL CARD ENTRY FUNCTIONS ====================
+
+export async function payCardManual(member_id, plan_id, pin, card_number, exp_date, cvv, save_card = false, use_credit = false) {
+  const { data } = await kiosk.post("/pay/card/manual", {
+    member_id,
+    plan_id,
+    card_number,
+    exp_date,
+    cvv,
+    pin,
+    save_card,
+    use_credit,
+  });
+  return data;
+}
+
 // ==================== TERMINAL PAYMENT FUNCTIONS ====================
 
 export async function getTerminalInfo() {

@@ -27,6 +27,7 @@ import {
   addMemberSavedCard,
   adjustCredit,
   assignCard,
+  chargeCard,
   deactivateCard,
   reactivateCard,
   deleteCard,
@@ -51,6 +52,7 @@ import {
   updateMembership,
 } from "../../../api/memberships";
 import { getPlans } from "../../../api/plans";
+import { getTransactions } from "../../../api/payments";
 import Badge from "../../../shared/Badge";
 import Button from "../../../shared/Button";
 import Card, { CardHeader } from "../../../shared/Card";
@@ -71,6 +73,7 @@ export default function MemberDetail() {
   const [savedCards, setSavedCards] = useState([]);
   const [memberships, setMemberships] = useState([]);
   const [history, setHistory] = useState([]);
+  const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCredit, setShowCredit] = useState(false);
   const [showDeactivate, setShowDeactivate] = useState(false);
@@ -101,6 +104,12 @@ export default function MemberDetail() {
   const [newCardBrand, setNewCardBrand] = useState("Visa");
   const [saveNewCard, setSaveNewCard] = useState(false);
   const [enableAutopay, setEnableAutopay] = useState(false);
+  // Full card entry for real charging
+  const [newCardNumber, setNewCardNumber] = useState("");
+  const [newCardExpMonth, setNewCardExpMonth] = useState("");
+  const [newCardExpYear, setNewCardExpYear] = useState("");
+  const [newCardCvv, setNewCardCvv] = useState("");
+  const [cardEntryMode, setCardEntryMode] = useState("record"); // "record" or "charge"
 
   // Add Card on File
   const [showAddCard, setShowAddCard] = useState(false);
@@ -157,14 +166,16 @@ export default function MemberDetail() {
       getMemberSavedCards(id),
       getMemberMemberships(id),
       getMemberPinStatus(id),
+      getTransactions({ member_id: id, per_page: 50 }),
     ])
-      .then(([m, c, h, sc, ms, ps]) => {
+      .then(([m, c, h, sc, ms, ps, tx]) => {
         setMember(m);
         setCards(c);
         setHistory(h);
         setSavedCards(sc);
         setMemberships(ms);
         setPinStatus(ps);
+        setTransactions(tx.items || []);
       })
       .catch((err) => toast.error(err.response?.data?.detail || "Failed to load member details"))
       .finally(() => setLoading(false));
@@ -288,9 +299,53 @@ export default function MemberDetail() {
     if (!selectedPlanId) return;
     setAddMembershipLoading(true);
     try {
+      const selectedPlan = plans.find(p => p.id === selectedPlanId);
+
+      // If charging with full card details, process real charge first
+      if (chargeNow && paymentMethod === "card" && !useExistingCard && cardEntryMode === "charge") {
+        // Validate card details
+        const cleanCardNumber = newCardNumber.replace(/\s/g, "");
+        if (cleanCardNumber.length < 13 || cleanCardNumber.length > 19) {
+          toast.error("Please enter a valid card number");
+          setAddMembershipLoading(false);
+          return;
+        }
+        if (!newCardExpMonth || !newCardExpYear) {
+          toast.error("Please enter the card expiration date");
+          setAddMembershipLoading(false);
+          return;
+        }
+        if (newCardCvv.length < 3 || newCardCvv.length > 4) {
+          toast.error("Please enter a valid CVV (3-4 digits)");
+          setAddMembershipLoading(false);
+          return;
+        }
+
+        const expDate = `${newCardExpMonth.padStart(2, "0")}${newCardExpYear.slice(-2)}`;
+        const amount = selectedPlan ? selectedPlan.price : "0";
+
+        // Charge the card via admin API
+        try {
+          await chargeCard(
+            id,
+            cleanCardNumber,
+            expDate,
+            newCardCvv,
+            amount,
+            `Membership: ${selectedPlan?.name || "Plan"}`,
+            saveNewCard
+          );
+          toast.success("Card charged successfully");
+        } catch (err) {
+          toast.error(err.response?.data?.detail || "Card charge failed");
+          setAddMembershipLoading(false);
+          return;
+        }
+      }
+
       const payload = { member_id: id, plan_id: selectedPlanId };
 
-      // Build payment info if charging now
+      // Build payment info if charging now (for record-keeping)
       if (chargeNow) {
         if (paymentMethod === "cash") {
           payload.payment = {
@@ -303,12 +358,23 @@ export default function MemberDetail() {
               payment_method: "card",
               saved_card_id: selectedSavedCardId,
             };
-          } else if (!useExistingCard && newCardLast4) {
+          } else if (!useExistingCard && cardEntryMode === "record" && newCardLast4) {
+            // Record-only mode
             payload.payment = {
               payment_method: "card",
               card_last4: newCardLast4,
               card_brand: newCardBrand,
               save_card: saveNewCard,
+              enable_autopay: enableAutopay,
+            };
+          } else if (!useExistingCard && cardEntryMode === "charge") {
+            // Already charged above, just record last4
+            const cleanCardNumber = newCardNumber.replace(/\s/g, "");
+            payload.payment = {
+              payment_method: "card",
+              card_last4: cleanCardNumber.slice(-4),
+              card_brand: detectCardBrand(cleanCardNumber),
+              save_card: false, // Already saved during charge if requested
               enable_autopay: enableAutopay,
             };
           }
@@ -327,6 +393,20 @@ export default function MemberDetail() {
     }
   };
 
+  function detectCardBrand(cardNumber) {
+    if (cardNumber.startsWith("4")) return "Visa";
+    if (cardNumber.startsWith("5") || (cardNumber.length >= 4 && parseInt(cardNumber.slice(0, 4)) >= 2221 && parseInt(cardNumber.slice(0, 4)) <= 2720)) return "Mastercard";
+    if (cardNumber.startsWith("34") || cardNumber.startsWith("37")) return "Amex";
+    if (cardNumber.startsWith("6011") || cardNumber.startsWith("65")) return "Discover";
+    return "Card";
+  }
+
+  function formatCardNumber(value) {
+    const digits = value.replace(/\D/g, "");
+    const formatted = digits.replace(/(\d{4})(?=\d)/g, "$1 ");
+    return formatted.slice(0, 23);
+  }
+
   const resetMembershipForm = () => {
     setSelectedPlanId("");
     setChargeNow(false);
@@ -338,6 +418,11 @@ export default function MemberDetail() {
     setNewCardBrand("Visa");
     setSaveNewCard(false);
     setEnableAutopay(false);
+    setNewCardNumber("");
+    setNewCardExpMonth("");
+    setNewCardExpYear("");
+    setNewCardCvv("");
+    setCardEntryMode("record");
   };
 
   const handleAddCard = async () => {
@@ -840,6 +925,49 @@ export default function MemberDetail() {
           )}
         </Card>
 
+        {/* Transactions */}
+        <Card>
+          <CardHeader title="Transactions" />
+          {transactions.length === 0 ? (
+            <p className="text-sm text-gray-400 dark:text-gray-500">No transactions yet</p>
+          ) : (
+            <div className="space-y-2 max-h-80 overflow-y-auto scrollbar-thin">
+              {transactions.map((tx) => (
+                <div
+                  key={tx.id}
+                  className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${
+                      tx.transaction_type === "payment" ? "bg-green-500" :
+                      tx.transaction_type === "refund" ? "bg-red-500" :
+                      tx.transaction_type === "credit_add" ? "bg-blue-500" :
+                      tx.transaction_type === "credit_use" ? "bg-purple-500" : "bg-gray-500"
+                    }`} />
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {tx.transaction_type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                        {tx.plan_name && <span className="text-gray-500"> - {tx.plan_name}</span>}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {formatDateTime(tx.created_at, timezone)} · {tx.payment_method}
+                      </p>
+                    </div>
+                  </div>
+                  <p className={`text-sm font-semibold ${
+                    tx.transaction_type === "refund" || tx.transaction_type === "credit_use"
+                      ? "text-red-600"
+                      : "text-green-600"
+                  }`}>
+                    {tx.transaction_type === "refund" || tx.transaction_type === "credit_use" ? "-" : "+"}
+                    ${Number(tx.amount).toFixed(2)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
         {/* Activity History */}
         <Card>
           <CardHeader title="Activity Log" />
@@ -1129,44 +1257,151 @@ export default function MemberDetail() {
                   {/* New Card Entry */}
                   {(!useExistingCard || savedCards.length === 0) && (
                     <>
-                      <div className="grid grid-cols-2 gap-3">
-                        <Input
-                          label="Last 4 Digits"
-                          maxLength={4}
-                          value={newCardLast4}
-                          onChange={(e) => setNewCardLast4(e.target.value.replace(/\D/g, ""))}
-                          placeholder="1234"
-                        />
-                        <div>
-                          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Card Brand
-                          </label>
-                          <select
-                            value={newCardBrand}
-                            onChange={(e) => setNewCardBrand(e.target.value)}
-                            className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
-                          >
-                            <option value="Visa">Visa</option>
-                            <option value="Mastercard">Mastercard</option>
-                            <option value="Amex">American Express</option>
-                            <option value="Discover">Discover</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Save Card Checkbox */}
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id="saveNewCard"
-                          checked={saveNewCard}
-                          onChange={(e) => setSaveNewCard(e.target.checked)}
-                          className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
-                        />
-                        <label htmlFor="saveNewCard" className="text-sm text-gray-700 dark:text-gray-300">
-                          Save card for future use
+                      {/* Card Entry Mode Selection */}
+                      <div className="flex gap-4 mb-3">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="cardEntryMode"
+                            checked={cardEntryMode === "charge"}
+                            onChange={() => setCardEntryMode("charge")}
+                            className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-gray-300">Enter full card (charge now)</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="cardEntryMode"
+                            checked={cardEntryMode === "record"}
+                            onChange={() => setCardEntryMode("record")}
+                            className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-gray-300">Record only (no charge)</span>
                         </label>
                       </div>
+
+                      {/* Full Card Entry Mode */}
+                      {cardEntryMode === "charge" && (
+                        <div className="space-y-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                          <p className="text-xs text-amber-700 dark:text-amber-400">
+                            Card will be charged the plan price immediately.
+                          </p>
+                          <Input
+                            label="Card Number"
+                            value={newCardNumber}
+                            onChange={(e) => setNewCardNumber(formatCardNumber(e.target.value))}
+                            placeholder="1234 5678 9012 3456"
+                          />
+                          <div className="grid grid-cols-3 gap-3">
+                            <div>
+                              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Month
+                              </label>
+                              <select
+                                value={newCardExpMonth}
+                                onChange={(e) => setNewCardExpMonth(e.target.value)}
+                                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                              >
+                                <option value="">MM</option>
+                                {[...Array(12)].map((_, i) => (
+                                  <option key={i + 1} value={String(i + 1).padStart(2, "0")}>
+                                    {String(i + 1).padStart(2, "0")}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Year
+                              </label>
+                              <select
+                                value={newCardExpYear}
+                                onChange={(e) => setNewCardExpYear(e.target.value)}
+                                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                              >
+                                <option value="">YY</option>
+                                {[...Array(12)].map((_, i) => {
+                                  const year = new Date().getFullYear() + i;
+                                  return (
+                                    <option key={year} value={String(year)}>
+                                      {year}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </div>
+                            <Input
+                              label="CVV"
+                              maxLength={4}
+                              value={newCardCvv}
+                              onChange={(e) => setNewCardCvv(e.target.value.replace(/\D/g, ""))}
+                              placeholder="123"
+                            />
+                          </div>
+
+                          {/* Save Card Checkbox */}
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              id="saveNewCardCharge"
+                              checked={saveNewCard}
+                              onChange={(e) => setSaveNewCard(e.target.checked)}
+                              className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                            />
+                            <label htmlFor="saveNewCardCharge" className="text-sm text-gray-700 dark:text-gray-300">
+                              Save card for future use
+                            </label>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Record Only Mode */}
+                      {cardEntryMode === "record" && (
+                        <div className="space-y-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Records card info for reference only. Use this after processing payment on an external terminal.
+                          </p>
+                          <div className="grid grid-cols-2 gap-3">
+                            <Input
+                              label="Last 4 Digits"
+                              maxLength={4}
+                              value={newCardLast4}
+                              onChange={(e) => setNewCardLast4(e.target.value.replace(/\D/g, ""))}
+                              placeholder="1234"
+                            />
+                            <div>
+                              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Card Brand
+                              </label>
+                              <select
+                                value={newCardBrand}
+                                onChange={(e) => setNewCardBrand(e.target.value)}
+                                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                              >
+                                <option value="Visa">Visa</option>
+                                <option value="Mastercard">Mastercard</option>
+                                <option value="Amex">American Express</option>
+                                <option value="Discover">Discover</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Save Card Checkbox */}
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              id="saveNewCard"
+                              checked={saveNewCard}
+                              onChange={(e) => setSaveNewCard(e.target.checked)}
+                              className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                            />
+                            <label htmlFor="saveNewCard" className="text-sm text-gray-700 dark:text-gray-300">
+                              Save card for future use
+                            </label>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Enable Autopay (monthly plans only) */}
                       {saveNewCard && plans.find(p => p.id === selectedPlanId)?.plan_type === "monthly" && (
@@ -1203,9 +1438,18 @@ export default function MemberDetail() {
             <Button
               onClick={handleAddMembership}
               loading={addMembershipLoading}
-              disabled={!selectedPlanId || (chargeNow && paymentMethod === "card" && useExistingCard && !selectedSavedCardId) || (chargeNow && paymentMethod === "card" && !useExistingCard && newCardLast4.length !== 4)}
+              disabled={
+                !selectedPlanId ||
+                (chargeNow && paymentMethod === "card" && useExistingCard && !selectedSavedCardId) ||
+                (chargeNow && paymentMethod === "card" && !useExistingCard && cardEntryMode === "record" && newCardLast4.length !== 4) ||
+                (chargeNow && paymentMethod === "card" && !useExistingCard && cardEntryMode === "charge" && (
+                  newCardNumber.replace(/\s/g, "").length < 13 || !newCardExpMonth || !newCardExpYear || newCardCvv.length < 3
+                ))
+              }
             >
-              {chargeNow ? "Add & Charge" : "Add Membership"}
+              {chargeNow && paymentMethod === "card" && !useExistingCard && cardEntryMode === "charge"
+                ? "Add & Charge Card"
+                : chargeNow ? "Add & Charge" : "Add Membership"}
             </Button>
           </div>
         </div>

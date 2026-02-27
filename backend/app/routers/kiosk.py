@@ -34,6 +34,7 @@ from app.schemas.kiosk import (
     KioskFreezeRequest,
     KioskSignupRequest,
     KioskUnfreezeRequest,
+    ManualCardPaymentRequest,
     MemberStatus,
     ActiveMembershipInfo,
     PaymentResponse,
@@ -669,6 +670,198 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
     )
 
 
+@router.post("/pay/card/manual", response_model=PaymentResponse)
+@limiter.limit("10/minute")
+def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Session = Depends(get_db)):
+    """
+    Process a card-not-present payment with manual card entry.
+
+    Use this when the terminal is not available and card details must be entered manually.
+    Requires full card number, expiration, and CVV.
+    """
+    verify_member_pin(db, data.member_id, data.pin)
+
+    plan = db.query(Plan).filter(Plan.id == data.plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    member = db.query(Member).filter(Member.id == data.member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    # Validate card number format (basic validation)
+    card_number = data.card_number.replace(" ", "").replace("-", "")
+    if not card_number.isdigit() or len(card_number) < 13 or len(card_number) > 19:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid card number format"
+        )
+
+    # Validate expiration format (MMYY)
+    if not data.exp_date.isdigit() or len(data.exp_date) != 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Expiration must be in MMYY format"
+        )
+
+    # Validate CVV format
+    if not data.cvv.isdigit() or len(data.cvv) < 3 or len(data.cvv) > 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CVV must be 3-4 digits"
+        )
+
+    credit_used = Decimal("0.00")
+    base_price = get_plan_effective_price(plan)
+    effective_price = base_price
+
+    # Apply account credit if requested
+    if data.use_credit and member.credit_balance > 0:
+        credit_used = min(member.credit_balance, base_price)
+        effective_price = base_price - credit_used
+        member.credit_balance -= credit_used
+
+    # If credit covers entire amount, no card charge needed
+    if effective_price <= 0:
+        membership = create_membership(db, data.member_id, data.plan_id)
+        credit_tx = Transaction(
+            member_id=data.member_id,
+            transaction_type=TransactionType.payment,
+            payment_method=PaymentMethod.credit,
+            amount=credit_used,
+            plan_id=data.plan_id,
+            membership_id=membership.id,
+            notes="Paid with account credit",
+        )
+        db.add(credit_tx)
+        db.commit()
+        db.refresh(credit_tx)
+        logger.info("Kiosk credit-only payment: member=%s, plan=%s, credit=$%s", data.member_id, data.plan_id, credit_used)
+        return PaymentResponse(
+            success=True,
+            transaction_id=credit_tx.id,
+            membership_id=membership.id,
+            credit_used=credit_used,
+            message=f"Paid ${credit_used} with account credit.",
+        )
+
+    # Process manual card payment
+    adapter = get_payment_adapter(db)
+
+    # Check if adapter supports manual card entry
+    if not hasattr(adapter, 'process_manual_card_sale'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Manual card entry not supported by current payment processor"
+        )
+
+    customer_name = f"{member.first_name} {member.last_name}"
+    charge_result = adapter.process_manual_card_sale(
+        card_number=card_number,
+        exp_date=data.exp_date,
+        cvv=data.cvv,
+        amount=effective_price,
+        member_id=str(data.member_id),
+        description=f"Purchase: {plan.name}",
+        save_card=data.save_card,
+        customer_name=customer_name,
+    )
+
+    if not charge_result.success:
+        # Restore credit if payment failed
+        if credit_used > 0:
+            member.credit_balance += credit_used
+            db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=charge_result.message or "Card payment declined"
+        )
+
+    # Create membership
+    membership = create_membership(db, data.member_id, data.plan_id)
+
+    # Record credit transaction if credit was used
+    if credit_used > 0:
+        credit_tx = Transaction(
+            member_id=data.member_id,
+            transaction_type=TransactionType.payment,
+            payment_method=PaymentMethod.credit,
+            amount=credit_used,
+            plan_id=data.plan_id,
+            membership_id=membership.id,
+            notes="Credit portion of payment",
+        )
+        db.add(credit_tx)
+
+    # Record card payment transaction
+    card_last4 = card_number[-4:]
+    card_tx = Transaction(
+        member_id=data.member_id,
+        transaction_type=TransactionType.payment,
+        payment_method=PaymentMethod.card,
+        amount=effective_price,
+        plan_id=data.plan_id,
+        membership_id=membership.id,
+        reference_id=charge_result.reference_id,
+        notes=f"Manual card entry - ****{card_last4}",
+    )
+    db.add(card_tx)
+
+    # Save the card if requested and we got a token back
+    if data.save_card and charge_result.card_token:
+        # Detect card brand from first digit
+        card_brand = _detect_card_brand(card_number)
+        friendly = f"{card_brand} ending {card_last4}"
+        saved_card = SavedCard(
+            member_id=data.member_id,
+            processor_token=charge_result.card_token,
+            card_last4=card_last4,
+            card_brand=card_brand,
+            friendly_name=friendly,
+        )
+        db.add(saved_card)
+
+    db.commit()
+    db.refresh(card_tx)
+
+    logger.info(
+        "Kiosk manual card payment: member=%s, plan=%s, card=$%s, credit=$%s",
+        data.member_id, data.plan_id, effective_price, credit_used
+    )
+
+    msg = "Card payment processed successfully."
+    if credit_used > 0:
+        msg = f"Payment processed: ${credit_used} credit + ${effective_price} card."
+    if data.save_card and charge_result.card_token:
+        msg += " Card saved for future use."
+
+    return PaymentResponse(
+        success=True,
+        transaction_id=card_tx.id,
+        membership_id=membership.id,
+        credit_used=credit_used,
+        message=msg,
+    )
+
+
+def _detect_card_brand(card_number: str) -> str:
+    """Detect card brand from card number prefix."""
+    if card_number.startswith("4"):
+        return "Visa"
+    elif card_number.startswith(("51", "52", "53", "54", "55")) or (
+        len(card_number) >= 4 and 2221 <= int(card_number[:4]) <= 2720
+    ):
+        return "Mastercard"
+    elif card_number.startswith(("34", "37")):
+        return "Amex"
+    elif card_number.startswith(("6011", "65")) or (
+        len(card_number) >= 6 and 644 <= int(card_number[:3]) <= 649
+    ):
+        return "Discover"
+    else:
+        return "Card"
+
+
 @router.post("/pay/split", response_model=PaymentResponse)
 @limiter.limit("10/minute")
 def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends(get_db)):
@@ -712,11 +905,13 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
         ).first()
         if not saved_card:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved card not found")
+        customer_name = f"{member.first_name} {member.last_name}"
         charge_result = adapter.charge_saved_card(
             token=saved_card.processor_token,
             amount=card_amount,
             member_id=str(data.member_id),
             description=f"Split payment (card portion): {plan.name}",
+            customer_name=customer_name,
         )
         if not charge_result.success:
             raise HTTPException(

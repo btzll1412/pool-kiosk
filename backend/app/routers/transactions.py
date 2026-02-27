@@ -49,7 +49,28 @@ def list_transactions(
         query = query.filter(Transaction.created_at <= datetime.combine(end_date, datetime.max.time()))
 
     total = query.count()
-    items = query.order_by(Transaction.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    transactions = query.order_by(Transaction.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+
+    # Build response with member and plan names
+    items = []
+    for tx in transactions:
+        item = TransactionResponse(
+            id=tx.id,
+            member_id=tx.member_id,
+            member_name=f"{tx.member.first_name} {tx.member.last_name}" if tx.member else None,
+            transaction_type=tx.transaction_type,
+            payment_method=tx.payment_method,
+            amount=tx.amount,
+            plan_id=tx.plan_id,
+            plan_name=tx.plan.name if tx.plan else None,
+            membership_id=tx.membership_id,
+            reference_id=tx.reference_id,
+            notes=tx.notes,
+            created_by=tx.created_by,
+            created_at=tx.created_at,
+        )
+        items.append(item)
+
     return TransactionListResponse(items=items, total=total, page=page, per_page=per_page)
 
 

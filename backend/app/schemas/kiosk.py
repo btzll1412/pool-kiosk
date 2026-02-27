@@ -274,3 +274,28 @@ class TerminalInfoResponse(BaseModel):
     """Response with terminal availability info."""
     has_terminal: bool
     terminal_name: str | None = None
+
+
+# ==================== MANUAL CARD ENTRY SCHEMAS ====================
+
+
+class ManualCardPaymentRequest(BaseModel):
+    """Request to process a card-not-present payment with manual card entry."""
+    member_id: uuid.UUID
+    plan_id: uuid.UUID
+    card_number: str  # Full card number (13-19 digits)
+    exp_date: str  # MMYY format
+    cvv: str  # 3-4 digits
+    pin: str  # Member PIN for verification
+    save_card: bool = False  # Whether to save the card for future use
+    use_credit: bool = False  # Whether to apply account credit first
+
+
+class AdminChargeCardRequest(BaseModel):
+    """Request for admin to charge a card directly."""
+    card_number: str  # Full card number
+    exp_date: str  # MMYY format
+    cvv: str  # 3-4 digits
+    amount: Decimal  # Amount to charge
+    description: str | None = None  # Optional transaction description
+    save_card: bool = False  # Whether to save the card for future use
