@@ -89,17 +89,30 @@ class UsaepayPaymentAdapter(BasePaymentAdapter):
         if not self.api_pin:
             return False, "USAePay API PIN not configured"
         try:
-            # Attempt to query a nonexistent transaction to verify credentials
-            # A valid API key will return an error about the transaction not found
-            # An invalid key will return an authentication error
-            url = f"{self.base_url}/transactions/test_connection_check"
+            # Query the transactions endpoint to verify credentials
+            # Valid credentials will return 200 (possibly empty list)
+            # Invalid credentials will return 401 with error details
+            url = f"{self.base_url}/transactions"
             with httpx.Client(timeout=10.0) as client:
                 response = client.get(url, headers=self._get_headers())
-            # 404 = credentials work, transaction not found (expected)
-            # 401 = invalid credentials
-            if response.status_code == 401:
-                return False, "Invalid USAePay API credentials"
-            return True, "Connected to USAePay successfully"
+
+            if response.status_code == 200:
+                return True, "Connected to USAePay successfully"
+            elif response.status_code == 401:
+                # Parse error message from USAePay
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("error", "Invalid credentials")
+                    error_code = error_data.get("errorcode", "")
+                    if error_code == 23:
+                        return False, "Invalid API Key - key not found"
+                    elif error_code == 0:
+                        return False, "Authentication required - check API Key and PIN"
+                    return False, f"USAePay error: {error_msg}"
+                except Exception:
+                    return False, "Invalid USAePay API credentials"
+            else:
+                return False, f"USAePay returned status {response.status_code}"
         except httpx.RequestError as exc:
             return False, f"USAePay connection failed: {exc}"
 
