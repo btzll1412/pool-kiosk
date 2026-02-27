@@ -180,6 +180,7 @@ const settingGroups = [
           { value: "square", label: "Square" },
           { value: "sola", label: "Sola" },
           { value: "hitech", label: "HiTech Merchants" },
+          { value: "usaepay", label: "USAePay" },
         ],
       },
     ],
@@ -239,6 +240,22 @@ const settingGroups = [
       { key: "hitech_pin", label: "PIN", type: "password", helpText: "64-character terminal identifier" },
       {
         key: "hitech_environment", label: "Environment", type: "select",
+        options: [{ value: "sandbox", label: "Sandbox" }, { value: "production", label: "Production" }],
+      },
+    ],
+  },
+  {
+    title: "USAePay Configuration",
+    description: "USAePay API credentials",
+    category: "payments",
+    showWhen: (s) => s.payment_processor === "usaepay",
+    testAction: "usaepay",
+    fields: [
+      { key: "usaepay_api_key", label: "API Key", type: "password" },
+      { key: "usaepay_api_pin", label: "API PIN", type: "password" },
+      { key: "usaepay_device_key", label: "Terminal Device Key", type: "text", helpText: "Device key for Castles MP200 terminal (optional, for card-present transactions)" },
+      {
+        key: "usaepay_environment", label: "Environment", type: "select",
         options: [{ value: "sandbox", label: "Sandbox" }, { value: "production", label: "Production" }],
       },
     ],

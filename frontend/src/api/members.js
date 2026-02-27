@@ -83,3 +83,8 @@ export const importMembersCsv = (file) => {
     headers: { "Content-Type": "multipart/form-data" },
   }).then((r) => r.data);
 };
+
+export const chargeCard = (memberId, cardNumber, expDate, cvv, amount, description, saveCard) =>
+  client.post(`/members/${memberId}/charge-card`, null, {
+    params: { card_number: cardNumber, exp_date: expDate, cvv, amount, description, save_card: saveCard }
+  }).then((r) => r.data);

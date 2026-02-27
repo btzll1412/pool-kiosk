@@ -56,6 +56,9 @@ def create_member(db: Session, data: MemberCreate) -> Member:
         email=data.email,
         photo_url=data.photo_url,
         notes=data.notes,
+        date_of_birth=data.date_of_birth,
+        is_senior=data.is_senior,
+        gender=data.gender,
     )
     if data.pin:
         member.pin_hash = hash_pin(data.pin)

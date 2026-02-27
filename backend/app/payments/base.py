@@ -35,6 +35,7 @@ class SavedCardChargeResult(BaseModel):
     success: bool
     reference_id: str | None = None
     message: str = ""
+    card_token: str | None = None  # Token for saving the card if save_card was requested
 
 
 class BasePaymentAdapter(ABC):
@@ -64,7 +65,36 @@ class BasePaymentAdapter(ABC):
 
     @abstractmethod
     def charge_saved_card(
-        self, token: str, amount: Decimal, member_id: str, description: str
+        self, token: str, amount: Decimal, member_id: str, description: str, customer_name: str | None = None
     ) -> SavedCardChargeResult:
         """Charge a previously tokenized saved card."""
         ...
+
+    def process_manual_card_sale(
+        self,
+        card_number: str,
+        exp_date: str,
+        cvv: str,
+        amount: Decimal,
+        member_id: str,
+        description: str,
+        save_card: bool = False,
+        customer_name: str | None = None,
+    ) -> SavedCardChargeResult:
+        """
+        Process a card-not-present sale with manual card entry.
+
+        Args:
+            card_number: Full card number
+            exp_date: Expiration in MMYY format
+            cvv: Card verification value (3-4 digits)
+            amount: Amount to charge
+            member_id: Member ID for reference
+            description: Transaction description
+            save_card: Whether to save the card token for future use
+            customer_name: Customer name for billing info
+
+        Returns:
+            SavedCardChargeResult with success status and optional token
+        """
+        raise NotImplementedError("Manual card entry not supported by this adapter")

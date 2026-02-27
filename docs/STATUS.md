@@ -4,7 +4,7 @@
 
 ---
 
-## Current Phase: Phase 10 — Senior Discounts & Monthly Billing
+## Current Phase: Phase 11 — Pool Scheduling
 
 ### Overall Progress
 
@@ -20,6 +20,7 @@
 | Phase 8 — Payment Processors, Email, SIP & UI Polish | **Complete** | Stripe/Square/Sola adapters, SMTP email, SIP/FusionPBX, dark mode, kiosk transitions, skeletons |
 | Phase 9 — UX Polish & Admin Enhancements | **Complete** | Kiosk UX improvements, swim pass stacking, signup, backup/restore, membership management |
 | Phase 10 — Senior Discounts & Monthly Billing | **Complete** | Senior citizen discounts, DOB tracking, monthly pro-rated billing, permanent member delete |
+| Phase 11 — Pool Scheduling | **Complete** | Weekly schedules, men's/women's hours, schedule overrides, gender-based check-in validation |
 
 ---
 
@@ -40,7 +41,7 @@
 - [x] Config from environment variables (`app/config.py`)
 - [x] Database connection and session management (`app/database.py`)
 - [x] FastAPI app with CORS, rate limiting, lifespan (`app/main.py`)
-- [x] **13 SQLAlchemy models:** Member, Card, Plan, Membership, Checkin, Transaction, User, Setting, GuestVisit, MembershipFreeze, SavedCard, ActivityLog, PinLockout
+- [x] **15 SQLAlchemy models:** Member, Card, Plan, Membership, Checkin, Transaction, User, Setting, GuestVisit, MembershipFreeze, SavedCard, ActivityLog, PinLockout, PoolSchedule, ScheduleOverride
 - [x] Alembic migration setup (env.py, script template, alembic.ini)
 - [x] **Auth system:** JWT access/refresh tokens, password hashing, role-based guards
 - [x] **PIN system:** PIN hashing, verification, lockout after max attempts
@@ -54,14 +55,14 @@
 - [x] **Notification service:** Full webhook system with 8 event types, per-event URL configuration, fire-and-forget delivery
 - [x] **Seed service:** Auto-creates default admin and default settings on startup
 - [x] **Rate limiter:** slowapi-based per-IP limiting on kiosk endpoints
-- [x] **Payment adapters:** Base interface with tokenize/charge_saved_card/test_connection methods, Stub adapter (always succeeds), Cash adapter (rejects card ops), Stripe adapter (PaymentIntent + Customer API), Square adapter (Payments + Customers API), Sola adapter (REST/httpx)
+- [x] **Payment adapters:** Base interface with tokenize/charge_saved_card/test_connection methods, Stub adapter (always succeeds), Cash adapter (rejects card ops), Stripe adapter (PaymentIntent + Customer API), Square adapter (Payments + Customers API), Sola adapter (REST/httpx), USAePay adapter (REST API v2/httpx)
 - [x] **Auto-charge service** (`services/auto_charge_service.py`): process_due_charges (daily scheduler), enable/disable auto-charge, on-demand saved card charging, email receipt on success
 - [x] **APScheduler** integrated in app lifespan — 3 daily jobs: auto-charge (06:00), membership expiry check (07:00), daily summary (21:00)
 - [x] **Email service** (`services/email_service.py`): SMTP-based send_email(), test_email_connection(), send_auto_charge_receipt(), send_membership_expiring_email(), send_membership_expired_email()
 - [x] **SIP service** (`services/sip_service.py`): FusionPBX REST API integration, originate_call(), call_for_change_needed(), test_sip_connection()
 - [x] **Sensitive settings masking** — GET endpoint returns masked values (••••••) for API keys and passwords; PUT filters out masked values to prevent overwriting secrets
 - [x] **10 Pydantic schema modules:** auth, member, card, plan, membership, checkin, transaction, kiosk, settings, report
-- [x] **11 API routers:** auth, members, cards, plans, memberships, checkins, payments, transactions, reports, settings, kiosk
+- [x] **12 API routers:** auth, members, cards, plans, memberships, checkins, payments, transactions, reports, settings, kiosk, schedules
 - [x] All kiosk endpoints: scan, search, checkin, plans, pay/cash, pay/card (with saved card support + save-after-payment), pay/split, freeze, unfreeze, saved-cards CRUD, tokenize, set-default, auto-charge enable/disable, guest visit, change notification, verify-pin, signup
 - [x] All admin endpoints: full CRUD for members/plans/memberships, transaction management, reports with CSV export, settings management, member saved cards view + delete, member memberships view + manage, full system backup/export, system restore/import, member PIN unlock, members CSV import/export
 - [x] Activity logging on all admin mutations
@@ -433,4 +434,160 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-02-24 (Admin Payment Flow Enhancement)
+## Pool Scheduling System (2026-02-24)
+
+### Weekly Schedule Management
+- New `pool_schedules` table for recurring weekly time blocks
+- Schedule types: Open Swim, Men Only, Women Only, Lap Swim, Lessons, Maintenance, Closed
+- Each block has: name, type, day_of_week (0-6), start_time, end_time, priority, notes, is_active
+- Higher priority blocks override lower priority when times overlap
+- Full CRUD API at `GET/POST/PUT/DELETE /api/schedules`
+- `GET /api/schedules/weekly` returns full week organized by day
+- `GET /api/schedules/current` returns current pool status with restrictions
+
+### Schedule Overrides
+- New `schedule_overrides` table for temporary date/time-based overrides
+- Overrides take precedence over regular weekly schedule when active
+- Fields: name, type, start_datetime, end_datetime, is_active, notes, created_by
+- Use cases: holidays, private events, special hours
+- Full CRUD API at `GET/POST/PUT/DELETE /api/schedules/overrides`
+
+### Gender-Based Check-in Validation
+- Added `gender` field to Member model (male/female/null)
+- During men_only or women_only hours, kiosk validates member gender before check-in
+- Friendly error messages: "Sorry, this is currently Men's/Women's Hours. Please come back during..."
+- Gender can be set in admin MemberForm and kiosk signup/profile
+
+### Admin UI
+- New "Schedules" page with sidebar navigation (Calendar icon)
+- Tab interface: Weekly Schedule | Special Overrides
+- Weekly view shows 7-day grid with color-coded time blocks per type
+- Legend displays all schedule type colors
+- Active override warning banner when override is in effect
+- Create/Edit/Delete modals for schedules and overrides
+- Bulk clear all schedules option
+
+### Database Changes
+- Migration `e5f6g7h8i9j0_add_schedules_and_gender.py`:
+  - Creates `scheduletype` enum
+  - Creates `pool_schedules` table
+  - Creates `schedule_overrides` table
+  - Adds `gender` column to `members` table
+
+### Files Added
+- `backend/app/models/pool_schedule.py` — PoolSchedule, ScheduleOverride, ScheduleType
+- `backend/app/schemas/pool_schedule.py` — Create/Update/Response schemas
+- `backend/app/routers/schedules.py` — Full CRUD + current/weekly endpoints
+- `frontend/src/api/schedules.js` — API functions
+- `frontend/src/admin/pages/Schedules/ScheduleManager.jsx` — Admin UI
+
+### Files Modified
+- `backend/app/main.py` — Added schedules router
+- `backend/app/models/__init__.py` — Export new models
+- `backend/app/routers/kiosk.py` — Gender-based check-in validation
+- `backend/app/schemas/kiosk.py` — Added gender to MemberStatus, signup, profile update
+- `backend/app/schemas/member.py` — Added gender to schemas
+- `backend/app/services/member_service.py` — Added gender to create_member
+- `frontend/src/App.jsx` — Added schedules route
+- `frontend/src/admin/layout/Sidebar.jsx` — Added Schedules nav item
+- `frontend/src/admin/pages/Members/MemberForm.jsx` — Added gender dropdown
+
+---
+
+---
+
+## USAePay Integration (2026-02-25)
+
+### USAePay Payment Adapter
+- Added `usaepay_adapter.py` implementing `BasePaymentAdapter`
+- Uses USAePay REST API v2 with Basic auth (API key + seed + SHA256 hash)
+- Supports sandbox and production environments
+- Endpoints: `/api/v2/transactions` for sales, refunds, tokenization
+
+### Implementation Details
+- Authentication: Generates seed, creates SHA256 hash of `apikey+seed+pin`, Base64 encodes auth header
+- Sales: `command: "sale"` with amount and creditcard
+- Tokenization: Uses `save_card: true` on sales, returns token for future use
+- Saved card charges: Token goes in `creditcard.number` field
+- Refunds: `command: "refund"` with `trankey` from original transaction
+- Test connection: Validates credentials by checking API response
+
+### Settings Added
+- `usaepay_api_key` — API key (masked in UI)
+- `usaepay_api_pin` — API PIN (masked in UI)
+- `usaepay_environment` — sandbox or production
+
+### Frontend
+- Added "USAePay" option to payment processor dropdown
+- Added USAePay Configuration section with API Key, PIN, and Environment fields
+- Test Connection button for verifying credentials
+
+---
+
+## USAePay Terminal Integration (2026-02-25)
+
+### Terminal Payment Support
+- Added physical card terminal support via USAePay Payment Engine Cloud API
+- Compatible with Castles MP200 terminal (standalone WiFi, EMV, NFC, Bluetooth)
+- Terminal payments appear as "Tap to Pay" option in kiosk when terminal is configured
+
+### Backend Changes
+- **usaepay_adapter.py** — Added terminal payment methods:
+  - `has_terminal()` — Checks if device_key is configured
+  - `initiate_terminal_payment()` — Starts payment on physical terminal via Payment Engine
+  - `check_terminal_payment_status()` — Polls for payment completion
+  - `cancel_terminal_payment()` — Cancels pending terminal payment
+  - `TerminalPaymentResult` — Result class with request_key, status, card info
+
+- **kiosk.py router** — Added terminal endpoints:
+  - `GET /api/kiosk/terminal/info` — Returns terminal availability
+  - `POST /api/kiosk/terminal/pay` — Initiates terminal payment
+  - `GET /api/kiosk/terminal/status/{request_key}` — Checks payment status
+  - `DELETE /api/kiosk/terminal/cancel/{request_key}` — Cancels payment
+
+- **kiosk.py schemas** — Added terminal schemas:
+  - `TerminalPaymentRequest` — member_id, plan_id, pin, save_card, use_credit
+  - `TerminalPaymentInitResponse` — request_key, status, amount, error
+  - `TerminalPaymentStatusResponse` — complete, approved, transaction_id, card info
+  - `TerminalInfoResponse` — has_terminal, terminal_name
+
+- **settings_service.py** — Added `usaepay_device_key` setting for terminal configuration
+
+### Frontend Changes
+- **kiosk.js API** — Added terminal API functions:
+  - `getTerminalInfo()` — Check terminal availability
+  - `initiateTerminalPayment()` — Start terminal payment
+  - `checkTerminalPaymentStatus()` — Poll for result
+  - `cancelTerminalPayment()` — Cancel pending payment
+
+- **TerminalPaymentScreen.jsx** — New kiosk screen:
+  - Shows "Tap or Insert Card" with animated terminal icon
+  - Polls for payment completion every 1.5 seconds
+  - Handles success, failure, timeout, and cancellation
+  - Auto-navigates to success screen on approval
+
+- **PaymentScreen.jsx** — Added "Tap to Pay" button:
+  - Only shows when terminal is configured (has_terminal: true)
+  - Highlighted as recommended option with brand color ring
+  - Navigates to TerminalPaymentScreen
+
+- **KioskApp.jsx** — Registered terminal screen in SCREENS map
+
+- **Settings.jsx** — Added Terminal Device Key field in USAePay config section
+
+### Files Added
+- `frontend/src/kiosk/screens/TerminalPaymentScreen.jsx`
+
+### Files Modified
+- `backend/app/payments/usaepay_adapter.py`
+- `backend/app/routers/kiosk.py`
+- `backend/app/schemas/kiosk.py`
+- `backend/app/services/settings_service.py`
+- `frontend/src/api/kiosk.js`
+- `frontend/src/kiosk/KioskApp.jsx`
+- `frontend/src/kiosk/screens/PaymentScreen.jsx`
+- `frontend/src/admin/pages/Settings/Settings.jsx`
+
+---
+
+## Last Updated: 2026-02-25 (USAePay Terminal Integration)

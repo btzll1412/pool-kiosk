@@ -23,6 +23,7 @@ export default function MemberForm() {
     notes: "",
     date_of_birth: "",
     is_senior: false,
+    gender: "",
   });
   const [seniorAgeThreshold, setSeniorAgeThreshold] = useState(65);
   const [loading, setLoading] = useState(false);
@@ -49,6 +50,7 @@ export default function MemberForm() {
             notes: m.notes || "",
             date_of_birth: m.date_of_birth || "",
             is_senior: m.is_senior || false,
+            gender: m.gender || "",
           })
         )
         .catch((err) => toast.error(err.response?.data?.detail || "Failed to load member"))
@@ -85,6 +87,7 @@ export default function MemberForm() {
       if (!payload.pin) delete payload.pin;
       if (!payload.notes) payload.notes = null;
       if (!payload.date_of_birth) payload.date_of_birth = null;
+      if (!payload.gender) payload.gender = null;
 
       if (isEdit) {
         delete payload.pin;
@@ -167,6 +170,24 @@ export default function MemberForm() {
               onChange={handleChange("email")}
               placeholder="john@example.com"
             />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Gender
+            </label>
+            <select
+              value={form.gender}
+              onChange={(e) => setForm(f => ({ ...f, gender: e.target.value }))}
+              className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800"
+            >
+              <option value="">Not specified</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Used for gender-specific pool hours (Men's/Women's hours)
+            </p>
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2">

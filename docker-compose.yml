@@ -2,18 +2,21 @@ services:
   postgres:
     image: postgres:15-alpine
     restart: unless-stopped
+    privileged: true
     environment:
       POSTGRES_DB: pooldb
       POSTGRES_USER: pool
       POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
       TZ: America/New_York
+    # Fix for LXC: disable Unix sockets, use TCP only
+    command: ["postgres", "-c", "unix_socket_directories="]
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - /etc/localtime:/etc/localtime:ro
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pool -d pooldb"]
+      test: ["CMD-SHELL", "pg_isready -U pool -d pooldb -h localhost"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -21,6 +24,8 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    # Fix for Docker-in-LXC: privileged mode for async event loops
+    privileged: true
     environment:
       DATABASE_URL: postgresql://pool:${DB_PASSWORD:-password}@postgres:5432/pooldb
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
@@ -41,6 +46,7 @@ services:
   frontend:
     build: ./frontend
     restart: unless-stopped
+    privileged: true
     environment:
       TZ: America/New_York
     volumes:
@@ -51,13 +57,14 @@ services:
   nginx:
     build: ./nginx
     restart: unless-stopped
+    privileged: true
     environment:
       TZ: America/New_York
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
-      - "80:80"
+      - "8080:80"
     depends_on:
       - backend
       - frontend

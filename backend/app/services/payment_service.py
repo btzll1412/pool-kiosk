@@ -17,6 +17,7 @@ from app.payments.square_adapter import SquarePaymentAdapter
 from app.payments.stripe_adapter import StripePaymentAdapter
 from app.payments.stub import StubPaymentAdapter
 from app.payments.hitech_adapter import HiTechPaymentAdapter
+from app.payments.usaepay_adapter import UsaepayPaymentAdapter
 from app.services.membership_service import create_membership
 from app.services.notification_service import notify_low_balance
 from app.services.settings_service import get_processor_config, get_setting
@@ -32,6 +33,7 @@ def get_payment_adapter(db: Session) -> BasePaymentAdapter:
         "square": SquarePaymentAdapter,
         "sola": SolaPaymentAdapter,
         "hitech": HiTechPaymentAdapter,
+        "usaepay": UsaepayPaymentAdapter,
     }
     adapter_cls = adapter_map.get(processor, StubPaymentAdapter)
     config = get_processor_config(db, processor)

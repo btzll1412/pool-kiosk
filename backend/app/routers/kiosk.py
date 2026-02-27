@@ -16,8 +16,10 @@ from app.models.member import Member
 from app.models.membership import Membership
 from app.models.membership_freeze import MembershipFreeze
 from app.models.plan import Plan, PlanType
+from app.models.pool_schedule import PoolSchedule, ScheduleOverride, ScheduleType
 from app.models.saved_card import SavedCard
 from app.models.transaction import PaymentMethod, Transaction, TransactionType
+from datetime import datetime
 from app.schemas.kiosk import (
     AutoChargeDisableRequest,
     AutoChargeRequest,
@@ -32,6 +34,7 @@ from app.schemas.kiosk import (
     KioskFreezeRequest,
     KioskSignupRequest,
     KioskUnfreezeRequest,
+    ManualCardPaymentRequest,
     MemberStatus,
     ActiveMembershipInfo,
     PaymentResponse,
@@ -48,6 +51,10 @@ from app.schemas.kiosk import (
     TokenizeFullCardRequest,
     TokenizeTrackDataRequest,
     KioskUpdateProfileRequest,
+    TerminalPaymentRequest,
+    TerminalPaymentInitResponse,
+    TerminalPaymentStatusResponse,
+    TerminalInfoResponse,
 )
 from app.services.auto_charge_service import (
     charge_saved_card_now,
@@ -165,6 +172,7 @@ def kiosk_signup(data: KioskSignupRequest, request: Request, db: Session = Depen
         pin_hash=hash_pin(data.pin),
         date_of_birth=data.date_of_birth,
         is_senior=data.is_senior,
+        gender=data.gender,
     )
     db.add(member)
     db.commit()
@@ -210,11 +218,66 @@ def kiosk_update_profile(data: KioskUpdateProfileRequest, request: Request, db: 
         member.date_of_birth = data.date_of_birth
     if data.is_senior is not None:
         member.is_senior = data.is_senior
-    
+    if data.gender is not None:
+        member.gender = data.gender
+
     db.commit()
     db.refresh(member)
     logger.info("Kiosk profile update: member=%s, name=%s %s", member.id, member.first_name, member.last_name)
     return _build_member_status(db, member)
+
+
+def _get_current_schedule_restrictions(db: Session) -> tuple[ScheduleType | None, str | None]:
+    """
+    Get current schedule restrictions based on active override or regular schedule.
+    Returns (schedule_type, restriction_message) or (None, None) if no restrictions.
+    """
+    now = datetime.now()
+    current_day = now.weekday()  # 0=Monday
+    current_time = now.time()
+
+    # First check for active schedule overrides
+    active_override = (
+        db.query(ScheduleOverride)
+        .filter(
+            ScheduleOverride.is_active == True,
+            ScheduleOverride.start_datetime <= now,
+            ScheduleOverride.end_datetime > now,
+        )
+        .first()
+    )
+
+    if active_override:
+        if active_override.schedule_type == ScheduleType.men_only:
+            return (ScheduleType.men_only, f"{active_override.name} - Men's Hours Only")
+        elif active_override.schedule_type == ScheduleType.women_only:
+            return (ScheduleType.women_only, f"{active_override.name} - Women's Hours Only")
+        elif active_override.schedule_type in [ScheduleType.closed, ScheduleType.maintenance]:
+            return (active_override.schedule_type, f"{active_override.name} - Pool Closed")
+        return (None, None)
+
+    # Check regular schedule
+    current_block = (
+        db.query(PoolSchedule)
+        .filter(
+            PoolSchedule.is_active == True,
+            PoolSchedule.day_of_week == current_day,
+            PoolSchedule.start_time <= current_time,
+            PoolSchedule.end_time > current_time,
+        )
+        .order_by(PoolSchedule.priority.desc())
+        .first()
+    )
+
+    if current_block:
+        if current_block.schedule_type == ScheduleType.men_only:
+            return (ScheduleType.men_only, f"{current_block.name} - Men's Hours Only")
+        elif current_block.schedule_type == ScheduleType.women_only:
+            return (ScheduleType.women_only, f"{current_block.name} - Women's Hours Only")
+        elif current_block.schedule_type in [ScheduleType.closed, ScheduleType.maintenance]:
+            return (current_block.schedule_type, f"{current_block.name} - Pool Closed")
+
+    return (None, None)
 
 
 @router.post("/checkin", response_model=KioskCheckinResponse)
@@ -226,6 +289,42 @@ def kiosk_checkin(data: KioskCheckinRequest, request: Request, db: Session = Dep
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Maximum {max_guests} guests allowed",
         )
+
+    # Check schedule restrictions
+    schedule_type, restriction_message = _get_current_schedule_restrictions(db)
+
+    if schedule_type in [ScheduleType.closed, ScheduleType.maintenance]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=restriction_message or "Pool is currently closed"
+        )
+
+    # Check gender-based restrictions
+    if schedule_type in [ScheduleType.men_only, ScheduleType.women_only]:
+        member = db.query(Member).filter(Member.id == data.member_id).first()
+        if member:
+            member_gender = (member.gender or "").lower()
+
+            if schedule_type == ScheduleType.men_only and member_gender not in ["male", "m"]:
+                if member_gender in ["female", "f"]:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Sorry, this is currently Men's Hours. Please come back during Women's Hours or Open Swim times."
+                    )
+                elif not member_gender:
+                    # Gender not set - allow but warn (or require gender)
+                    logger.warning("Check-in during men_only hours without gender set: member=%s", data.member_id)
+
+            elif schedule_type == ScheduleType.women_only and member_gender not in ["female", "f"]:
+                if member_gender in ["male", "m"]:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Sorry, this is currently Women's Hours. Please come back during Men's Hours or Open Swim times."
+                    )
+                elif not member_gender:
+                    # Gender not set - allow but warn (or require gender)
+                    logger.warning("Check-in during women_only hours without gender set: member=%s", data.member_id)
+
     checkin = perform_checkin(db, data.member_id, data.guest_count)
 
     member = db.query(Member).filter(Member.id == data.member_id).first()
@@ -571,6 +670,198 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
     )
 
 
+@router.post("/pay/card/manual", response_model=PaymentResponse)
+@limiter.limit("10/minute")
+def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Session = Depends(get_db)):
+    """
+    Process a card-not-present payment with manual card entry.
+
+    Use this when the terminal is not available and card details must be entered manually.
+    Requires full card number, expiration, and CVV.
+    """
+    verify_member_pin(db, data.member_id, data.pin)
+
+    plan = db.query(Plan).filter(Plan.id == data.plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    member = db.query(Member).filter(Member.id == data.member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    # Validate card number format (basic validation)
+    card_number = data.card_number.replace(" ", "").replace("-", "")
+    if not card_number.isdigit() or len(card_number) < 13 or len(card_number) > 19:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid card number format"
+        )
+
+    # Validate expiration format (MMYY)
+    if not data.exp_date.isdigit() or len(data.exp_date) != 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Expiration must be in MMYY format"
+        )
+
+    # Validate CVV format
+    if not data.cvv.isdigit() or len(data.cvv) < 3 or len(data.cvv) > 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CVV must be 3-4 digits"
+        )
+
+    credit_used = Decimal("0.00")
+    base_price = get_plan_effective_price(plan)
+    effective_price = base_price
+
+    # Apply account credit if requested
+    if data.use_credit and member.credit_balance > 0:
+        credit_used = min(member.credit_balance, base_price)
+        effective_price = base_price - credit_used
+        member.credit_balance -= credit_used
+
+    # If credit covers entire amount, no card charge needed
+    if effective_price <= 0:
+        membership = create_membership(db, data.member_id, data.plan_id)
+        credit_tx = Transaction(
+            member_id=data.member_id,
+            transaction_type=TransactionType.payment,
+            payment_method=PaymentMethod.credit,
+            amount=credit_used,
+            plan_id=data.plan_id,
+            membership_id=membership.id,
+            notes="Paid with account credit",
+        )
+        db.add(credit_tx)
+        db.commit()
+        db.refresh(credit_tx)
+        logger.info("Kiosk credit-only payment: member=%s, plan=%s, credit=$%s", data.member_id, data.plan_id, credit_used)
+        return PaymentResponse(
+            success=True,
+            transaction_id=credit_tx.id,
+            membership_id=membership.id,
+            credit_used=credit_used,
+            message=f"Paid ${credit_used} with account credit.",
+        )
+
+    # Process manual card payment
+    adapter = get_payment_adapter(db)
+
+    # Check if adapter supports manual card entry
+    if not hasattr(adapter, 'process_manual_card_sale'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Manual card entry not supported by current payment processor"
+        )
+
+    customer_name = f"{member.first_name} {member.last_name}"
+    charge_result = adapter.process_manual_card_sale(
+        card_number=card_number,
+        exp_date=data.exp_date,
+        cvv=data.cvv,
+        amount=effective_price,
+        member_id=str(data.member_id),
+        description=f"Purchase: {plan.name}",
+        save_card=data.save_card,
+        customer_name=customer_name,
+    )
+
+    if not charge_result.success:
+        # Restore credit if payment failed
+        if credit_used > 0:
+            member.credit_balance += credit_used
+            db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=charge_result.message or "Card payment declined"
+        )
+
+    # Create membership
+    membership = create_membership(db, data.member_id, data.plan_id)
+
+    # Record credit transaction if credit was used
+    if credit_used > 0:
+        credit_tx = Transaction(
+            member_id=data.member_id,
+            transaction_type=TransactionType.payment,
+            payment_method=PaymentMethod.credit,
+            amount=credit_used,
+            plan_id=data.plan_id,
+            membership_id=membership.id,
+            notes="Credit portion of payment",
+        )
+        db.add(credit_tx)
+
+    # Record card payment transaction
+    card_last4 = card_number[-4:]
+    card_tx = Transaction(
+        member_id=data.member_id,
+        transaction_type=TransactionType.payment,
+        payment_method=PaymentMethod.card,
+        amount=effective_price,
+        plan_id=data.plan_id,
+        membership_id=membership.id,
+        reference_id=charge_result.reference_id,
+        notes=f"Manual card entry - ****{card_last4}",
+    )
+    db.add(card_tx)
+
+    # Save the card if requested and we got a token back
+    if data.save_card and charge_result.card_token:
+        # Detect card brand from first digit
+        card_brand = _detect_card_brand(card_number)
+        friendly = f"{card_brand} ending {card_last4}"
+        saved_card = SavedCard(
+            member_id=data.member_id,
+            processor_token=charge_result.card_token,
+            card_last4=card_last4,
+            card_brand=card_brand,
+            friendly_name=friendly,
+        )
+        db.add(saved_card)
+
+    db.commit()
+    db.refresh(card_tx)
+
+    logger.info(
+        "Kiosk manual card payment: member=%s, plan=%s, card=$%s, credit=$%s",
+        data.member_id, data.plan_id, effective_price, credit_used
+    )
+
+    msg = "Card payment processed successfully."
+    if credit_used > 0:
+        msg = f"Payment processed: ${credit_used} credit + ${effective_price} card."
+    if data.save_card and charge_result.card_token:
+        msg += " Card saved for future use."
+
+    return PaymentResponse(
+        success=True,
+        transaction_id=card_tx.id,
+        membership_id=membership.id,
+        credit_used=credit_used,
+        message=msg,
+    )
+
+
+def _detect_card_brand(card_number: str) -> str:
+    """Detect card brand from card number prefix."""
+    if card_number.startswith("4"):
+        return "Visa"
+    elif card_number.startswith(("51", "52", "53", "54", "55")) or (
+        len(card_number) >= 4 and 2221 <= int(card_number[:4]) <= 2720
+    ):
+        return "Mastercard"
+    elif card_number.startswith(("34", "37")):
+        return "Amex"
+    elif card_number.startswith(("6011", "65")) or (
+        len(card_number) >= 6 and 644 <= int(card_number[:3]) <= 649
+    ):
+        return "Discover"
+    else:
+        return "Card"
+
+
 @router.post("/pay/split", response_model=PaymentResponse)
 @limiter.limit("10/minute")
 def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends(get_db)):
@@ -614,11 +905,13 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
         ).first()
         if not saved_card:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved card not found")
+        customer_name = f"{member.first_name} {member.last_name}"
         charge_result = adapter.charge_saved_card(
             token=saved_card.processor_token,
             amount=card_amount,
             member_id=str(data.member_id),
             description=f"Split payment (card portion): {plan.name}",
+            customer_name=customer_name,
         )
         if not charge_result.success:
             raise HTTPException(
@@ -1126,6 +1419,7 @@ def _build_member_status(db: Session, member: Member) -> MemberStatus:
         last_name=member.last_name,
         phone=member.phone,
         email=member.email,
+        gender=member.gender,
         credit_balance=member.credit_balance,
         has_pin=member.pin_hash is not None,
         date_of_birth=member.date_of_birth,
@@ -1134,3 +1428,230 @@ def _build_member_status(db: Session, member: Member) -> MemberStatus:
         is_frozen=is_frozen,
         frozen_until=frozen_until,
     )
+
+
+# ==================== TERMINAL PAYMENT ENDPOINTS ====================
+
+# In-memory storage for pending terminal payments (request_key -> member_id, plan_id, etc.)
+_pending_terminal_payments: dict[str, dict] = {}
+
+
+@router.get("/terminal/info", response_model=TerminalInfoResponse)
+@limiter.limit("30/minute")
+def get_terminal_info(request: Request, db: Session = Depends(get_db)):
+    """Check if a physical payment terminal is configured."""
+    adapter = get_payment_adapter(db)
+
+    # Check if adapter supports terminals (has has_terminal method)
+    has_terminal = False
+    if hasattr(adapter, "has_terminal"):
+        has_terminal = adapter.has_terminal()
+
+    return TerminalInfoResponse(
+        has_terminal=has_terminal,
+        terminal_name="Castles MP200" if has_terminal else None,
+    )
+
+
+@router.post("/terminal/pay", response_model=TerminalPaymentInitResponse)
+@limiter.limit("10/minute")
+def initiate_terminal_payment(
+    data: TerminalPaymentRequest, request: Request, db: Session = Depends(get_db)
+):
+    """
+    Initiate a card payment on the physical terminal.
+
+    The terminal will prompt the customer to tap/insert their card.
+    Poll /terminal/status/{request_key} for the result.
+    """
+    verify_member_pin(db, data.member_id, data.pin)
+
+    plan = db.query(Plan).filter(Plan.id == data.plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    member = db.query(Member).filter(Member.id == data.member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    adapter = get_payment_adapter(db)
+    if not hasattr(adapter, "initiate_terminal_payment"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Terminal payments not supported by current payment processor",
+        )
+
+    if not adapter.has_terminal():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No payment terminal configured",
+        )
+
+    # Calculate effective price (apply credit if requested)
+    base_price = get_plan_effective_price(plan)
+    credit_used = Decimal("0.00")
+    effective_price = base_price
+
+    if data.use_credit and member.credit_balance > 0:
+        credit_used = min(member.credit_balance, base_price)
+        effective_price = base_price - credit_used
+
+    if effective_price <= 0:
+        # Credit covers entire amount - no terminal payment needed
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account credit covers entire purchase. Use credit payment instead.",
+        )
+
+    # Initiate payment on terminal
+    result = adapter.initiate_terminal_payment(
+        amount=effective_price,
+        member_id=str(data.member_id),
+        description=f"Purchase: {plan.name}",
+        save_card=data.save_card,
+    )
+
+    if result.error:
+        logger.warning(
+            "Terminal payment init failed: member=%s, plan=%s, error=%s",
+            data.member_id, plan.name, result.error
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.error,
+        )
+
+    # Store pending payment info for when it completes
+    _pending_terminal_payments[result.request_key] = {
+        "member_id": data.member_id,
+        "plan_id": data.plan_id,
+        "credit_used": credit_used,
+        "save_card": data.save_card,
+    }
+
+    logger.info(
+        "Terminal payment initiated: member=%s, plan=%s, amount=$%s, request_key=%s",
+        data.member_id, plan.name, effective_price, result.request_key
+    )
+
+    return TerminalPaymentInitResponse(
+        request_key=result.request_key,
+        status=result.status,
+        amount=effective_price,
+    )
+
+
+@router.get("/terminal/status/{request_key}", response_model=TerminalPaymentStatusResponse)
+@limiter.limit("60/minute")
+def check_terminal_payment_status(
+    request_key: str, request: Request, db: Session = Depends(get_db)
+):
+    """
+    Check the status of a terminal payment.
+
+    Poll this endpoint until 'complete' is True.
+    """
+    adapter = get_payment_adapter(db)
+    if not hasattr(adapter, "check_terminal_payment_status"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Terminal payments not supported",
+        )
+
+    result = adapter.check_terminal_payment_status(request_key)
+
+    response = TerminalPaymentStatusResponse(
+        request_key=request_key,
+        status=result.status,
+        complete=result.complete,
+        approved=result.approved,
+        card_last4=result.card_last4,
+        card_brand=result.card_brand,
+        error=result.error,
+    )
+
+    # If payment is complete and approved, finalize the transaction
+    if result.complete and result.approved:
+        pending = _pending_terminal_payments.get(request_key)
+        if pending:
+            try:
+                # Create membership and transaction
+                member = db.query(Member).filter(Member.id == pending["member_id"]).first()
+                plan = db.query(Plan).filter(Plan.id == pending["plan_id"]).first()
+
+                if member and plan:
+                    # Apply credit if used
+                    if pending["credit_used"] > 0:
+                        member.credit_balance -= pending["credit_used"]
+                        credit_tx = Transaction(
+                            member_id=pending["member_id"],
+                            transaction_type=TransactionType.credit_use,
+                            payment_method=PaymentMethod.credit,
+                            amount=pending["credit_used"],
+                            notes="Applied to terminal payment",
+                        )
+                        db.add(credit_tx)
+
+                    # Create membership
+                    membership = create_membership(db, pending["member_id"], pending["plan_id"])
+
+                    # Create card payment transaction
+                    effective_price = get_plan_effective_price(plan) - pending["credit_used"]
+                    tx = Transaction(
+                        member_id=pending["member_id"],
+                        transaction_type=TransactionType.payment,
+                        payment_method=PaymentMethod.card,
+                        amount=effective_price,
+                        plan_id=pending["plan_id"],
+                        membership_id=membership.id,
+                        reference_id=result.transaction_key,
+                        notes=f"Terminal payment - {result.card_brand or 'Card'} ****{result.card_last4 or '????'}",
+                    )
+                    db.add(tx)
+                    db.commit()
+
+                    response.transaction_id = tx.id
+                    response.membership_id = membership.id
+
+                    logger.info(
+                        "Terminal payment completed: member=%s, plan=%s, tx=%s",
+                        pending["member_id"], plan.name, tx.id
+                    )
+
+                # Clean up pending payment
+                del _pending_terminal_payments[request_key]
+
+            except Exception as exc:
+                logger.exception("Failed to finalize terminal payment: request_key=%s", request_key)
+                response.error = f"Payment approved but failed to create membership: {exc}"
+
+    return response
+
+
+@router.delete("/terminal/cancel/{request_key}")
+@limiter.limit("10/minute")
+def cancel_terminal_payment(
+    request_key: str, request: Request, db: Session = Depends(get_db)
+):
+    """Cancel a pending terminal payment."""
+    adapter = get_payment_adapter(db)
+    if not hasattr(adapter, "cancel_terminal_payment"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Terminal payments not supported",
+        )
+
+    success = adapter.cancel_terminal_payment(request_key)
+
+    # Clean up pending payment
+    if request_key in _pending_terminal_payments:
+        del _pending_terminal_payments[request_key]
+
+    if success:
+        logger.info("Terminal payment cancelled: request_key=%s", request_key)
+        return {"status": "cancelled"}
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to cancel payment",
+        )

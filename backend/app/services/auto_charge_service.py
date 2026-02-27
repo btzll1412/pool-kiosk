@@ -58,11 +58,13 @@ def process_due_charges(db: Session) -> dict:
             results["failed"] += 1
             continue
 
+        customer_name = f"{member.first_name} {member.last_name}"
         charge_result = adapter.charge_saved_card(
             token=card.processor_token,
             amount=plan.price,
             member_id=str(card.member_id),
             description=f"Auto-charge: {plan.name}",
+            customer_name=customer_name,
         )
 
         if not charge_result.success:
@@ -179,12 +181,16 @@ def charge_saved_card_now(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
+    member = db.query(Member).filter(Member.id == member_id).first()
+    customer_name = f"{member.first_name} {member.last_name}" if member else None
+
     adapter = get_payment_adapter(db)
     charge_result = adapter.charge_saved_card(
         token=card.processor_token,
         amount=plan.price,
         member_id=str(member_id),
         description=f"Purchase: {plan.name}",
+        customer_name=customer_name,
     )
 
     if not charge_result.success:

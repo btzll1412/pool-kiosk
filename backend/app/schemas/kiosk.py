@@ -23,6 +23,7 @@ class MemberStatus(BaseModel):
     last_name: str
     phone: str | None = None
     email: str | None = None
+    gender: str | None = None
     credit_balance: Decimal
     has_pin: bool
     date_of_birth: date | None = None
@@ -221,6 +222,7 @@ class KioskSignupRequest(BaseModel):
     rfid_uid: str | None = None
     date_of_birth: date | None = None
     is_senior: bool = False
+    gender: str | None = None  # "male", "female", or None
 
 
 class KioskUpdateProfileRequest(BaseModel):
@@ -232,3 +234,68 @@ class KioskUpdateProfileRequest(BaseModel):
     is_senior: bool | None = None
     phone: str | None = None
     email: str | None = None
+    gender: str | None = None  # "male", "female", or None
+
+
+# ==================== TERMINAL PAYMENT SCHEMAS ====================
+
+
+class TerminalPaymentRequest(BaseModel):
+    """Request to initiate a payment on a physical card terminal."""
+    member_id: uuid.UUID
+    plan_id: uuid.UUID
+    pin: str
+    save_card: bool = False
+    use_credit: bool = False
+
+
+class TerminalPaymentInitResponse(BaseModel):
+    """Response when initiating a terminal payment."""
+    request_key: str
+    status: str
+    amount: Decimal
+    error: str | None = None
+
+
+class TerminalPaymentStatusResponse(BaseModel):
+    """Response when checking terminal payment status."""
+    request_key: str
+    status: str
+    complete: bool
+    approved: bool = False
+    transaction_id: uuid.UUID | None = None
+    membership_id: uuid.UUID | None = None
+    card_last4: str | None = None
+    card_brand: str | None = None
+    error: str | None = None
+
+
+class TerminalInfoResponse(BaseModel):
+    """Response with terminal availability info."""
+    has_terminal: bool
+    terminal_name: str | None = None
+
+
+# ==================== MANUAL CARD ENTRY SCHEMAS ====================
+
+
+class ManualCardPaymentRequest(BaseModel):
+    """Request to process a card-not-present payment with manual card entry."""
+    member_id: uuid.UUID
+    plan_id: uuid.UUID
+    card_number: str  # Full card number (13-19 digits)
+    exp_date: str  # MMYY format
+    cvv: str  # 3-4 digits
+    pin: str  # Member PIN for verification
+    save_card: bool = False  # Whether to save the card for future use
+    use_credit: bool = False  # Whether to apply account credit first
+
+
+class AdminChargeCardRequest(BaseModel):
+    """Request for admin to charge a card directly."""
+    card_number: str  # Full card number
+    exp_date: str  # MMYY format
+    cvv: str  # 3-4 digits
+    amount: Decimal  # Amount to charge
+    description: str | None = None  # Optional transaction description
+    save_card: bool = False  # Whether to save the card for future use

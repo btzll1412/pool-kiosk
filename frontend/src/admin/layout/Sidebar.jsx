@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   BarChart3,
+  Calendar,
   ClipboardCheck,
   CreditCard,
   LayoutDashboard,
@@ -20,6 +21,7 @@ const nav = [
   { to: "/admin/plans", icon: Ticket, label: "Plans" },
   { to: "/admin/transactions", icon: CreditCard, label: "Transactions" },
   { to: "/admin/reports", icon: BarChart3, label: "Reports" },
+  { to: "/admin/schedules", icon: Calendar, label: "Schedules" },
   { to: "/admin/settings", icon: Settings, label: "Settings" },
 ];
 

@@ -433,6 +433,157 @@ def admin_tokenize_card_from_full(
     )
 
 
+@router.post("/{member_id}/charge-card")
+def admin_charge_card(
+    member_id: uuid.UUID,
+    card_number: str,
+    exp_date: str,
+    cvv: str,
+    amount: str,
+    description: str | None = None,
+    save_card: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Admin endpoint to charge a card directly with manual entry.
+
+    Process a card-not-present payment for a member. This is useful when
+    the terminal is unavailable or for phone/remote payments.
+    """
+    from decimal import Decimal
+    from app.models.transaction import Transaction, TransactionType, PaymentMethod
+
+    member = db.query(Member).filter(Member.id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    # Validate card number format
+    clean_card = card_number.replace(" ", "").replace("-", "")
+    if not clean_card.isdigit() or len(clean_card) < 13 or len(clean_card) > 19:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid card number format"
+        )
+
+    # Validate expiration format (MMYY)
+    if not exp_date.isdigit() or len(exp_date) != 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Expiration must be in MMYY format"
+        )
+
+    # Validate CVV format
+    if not cvv.isdigit() or len(cvv) < 3 or len(cvv) > 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CVV must be 3-4 digits"
+        )
+
+    # Validate amount
+    try:
+        charge_amount = Decimal(amount)
+        if charge_amount <= 0:
+            raise ValueError()
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid amount"
+        )
+
+    adapter = get_payment_adapter(db)
+
+    # Check if adapter supports manual card entry
+    if not hasattr(adapter, 'process_manual_card_sale'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Manual card entry not supported by current payment processor"
+        )
+
+    charge_result = adapter.process_manual_card_sale(
+        card_number=clean_card,
+        exp_date=exp_date,
+        cvv=cvv,
+        amount=charge_amount,
+        member_id=str(member_id),
+        description=description or f"Admin charge for {member.first_name} {member.last_name}",
+        save_card=save_card,
+    )
+
+    if not charge_result.success:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=charge_result.message or "Card payment declined"
+        )
+
+    # Record transaction
+    card_last4 = clean_card[-4:]
+    tx = Transaction(
+        member_id=member_id,
+        transaction_type=TransactionType.payment,
+        payment_method=PaymentMethod.card,
+        amount=charge_amount,
+        reference_id=charge_result.reference_id,
+        notes=f"Admin card charge - ****{card_last4}" + (f" - {description}" if description else ""),
+    )
+    db.add(tx)
+
+    # Save the card if requested and we got a token back
+    saved_card_id = None
+    if save_card and charge_result.card_token:
+        card_brand = _detect_card_brand(clean_card)
+        friendly = f"{card_brand} ending {card_last4}"
+        saved_card = SavedCard(
+            member_id=member_id,
+            processor_token=charge_result.card_token,
+            card_last4=card_last4,
+            card_brand=card_brand,
+            friendly_name=friendly,
+        )
+        db.add(saved_card)
+        db.flush()
+        saved_card_id = saved_card.id
+
+    db.commit()
+    db.refresh(tx)
+
+    logger.info(
+        "Admin card charge: member=%s, amount=$%s, by=%s, ref=%s",
+        member_id, charge_amount, current_user.id, charge_result.reference_id
+    )
+
+    result = {
+        "success": True,
+        "transaction_id": str(tx.id),
+        "reference_id": charge_result.reference_id,
+        "amount": str(charge_amount),
+        "message": "Card charged successfully",
+    }
+    if saved_card_id:
+        result["saved_card_id"] = str(saved_card_id)
+        result["message"] += ". Card saved for future use."
+
+    return result
+
+
+def _detect_card_brand(card_number: str) -> str:
+    """Detect card brand from card number prefix."""
+    if card_number.startswith("4"):
+        return "Visa"
+    elif card_number.startswith(("51", "52", "53", "54", "55")) or (
+        len(card_number) >= 4 and 2221 <= int(card_number[:4]) <= 2720
+    ):
+        return "Mastercard"
+    elif card_number.startswith(("34", "37")):
+        return "Amex"
+    elif card_number.startswith(("6011", "65")) or (
+        len(card_number) >= 6 and 644 <= int(card_number[:3]) <= 649
+    ):
+        return "Discover"
+    else:
+        return "Card"
+
+
 @router.get("/{member_id}/pin-status")
 def get_member_pin_status(
     member_id: uuid.UUID,

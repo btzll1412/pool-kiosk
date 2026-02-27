@@ -78,6 +78,7 @@ from app.routers import (
     payments,
     plans,
     reports,
+    schedules,
     settings as settings_router,
     transactions,
 )
@@ -233,6 +234,7 @@ app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
 app.include_router(guests.router, prefix="/api/guests", tags=["Guests"])
 app.include_router(settings_router.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(backup.router, prefix="/api/backup", tags=["Backup"])
+app.include_router(schedules.router, prefix="/api/schedules", tags=["Schedules"])
 app.include_router(kiosk.router, prefix="/api/kiosk", tags=["Kiosk"])
 app.include_router(nfc.router, prefix="/api/nfc", tags=["NFC"])
 

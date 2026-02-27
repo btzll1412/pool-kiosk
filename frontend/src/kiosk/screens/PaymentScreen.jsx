@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Banknote, CreditCard, Loader2, Split, Wallet } from "lucide-react";
+import { ArrowLeft, Banknote, CreditCard, Loader2, Split, Wallet, Smartphone } from "lucide-react";
 import toast from "react-hot-toast";
 import PlanCard from "../components/PlanCard";
-import { getPlans, payCredit } from "../../api/kiosk";
+import { getPlans, payCredit, getTerminalInfo } from "../../api/kiosk";
 
 export default function PaymentScreen({ member, goTo, context, settings }) {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [creditLoading, setCreditLoading] = useState(false);
+  const [hasTerminal, setHasTerminal] = useState(false);
 
   const creditBalance = Number(member?.credit_balance || 0);
   const planPrice = Number(selectedPlan?.price || 0);
@@ -24,6 +25,11 @@ export default function PaymentScreen({ member, goTo, context, settings }) {
       })
       .catch(() => toast.error("Failed to load plans"))
       .finally(() => setLoading(false));
+
+    // Check if terminal is available
+    getTerminalInfo()
+      .then((info) => setHasTerminal(info.has_terminal))
+      .catch(() => setHasTerminal(false));
   }, [member?.is_senior]);
 
   function goPayMethod(method) {
@@ -169,6 +175,17 @@ export default function PaymentScreen({ member, goTo, context, settings }) {
                       <span className="text-lg font-semibold text-gray-900">Card</span>
                       <span className="text-xs text-gray-400">Credit or Debit</span>
                     </button>
+                    {hasTerminal && (
+                      <button
+                        type="button"
+                        onClick={() => goPayMethod("terminal")}
+                        className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-2 ring-brand-500 transition-all hover:ring-brand-600 hover:shadow-md active:scale-[0.98]"
+                      >
+                        <Smartphone className="h-8 w-8 text-brand-600" />
+                        <span className="text-lg font-semibold text-gray-900">Tap to Pay</span>
+                        <span className="text-xs text-brand-600 font-medium">Recommended</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => goPayMethod("split")}

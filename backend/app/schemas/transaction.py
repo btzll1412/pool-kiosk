@@ -10,10 +10,12 @@ from app.models.transaction import PaymentMethod, TransactionType
 class TransactionResponse(BaseModel):
     id: uuid.UUID
     member_id: uuid.UUID | None
+    member_name: str | None = None
     transaction_type: TransactionType
     payment_method: PaymentMethod
     amount: Decimal
     plan_id: uuid.UUID | None
+    plan_name: str | None = None
     membership_id: uuid.UUID | None
     reference_id: str | None
     notes: str | None
