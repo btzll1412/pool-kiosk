@@ -62,3 +62,5 @@ These are the source of truth for this project. Do not guess or assume — read 
 - **Activity logging** must cover all admin actions — before/after snapshots
 - **Kiosk endpoints** are unauthenticated but rate-limited
 - **Admin endpoints** require JWT authentication
+- **Membership usability** — Use `is_membership_usable()` from `report_service.py` to check if a membership is truly active (not expired, has remaining swims). This ensures consistent counts across dashboard, members list, and plans page.
+- **Date format** — Use MM/DD/YYYY format throughout the system (configured in TimezoneContext.jsx)

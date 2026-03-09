@@ -706,4 +706,55 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-03-09 (Audit Fixes)
+## Admin Panel Enhancements (2026-03-09)
+
+### Time-of-Day Filtering on Check-ins Page
+- Added `start_time` and `end_time` query parameters to check-ins API
+- Time filter format: HH:MM (e.g., "09:00", "18:00")
+- Filters check-ins by time of day across any date range
+- Example: Filter all check-ins from 9am-6pm across March 1-5
+- Frontend time picker inputs added to filter bar
+- Clear filters button resets time filters
+
+### Active Plans Column in Members List
+- Members list now shows each member's active plans as badges
+- Plans displayed with color-coded badges (consistent colors per plan name)
+- Limited/swim pass plans show remaining swims count: "Summer Pass (8)"
+- Members without active plans show "No plan" in gray
+
+### Consistent Active Plan Logic (is_membership_usable helper)
+- Created `is_membership_usable()` helper function in report_service.py
+- A membership is only considered "usable" if:
+  - `is_active` is True
+  - Not expired (`valid_until` is None or >= today)
+  - Has swims remaining (for limited/swim_pass plans where `swims_used < swims_total`)
+- This logic is now used consistently across:
+  - Dashboard "Active Plans" count
+  - Members list "Plans" column
+  - Plans page "active subscribers" count
+  - Membership reports
+
+### Date Format Standardization
+- Changed date format to MM/DD/YYYY throughout system
+- Updated TimezoneContext.jsx formatDate() default options
+- Affects: Check-ins list, Transactions list, Members list, Member detail
+
+### Dashboard Label Fix
+- Changed "Active Memberships" to "Active Plans" for clarity
+
+### Backend Changes
+- `backend/app/routers/checkins.py` — Added start_time/end_time query parameters, time-of-day filtering
+- `backend/app/routers/members.py` — Added active_plans to member list response
+- `backend/app/routers/plans.py` — Use is_membership_usable for subscriber counts
+- `backend/app/services/report_service.py` — Added is_membership_usable() helper, updated dashboard and report functions
+- `backend/app/schemas/member.py` — Added ActivePlanInfo, MemberWithPlansResponse schemas
+
+### Frontend Changes
+- `frontend/src/admin/pages/Checkins/CheckinsList.jsx` — Time picker inputs, updated filters
+- `frontend/src/admin/pages/Members/MembersList.jsx` — Plans column with badges
+- `frontend/src/admin/pages/Dashboard.jsx` — "Active Plans" label
+- `frontend/src/context/TimezoneContext.jsx` — MM/DD/YYYY date format
+
+---
+
+## Last Updated: 2026-03-09 (Admin Panel Enhancements)
