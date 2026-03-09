@@ -3,6 +3,8 @@ import io
 import logging
 import uuid
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -50,16 +52,49 @@ router = APIRouter()
 def list_members_endpoint(
     search: str | None = None,
     is_active: bool | None = None,
+    has_credit: bool | None = Query(None, description="Filter by credit balance (true = has credit, false = no credit)"),
+    has_plan: bool | None = Query(None, description="Filter by active plan (true = has plan, false = no plan)"),
+    plan_id: str | None = Query(None, description="Filter by specific plan ID"),
+    joined_after: date | None = Query(None, description="Filter members who joined on or after this date"),
+    joined_before: date | None = Query(None, description="Filter members who joined on or before this date"),
     page: int = Query(1, ge=1),
     per_page: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    members, total = list_members(db, search=search, is_active=is_active, page=page, per_page=per_page)
+    """
+    List members with filtering options.
+
+    - search: Filter by name, phone, or email
+    - is_active: Filter by active/inactive status
+    - has_credit: Filter by credit balance (true = balance > 0)
+    - has_plan: Filter by whether they have an active usable plan
+    - plan_id: Filter by specific plan ID
+    - joined_after: Filter members created on or after this date
+    - joined_before: Filter members created on or before this date
+    """
+    # For plan filtering, we need to fetch all matching members first, then filter
+    # We'll fetch more than needed and do post-filtering for plan-based filters
+    need_plan_filter = has_plan is not None or plan_id is not None
+
+    if need_plan_filter:
+        # Fetch all members matching non-plan filters (no pagination yet)
+        all_members, _ = list_members(
+            db, search=search, is_active=is_active, has_credit=has_credit,
+            joined_after=joined_after, joined_before=joined_before,
+            page=1, per_page=10000  # Get all for filtering
+        )
+    else:
+        # No plan filtering needed, use normal pagination
+        all_members, total = list_members(
+            db, search=search, is_active=is_active, has_credit=has_credit,
+            joined_after=joined_after, joined_before=joined_before,
+            page=page, per_page=per_page
+        )
 
     # Build response with active plans for each member
-    items = []
-    for member in members:
+    all_items = []
+    for member in all_members:
         # Get active memberships for this member
         all_memberships = (
             db.query(Membership)
@@ -81,7 +116,18 @@ def list_members_endpoint(
                     swims_remaining=swims_remaining,
                 ))
 
-        items.append(MemberWithPlansResponse(
+        # Apply plan filters
+        if has_plan is True and len(active_plans) == 0:
+            continue  # Skip members without active plans
+        if has_plan is False and len(active_plans) > 0:
+            continue  # Skip members with active plans
+        if plan_id:
+            # Check if member has this specific plan
+            has_specific_plan = any(str(p.plan_id) == plan_id for p in active_plans)
+            if not has_specific_plan:
+                continue
+
+        all_items.append(MemberWithPlansResponse(
             id=member.id,
             first_name=member.first_name,
             last_name=member.last_name,
@@ -98,6 +144,15 @@ def list_members_endpoint(
             updated_at=member.updated_at,
             active_plans=active_plans,
         ))
+
+    # Apply pagination for plan-filtered results
+    if need_plan_filter:
+        total = len(all_items)
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        items = all_items[start_idx:end_idx]
+    else:
+        items = all_items
 
     return MemberListResponse(items=items, total=total, page=page, per_page=per_page)
 

@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
+from datetime import date, datetime
+
 from app.models.card import Card
 from app.models.member import Member
 from app.models.transaction import PaymentMethod, Transaction, TransactionType
@@ -20,6 +22,9 @@ def list_members(
     db: Session,
     search: str | None = None,
     is_active: bool | None = None,
+    has_credit: bool | None = None,
+    joined_after: date | None = None,
+    joined_before: date | None = None,
     page: int = 1,
     per_page: int = 25,
 ) -> tuple[list[Member], int]:
@@ -36,6 +41,16 @@ def list_members(
         )
     if is_active is not None:
         query = query.filter(Member.is_active == is_active)
+    if has_credit is True:
+        query = query.filter(Member.credit_balance > 0)
+    elif has_credit is False:
+        query = query.filter(Member.credit_balance <= 0)
+    if joined_after:
+        joined_after_dt = datetime.combine(joined_after, datetime.min.time())
+        query = query.filter(Member.created_at >= joined_after_dt)
+    if joined_before:
+        joined_before_dt = datetime.combine(joined_before, datetime.max.time())
+        query = query.filter(Member.created_at <= joined_before_dt)
     total = query.count()
     items = query.order_by(Member.last_name, Member.first_name).offset((page - 1) * per_page).limit(per_page).all()
     return items, total
