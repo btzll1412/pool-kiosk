@@ -59,7 +59,7 @@ export default function MemberScreen({ member, goTo, goIdle }) {
         <div className="w-24" />
       </div>
 
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-8">
+      <div className="flex flex-1 flex-col items-center overflow-y-auto px-6 py-8">
         <div className="w-full max-w-lg">
           <MemberCard member={member} />
 

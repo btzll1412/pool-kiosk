@@ -78,7 +78,7 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
         <div className="w-24" />
       </div>
 
-      <div className="flex flex-1 flex-col items-center justify-center px-6">
+      <div className="flex flex-1 flex-col items-center overflow-y-auto px-6 py-6">
         <div className="w-full max-w-sm">
           <div className="mb-6 rounded-2xl bg-white p-5 text-center shadow-sm ring-1 ring-gray-100">
             <p className="text-sm text-gray-500">{plan.name}</p>
