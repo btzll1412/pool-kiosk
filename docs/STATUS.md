@@ -751,9 +751,19 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ### Frontend Changes
 - `frontend/src/admin/pages/Checkins/CheckinsList.jsx` — Time picker inputs, updated filters
-- `frontend/src/admin/pages/Members/MembersList.jsx` — Plans column with badges
+- `frontend/src/admin/pages/Members/MembersList.jsx` — Plans column with badges, advanced filters
 - `frontend/src/admin/pages/Dashboard.jsx` — "Active Plans" label
 - `frontend/src/context/TimezoneContext.jsx` — MM/DD/YYYY date format
+
+### Members List Advanced Filters
+- **Status**: Filter by Active/Inactive members
+- **Has Plan**: Filter by whether members have an active usable plan
+- **Specific Plan**: Filter by members with a specific plan
+- **Has Credit**: Filter by members with credit balance > 0
+- **Joined After**: Filter members who joined on or after a date
+- **Joined Before**: Filter members who joined on or before a date
+- All filters have visual highlighting when active
+- Clear filters button resets all filters
 
 ---
 

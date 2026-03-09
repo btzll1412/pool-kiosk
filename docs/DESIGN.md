@@ -435,6 +435,13 @@ pool-management/
 ### Members (admin auth)
 
 - `GET /api/members` — List with filters/search/pagination (includes active_plans for each member)
+  - `search`: Filter by name, phone, or email
+  - `is_active`: Filter by active/inactive status (boolean)
+  - `has_plan`: Filter by whether they have an active usable plan (boolean)
+  - `plan_id`: Filter by specific plan ID (UUID string)
+  - `has_credit`: Filter by credit balance > 0 (boolean)
+  - `joined_after`: Filter members created on or after this date (YYYY-MM-DD)
+  - `joined_before`: Filter members created on or before this date (YYYY-MM-DD)
 - `POST /api/members` — Create member
 - `GET /api/members/{id}` — Get member detail
 - `PUT /api/members/{id}` — Update member
