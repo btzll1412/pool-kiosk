@@ -77,13 +77,7 @@ export default function TransactionsList() {
     {
       key: "created_at",
       label: "Date",
-      render: (row) =>
-        formatDateTime(row.created_at, timezone, {
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-        }),
+      render: (row) => formatDateTime(row.created_at, timezone),
     },
     {
       key: "member_name",

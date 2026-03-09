@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -18,7 +18,7 @@ class Member(Base):
     email: Mapped[str | None] = mapped_column(String(255))
     photo_url: Mapped[str | None] = mapped_column(String(500))
     pin_hash: Mapped[str | None] = mapped_column(String(255))
-    date_of_birth: Mapped[date | None] = mapped_column(DateTime, nullable=True)
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_senior: Mapped[bool] = mapped_column(Boolean, default=False)
     gender: Mapped[str | None] = mapped_column(String(10), nullable=True)  # "male", "female", or null
     credit_balance: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
@@ -31,5 +31,5 @@ class Member(Base):
     memberships: Mapped[list["Membership"]] = relationship("Membership", back_populates="member", lazy="selectin")
     checkins: Mapped[list["Checkin"]] = relationship("Checkin", back_populates="member")
     transactions: Mapped[list["Transaction"]] = relationship("Transaction", back_populates="member")
-    saved_cards: Mapped[list["SavedCard"]] = relationship("SavedCard", back_populates="member")
+    saved_cards: Mapped[list["SavedCard"]] = relationship("SavedCard", back_populates="member", lazy="selectin")
     pin_lockout: Mapped["PinLockout | None"] = relationship("PinLockout", back_populates="member", uselist=False)

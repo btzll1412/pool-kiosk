@@ -15,10 +15,12 @@ from app.models.guest_visit import GuestVisit
 from app.models.member import Member
 from app.models.membership import Membership
 from app.models.membership_freeze import MembershipFreeze
+from app.models.pending_terminal_payment import PendingTerminalPayment
 from app.models.plan import Plan, PlanType
 from app.models.pool_schedule import PoolSchedule, ScheduleOverride, ScheduleType
 from app.models.saved_card import SavedCard
 from app.models.transaction import PaymentMethod, Transaction, TransactionType
+from datetime import timedelta
 from datetime import datetime
 from app.schemas.kiosk import (
     AutoChargeDisableRequest,
@@ -283,6 +285,13 @@ def _get_current_schedule_restrictions(db: Session) -> tuple[ScheduleType | None
 @router.post("/checkin", response_model=KioskCheckinResponse)
 @limiter.limit("60/minute")
 def kiosk_checkin(data: KioskCheckinRequest, request: Request, db: Session = Depends(get_db)):
+    # Validate guest count is non-negative
+    if data.guest_count < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Guest count cannot be negative",
+        )
+
     max_guests = int(get_setting(db, "family_max_guests", "5"))
     if data.guest_count > max_guests:
         raise HTTPException(
@@ -353,11 +362,24 @@ def calculate_prorated_price(plan_price: Decimal, duration_months: int = 1) -> d
     today = date.today()
     days_in_month = monthrange(today.year, today.month)[1]
     days_remaining = days_in_month - today.day + 1  # Include today
-    
+
+    # Guard against invalid duration_months
+    if not duration_months or duration_months <= 0:
+        duration_months = 1
+
+    # Guard against edge cases (should never happen but prevents division by zero)
+    if days_in_month <= 0:
+        return {
+            "prorated_price": str(plan_price),
+            "days_remaining": 0,
+            "days_in_month": 30,
+            "full_price": str(plan_price),
+        }
+
     # Monthly rate per day
     daily_rate = plan_price / Decimal(days_in_month)
     prorated_amount = (daily_rate * Decimal(days_remaining)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    
+
     return {
         "prorated_price": str(prorated_amount),
         "days_remaining": days_remaining,
@@ -1432,8 +1454,8 @@ def _build_member_status(db: Session, member: Member) -> MemberStatus:
 
 # ==================== TERMINAL PAYMENT ENDPOINTS ====================
 
-# In-memory storage for pending terminal payments (request_key -> member_id, plan_id, etc.)
-_pending_terminal_payments: dict[str, dict] = {}
+# Terminal payment expiry time (10 minutes)
+TERMINAL_PAYMENT_EXPIRY_MINUTES = 10
 
 
 @router.get("/terminal/info", response_model=TerminalInfoResponse)
@@ -1521,13 +1543,22 @@ def initiate_terminal_payment(
             detail=result.error,
         )
 
-    # Store pending payment info for when it completes
-    _pending_terminal_payments[result.request_key] = {
-        "member_id": data.member_id,
-        "plan_id": data.plan_id,
-        "credit_used": credit_used,
-        "save_card": data.save_card,
-    }
+    # Store pending payment in database for multi-worker support
+    # First, clean up any expired pending payments
+    db.query(PendingTerminalPayment).filter(
+        PendingTerminalPayment.expires_at < datetime.utcnow()
+    ).delete()
+
+    pending = PendingTerminalPayment(
+        request_key=result.request_key,
+        member_id=data.member_id,
+        plan_id=data.plan_id,
+        credit_used=credit_used,
+        save_card=data.save_card,
+        expires_at=datetime.utcnow() + timedelta(minutes=TERMINAL_PAYMENT_EXPIRY_MINUTES),
+    )
+    db.add(pending)
+    db.commit()
 
     logger.info(
         "Terminal payment initiated: member=%s, plan=%s, amount=$%s, request_key=%s",
@@ -1572,42 +1603,49 @@ def check_terminal_payment_status(
 
     # If payment is complete and approved, finalize the transaction
     if result.complete and result.approved:
-        pending = _pending_terminal_payments.get(request_key)
+        pending = db.query(PendingTerminalPayment).filter(
+            PendingTerminalPayment.request_key == request_key,
+            PendingTerminalPayment.completed == False,
+        ).first()
+
         if pending:
             try:
                 # Create membership and transaction
-                member = db.query(Member).filter(Member.id == pending["member_id"]).first()
-                plan = db.query(Plan).filter(Plan.id == pending["plan_id"]).first()
+                member = db.query(Member).filter(Member.id == pending.member_id).first()
+                plan = db.query(Plan).filter(Plan.id == pending.plan_id).first()
 
                 if member and plan:
                     # Apply credit if used
-                    if pending["credit_used"] > 0:
-                        member.credit_balance -= pending["credit_used"]
+                    if pending.credit_used > 0:
+                        member.credit_balance -= pending.credit_used
                         credit_tx = Transaction(
-                            member_id=pending["member_id"],
+                            member_id=pending.member_id,
                             transaction_type=TransactionType.credit_use,
                             payment_method=PaymentMethod.credit,
-                            amount=pending["credit_used"],
+                            amount=pending.credit_used,
                             notes="Applied to terminal payment",
                         )
                         db.add(credit_tx)
 
                     # Create membership
-                    membership = create_membership(db, pending["member_id"], pending["plan_id"])
+                    membership = create_membership(db, pending.member_id, pending.plan_id)
 
                     # Create card payment transaction
-                    effective_price = get_plan_effective_price(plan) - pending["credit_used"]
+                    effective_price = get_plan_effective_price(plan) - pending.credit_used
                     tx = Transaction(
-                        member_id=pending["member_id"],
+                        member_id=pending.member_id,
                         transaction_type=TransactionType.payment,
                         payment_method=PaymentMethod.card,
                         amount=effective_price,
-                        plan_id=pending["plan_id"],
+                        plan_id=pending.plan_id,
                         membership_id=membership.id,
                         reference_id=result.transaction_key,
                         notes=f"Terminal payment - {result.card_brand or 'Card'} ****{result.card_last4 or '????'}",
                     )
                     db.add(tx)
+
+                    # Mark pending payment as completed and delete it
+                    db.delete(pending)
                     db.commit()
 
                     response.transaction_id = tx.id
@@ -1615,11 +1653,8 @@ def check_terminal_payment_status(
 
                     logger.info(
                         "Terminal payment completed: member=%s, plan=%s, tx=%s",
-                        pending["member_id"], plan.name, tx.id
+                        pending.member_id, plan.name, tx.id
                     )
-
-                # Clean up pending payment
-                del _pending_terminal_payments[request_key]
 
             except Exception as exc:
                 logger.exception("Failed to finalize terminal payment: request_key=%s", request_key)
@@ -1643,9 +1678,11 @@ def cancel_terminal_payment(
 
     success = adapter.cancel_terminal_payment(request_key)
 
-    # Clean up pending payment
-    if request_key in _pending_terminal_payments:
-        del _pending_terminal_payments[request_key]
+    # Clean up pending payment from database
+    db.query(PendingTerminalPayment).filter(
+        PendingTerminalPayment.request_key == request_key
+    ).delete()
+    db.commit()
 
     if success:
         logger.info("Terminal payment cancelled: request_key=%s", request_key)

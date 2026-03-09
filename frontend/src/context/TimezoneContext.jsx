@@ -39,10 +39,18 @@ export function parseUTCDate(dateStr) {
 }
 
 // Helper function to format date with timezone
+// Default format: MM/DD/YYYY
 export function formatDate(dateStr, timezone, options = {}) {
   const date = parseUTCDate(dateStr);
   if (!date) return '';
-  return date.toLocaleDateString("en-US", { timeZone: timezone, ...options });
+  // Default to numeric MM/DD/YYYY format
+  const defaultOptions = {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    timeZone: timezone,
+  };
+  return date.toLocaleDateString("en-US", { ...defaultOptions, ...options });
 }
 
 export function formatTime(dateStr, timezone, options = {}) {
@@ -54,5 +62,14 @@ export function formatTime(dateStr, timezone, options = {}) {
 export function formatDateTime(dateStr, timezone, options = {}) {
   const date = parseUTCDate(dateStr);
   if (!date) return '';
-  return date.toLocaleString("en-US", { timeZone: timezone, ...options });
+  // Default to numeric MM/DD/YYYY format with time
+  const defaultOptions = {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: timezone,
+  };
+  return date.toLocaleString("en-US", { ...defaultOptions, ...options });
 }

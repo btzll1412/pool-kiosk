@@ -63,6 +63,20 @@ export default function MembersList() {
       .finally(() => setLoading(false));
   }, [search, page]);
 
+  // Generate consistent color for plan names
+  const planColors = [
+    "blue", "purple", "cyan", "pink", "indigo", "teal", "orange", "lime", "amber", "rose"
+  ];
+
+  const getPlanColor = (planName) => {
+    if (!planName) return "gray";
+    let hash = 0;
+    for (let i = 0; i < planName.length; i++) {
+      hash = planName.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return planColors[Math.abs(hash) % planColors.length];
+  };
+
   const columns = [
     {
       key: "name",
@@ -86,6 +100,27 @@ export default function MembersList() {
     },
     { key: "phone", label: "Phone" },
     {
+      key: "active_plans",
+      label: "Plans",
+      render: (row) => {
+        if (!row.active_plans || row.active_plans.length === 0) {
+          return <span className="text-gray-400 dark:text-gray-500">No plan</span>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1">
+            {row.active_plans.map((plan, idx) => (
+              <Badge key={idx} color={getPlanColor(plan.plan_name)}>
+                {plan.plan_name}
+                {plan.swims_remaining !== null && (
+                  <span className="ml-1 opacity-75">({plan.swims_remaining})</span>
+                )}
+              </Badge>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
       key: "credit_balance",
       label: "Credit",
       render: (row) => (
@@ -107,12 +142,7 @@ export default function MembersList() {
     {
       key: "created_at",
       label: "Joined",
-      render: (row) =>
-        formatDate(row.created_at, timezone, {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        }),
+      render: (row) => formatDate(row.created_at, timezone),
     },
   ];
 

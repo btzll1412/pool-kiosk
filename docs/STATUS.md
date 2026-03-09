@@ -674,4 +674,36 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-02-27 (Automatic Backup System)
+## Audit Fixes (2026-03-09)
+
+### Critical Issues Fixed
+1. **Terminal payment in-memory dict replaced with database** — Created `pending_terminal_payments` table to support multi-worker deployments and prevent memory leaks. Payments auto-expire after 10 minutes.
+2. **NFC script hardcoded IP fixed** — `/api/nfc/script` endpoint now accepts `?backend_url=` parameter to configure the backend URL dynamically.
+
+### High Priority Issues Fixed
+3. **date_of_birth column type corrected** — Changed from `DateTime` to `Date` in Member model with migration.
+4. **Negative guest count validation added** — Check-in endpoint now rejects negative guest_count values.
+5. **Division by zero guard in prorated billing** — `calculate_prorated_price()` now guards against invalid `duration_months` and `days_in_month` values.
+
+### Medium Priority Issues Fixed
+6. **SavedCard lazy loading fixed** — Added `lazy="selectin"` to prevent N+1 queries when accessing member's saved cards.
+
+### Documentation Updates
+- Added NFC Reader Integration section to DESIGN.md with full API documentation
+- Added nfc.py and nfc_reader_service.py to project file structure
+- Updated changelog with all fixes
+
+### Database Migrations Added
+- `g7h8i9j0k1l2_add_pending_terminal_payments.py` — Creates `pending_terminal_payments` table
+- `h8i9j0k1l2m3_fix_date_of_birth_column_type.py` — Changes `date_of_birth` from DateTime to Date
+
+### Files Modified
+- `backend/app/models/member.py` — Fixed date_of_birth column type, added lazy loading to saved_cards
+- `backend/app/models/pending_terminal_payment.py` — New model for terminal payment tracking
+- `backend/app/models/__init__.py` — Added PendingTerminalPayment export
+- `backend/app/routers/kiosk.py` — Database-backed terminal payments, negative guest validation, prorated billing guards
+- `backend/app/routers/nfc.py` — Dynamic backend URL for script endpoint
+
+---
+
+## Last Updated: 2026-03-09 (Audit Fixes)

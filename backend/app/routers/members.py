@@ -21,11 +21,13 @@ from app.schemas.membership import SavedCardCreate, SavedCardResponse
 from app.services.auth_service import hash_pin
 from app.services.payment_service import get_payment_adapter
 from app.schemas.member import (
+    ActivePlanInfo,
     CreditAdjustRequest,
     MemberCreate,
     MemberListResponse,
     MemberResponse,
     MemberUpdate,
+    MemberWithPlansResponse,
     PinResetRequest,
 )
 from app.services.auth_service import get_current_user
@@ -52,7 +54,49 @@ def list_members_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    items, total = list_members(db, search=search, is_active=is_active, page=page, per_page=per_page)
+    members, total = list_members(db, search=search, is_active=is_active, page=page, per_page=per_page)
+
+    # Build response with active plans for each member
+    items = []
+    for member in members:
+        # Get active memberships for this member
+        active_memberships = (
+            db.query(Membership)
+            .filter(Membership.member_id == member.id, Membership.is_active == True)
+            .all()
+        )
+
+        active_plans = []
+        for m in active_memberships:
+            if m.plan:
+                swims_remaining = None
+                if m.swims_total is not None:
+                    swims_remaining = (m.swims_total or 0) - (m.swims_used or 0)
+                active_plans.append(ActivePlanInfo(
+                    plan_id=m.plan_id,
+                    plan_name=m.plan.name,
+                    plan_type=m.plan_type.value,
+                    swims_remaining=swims_remaining,
+                ))
+
+        items.append(MemberWithPlansResponse(
+            id=member.id,
+            first_name=member.first_name,
+            last_name=member.last_name,
+            phone=member.phone,
+            email=member.email,
+            photo_url=member.photo_url,
+            gender=member.gender,
+            credit_balance=member.credit_balance,
+            notes=member.notes,
+            is_active=member.is_active,
+            date_of_birth=member.date_of_birth,
+            is_senior=member.is_senior,
+            created_at=member.created_at,
+            updated_at=member.updated_at,
+            active_plans=active_plans,
+        ))
+
     return MemberListResponse(items=items, total=total, page=page, per_page=per_page)
 
 

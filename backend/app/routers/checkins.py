@@ -26,6 +26,8 @@ def list_checkins(
     search: str | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    start_time: str | None = Query(None, description="Start time filter in HH:MM format (e.g., 09:00)"),
+    end_time: str | None = Query(None, description="End time filter in HH:MM format (e.g., 18:00)"),
     checkin_type: str | None = None,
     unique_only: bool = False,
     include_guests: bool = True,
@@ -38,16 +40,45 @@ def list_checkins(
     - search: Filter by member/guest name
     - start_date: Filter check-ins from this date (inclusive)
     - end_date: Filter check-ins until this date (inclusive)
+    - start_time: Filter check-ins from this time (HH:MM format, e.g., 09:00)
+    - end_time: Filter check-ins until this time (HH:MM format, e.g., 18:00)
     - checkin_type: Filter by check-in type (or "guest" for guest visits)
     - unique_only: If true, return only the most recent check-in per member
     - include_guests: If true, include guest visits in results
     """
-    # Build date range
+    # Parse time filters
+    filter_start_time = None
+    filter_end_time = None
+    if start_time:
+        try:
+            parts = start_time.split(":")
+            filter_start_time = time(int(parts[0]), int(parts[1]))
+        except (ValueError, IndexError):
+            pass
+    if end_time:
+        try:
+            parts = end_time.split(":")
+            filter_end_time = time(int(parts[0]), int(parts[1]))
+        except (ValueError, IndexError):
+            pass
+
+    # Build date range (dates only, time filtering applied separately)
     start_datetime = datetime.combine(start_date, time.min) if start_date else None
     end_datetime = datetime.combine(end_date, time.max) if end_date else None
 
     # Collect all items (member check-ins + guest visits)
     all_items = []
+
+    def passes_time_filter(checkin_datetime: datetime) -> bool:
+        """Check if a datetime passes the time-of-day filter."""
+        if not filter_start_time and not filter_end_time:
+            return True
+        checkin_time = checkin_datetime.time()
+        if filter_start_time and checkin_time < filter_start_time:
+            return False
+        if filter_end_time and checkin_time > filter_end_time:
+            return False
+        return True
 
     # Only filter out guests if checkin_type is a specific member type
     include_member_checkins = checkin_type != "guest"
@@ -93,6 +124,10 @@ def list_checkins(
 
         checkins = query.all()
         for checkin in checkins:
+            # Apply time-of-day filter
+            if not passes_time_filter(checkin.checked_in_at):
+                continue
+
             member = db.query(Member).filter(Member.id == checkin.member_id).first()
             member_name = f"{member.first_name} {member.last_name}" if member else "Unknown"
 
@@ -131,6 +166,10 @@ def list_checkins(
 
         guests = guest_query.all()
         for guest in guests:
+            # Apply time-of-day filter
+            if not passes_time_filter(guest.created_at):
+                continue
+
             all_items.append({
                 "id": guest.id,
                 "member_id": None,

@@ -38,8 +38,15 @@ async def nfc_status():
     return {"connected_clients": get_client_count()}
 
 @router.get("/script")
-async def get_script():
-    script = '''import time
+async def get_script(backend_url: str = None):
+    """
+    Return the NFC reader Python script.
+
+    Pass ?backend_url=http://your-server to set the backend URL,
+    otherwise defaults to http://localhost.
+    """
+    url = backend_url or "http://localhost"
+    script = f'''import time
 import sys
 import requests
 import pyautogui
@@ -47,7 +54,7 @@ from smartcard.System import readers
 from smartcard.util import toHexString
 from smartcard.CardMonitoring import CardMonitor, CardObserver
 
-BACKEND_URL = "http://192.168.1.153"
+BACKEND_URL = "{url}"
 DEBOUNCE_SECONDS = 2.0
 
 class NFCObserver(CardObserver):

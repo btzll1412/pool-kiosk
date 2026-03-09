@@ -20,6 +20,8 @@ export default function CheckinsList() {
     checkin_type: "",
     start_date: "",
     end_date: "",
+    start_time: "",
+    end_time: "",
     unique_only: false,
   });
   const perPage = 25;
@@ -31,6 +33,8 @@ export default function CheckinsList() {
     if (filters.checkin_type) params.checkin_type = filters.checkin_type;
     if (filters.start_date) params.start_date = filters.start_date;
     if (filters.end_date) params.end_date = filters.end_date;
+    if (filters.start_time) params.start_time = filters.start_time;
+    if (filters.end_time) params.end_time = filters.end_time;
     if (filters.unique_only) params.unique_only = true;
 
     getCheckins(params)
@@ -46,7 +50,7 @@ export default function CheckinsList() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setPage(1);
-  }, [filters.search, filters.checkin_type, filters.start_date, filters.end_date, filters.unique_only]);
+  }, [filters.search, filters.checkin_type, filters.start_date, filters.end_date, filters.start_time, filters.end_time, filters.unique_only]);
 
   const handleExport = () => {
     // Create CSV from current data
@@ -148,11 +152,7 @@ export default function CheckinsList() {
       render: (row) => (
         <div>
           <p className="font-medium text-gray-900 dark:text-gray-100">
-            {formatDate(row.checked_in_at, timezone, {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-            })}
+            {formatDate(row.checked_in_at, timezone)}
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {formatTime(row.checked_in_at, timezone, {
@@ -345,6 +345,38 @@ export default function CheckinsList() {
           />
         </div>
 
+        {/* Time range */}
+        <div>
+          <label className={`mb-1 block text-xs font-medium ${filters.start_time ? "text-brand-600 dark:text-brand-400" : "text-gray-500 dark:text-gray-400"}`}>
+            From Time {filters.start_time && "●"}
+          </label>
+          <input
+            type="time"
+            value={filters.start_time}
+            onChange={(e) => setFilters((f) => ({ ...f, start_time: e.target.value }))}
+            className={`rounded-lg border-0 py-2 px-3 text-sm shadow-sm ring-1 ring-inset focus:ring-2 focus:ring-brand-600 dark:text-gray-100 ${
+              filters.start_time
+                ? "ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-950"
+                : "ring-gray-300 dark:ring-gray-600 dark:bg-gray-800"
+            }`}
+          />
+        </div>
+        <div>
+          <label className={`mb-1 block text-xs font-medium ${filters.end_time ? "text-brand-600 dark:text-brand-400" : "text-gray-500 dark:text-gray-400"}`}>
+            To Time {filters.end_time && "●"}
+          </label>
+          <input
+            type="time"
+            value={filters.end_time}
+            onChange={(e) => setFilters((f) => ({ ...f, end_time: e.target.value }))}
+            className={`rounded-lg border-0 py-2 px-3 text-sm shadow-sm ring-1 ring-inset focus:ring-2 focus:ring-brand-600 dark:text-gray-100 ${
+              filters.end_time
+                ? "ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-950"
+                : "ring-gray-300 dark:ring-gray-600 dark:bg-gray-800"
+            }`}
+          />
+        </div>
+
         {/* Unique toggle */}
         <label className={`flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer ring-1 ring-inset transition-colors ${
           filters.unique_only
@@ -368,6 +400,8 @@ export default function CheckinsList() {
           filters.checkin_type ||
           filters.start_date ||
           filters.end_date ||
+          filters.start_time ||
+          filters.end_time ||
           filters.unique_only) && (
           <button
             onClick={() =>
@@ -376,6 +410,8 @@ export default function CheckinsList() {
                 checkin_type: "",
                 start_date: "",
                 end_date: "",
+                start_time: "",
+                end_time: "",
                 unique_only: false,
               })
             }
