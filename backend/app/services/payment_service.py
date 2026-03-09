@@ -87,6 +87,7 @@ def process_cash_payment(
         membership_id=membership.id,
     )
     db.add(tx)
+    db.flush()  # Get the transaction ID before commit
 
     if credit_added > 0:
         credit_tx = Transaction(
@@ -95,6 +96,7 @@ def process_cash_payment(
             payment_method=PaymentMethod.cash,
             amount=credit_added,
             notes="Overpayment added as credit",
+            related_transaction_id=tx.id,
         )
         db.add(credit_tx)
 

@@ -39,8 +39,10 @@ class Transaction(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    related_transaction_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("transactions.id"), index=True)
 
     member: Mapped["Member | None"] = relationship("Member", back_populates="transactions")
     plan: Mapped["Plan | None"] = relationship("Plan", lazy="selectin")
     saved_card: Mapped["SavedCard | None"] = relationship("SavedCard", lazy="selectin")
     creator: Mapped["User | None"] = relationship("User")
+    related_transaction: Mapped["Transaction | None"] = relationship("Transaction", remote_side=[id], lazy="selectin")
