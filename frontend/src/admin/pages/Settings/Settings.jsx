@@ -116,16 +116,6 @@ const settingGroups = [
     ],
   },
   {
-    title: "Cash Payment Text",
-    description: "Customize text shown on the cash payment screen",
-    category: "kiosk",
-    fields: [
-      { key: "cash_payment_title", label: "Instructions Title", type: "text", helpText: "Title above payment instructions (optional)" },
-      { key: "cash_payment_instructions", label: "Payment Instructions", type: "textarea", helpText: "Custom instructions shown on cash payment screen" },
-      { key: "cash_box_instructions", label: "Cash Box Note", type: "text", helpText: "Small note shown near the payment button" },
-    ],
-  },
-  {
     title: "Cash Payment Message",
     description: "Customize the message shown after any cash payment (guest, member, or split)",
     category: "kiosk",
@@ -335,7 +325,6 @@ const settingGroups = [
       { key: "webhook_daily_summary", label: "Daily Summary", type: "webhook", eventType: "daily_summary", helpText: "Fired daily at 21:00 with the day's stats" },
       { key: "low_balance_threshold", label: "Low Balance Threshold ($)", type: "number", helpText: "Balance below this triggers the low_balance webhook" },
       { key: "membership_expiry_warning_days", label: "Expiry Warning Days", type: "number", helpText: "Days before expiry to fire membership_expiring webhook" },
-      { key: "cash_box_instructions", label: "Cash Box Instructions", type: "text", helpText: "Text shown on the cash payment screen" },
     ],
   },
 ];
