@@ -79,6 +79,7 @@ class MembershipCreateWithPaymentResponse(BaseModel):
     plan_name: str | None = None
     transaction_id: uuid.UUID | None = None
     saved_card_id: uuid.UUID | None = None
+    credit_added: Decimal | None = None
     message: str | None = None
 
     model_config = {"from_attributes": True}

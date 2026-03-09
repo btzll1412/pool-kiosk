@@ -53,6 +53,7 @@ def create_membership_endpoint(
 
     transaction_id = None
     saved_card_id = None
+    credit_added = None
     message = None
 
     # If no payment info, just create the membership
@@ -65,25 +66,48 @@ def create_membership_endpoint(
         if payment.payment_method == "cash":
             # Cash payment
             membership = create_membership(db, data.member_id, data.plan_id)
-            amount = payment.amount_tendered if payment.amount_tendered else plan.price
+            amount_tendered = Decimal(str(payment.amount_tendered)) if payment.amount_tendered else plan.price
+            plan_price = Decimal(str(plan.price))
+            credit_added = Decimal("0.00")
 
+            # Handle overpayment - add to member's credit balance
+            if amount_tendered > plan_price:
+                credit_added = amount_tendered - plan_price
+                member.credit_balance += credit_added
+
+                # Create credit_add transaction for the overpayment
+                credit_tx = Transaction(
+                    member_id=data.member_id,
+                    transaction_type=TransactionType.credit_add,
+                    payment_method=PaymentMethod.cash,
+                    amount=credit_added,
+                    created_by=current_user.id,
+                    notes="Overpayment added as credit (via admin)",
+                )
+                db.add(credit_tx)
+
+            # Create payment transaction for the plan price
             tx = Transaction(
                 member_id=data.member_id,
                 transaction_type=TransactionType.payment,
                 payment_method=PaymentMethod.cash,
-                amount=amount,
+                amount=plan_price,
                 plan_id=data.plan_id,
                 membership_id=membership.id,
                 created_by=current_user.id,
-                notes=f"Cash payment via admin (${amount})",
+                notes=f"Cash payment via admin (${amount_tendered} tendered)",
             )
             db.add(tx)
             db.commit()
             db.refresh(tx)
             transaction_id = tx.id
-            message = f"Membership created with cash payment of ${amount}"
-            logger.info("Admin cash payment: member=%s, plan=%s, amount=$%s, by=%s",
-                       data.member_id, plan.name, amount, current_user.id)
+
+            if credit_added > 0:
+                message = f"Membership created with cash payment. ${credit_added} added to account credit."
+            else:
+                message = f"Membership created with cash payment of ${plan_price}"
+            logger.info("Admin cash payment: member=%s, plan=%s, tendered=$%s, credit_added=$%s, by=%s",
+                       data.member_id, plan.name, amount_tendered, credit_added, current_user.id)
 
         elif payment.payment_method == "card":
             if payment.saved_card_id:
@@ -173,6 +197,7 @@ def create_membership_endpoint(
         plan_name=plan.name,
         transaction_id=transaction_id,
         saved_card_id=saved_card_id,
+        credit_added=credit_added,
         message=message,
     )
 
