@@ -19,7 +19,7 @@ export default function ChangeScreen({ goIdle, context, settings }) {
         {settings.currency}{changeDue.toFixed(2)}
       </p>
       <p className="mt-4 text-xl text-amber-700">
-        Place your cash in the box.
+        {(settings.cash_success_message || "Place {amount} in the cash box.").replace("{amount}", `${settings.currency}${changeDue.toFixed(2)}`)}
       </p>
       <p className="mt-1 text-lg text-amber-600">
         Someone will bring your change shortly.

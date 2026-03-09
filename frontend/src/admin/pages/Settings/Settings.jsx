@@ -116,22 +116,11 @@ const settingGroups = [
     ],
   },
   {
-    title: "Cash Payment Text",
-    description: "Customize text shown on the cash payment screen",
+    title: "Cash Payment Message",
+    description: "Customize the message shown after any cash payment (guest, member, or split)",
     category: "kiosk",
     fields: [
-      { key: "cash_payment_title", label: "Instructions Title", type: "text", helpText: "Title above payment instructions (optional)" },
-      { key: "cash_payment_instructions", label: "Payment Instructions", type: "textarea", helpText: "Custom instructions shown on cash payment screen" },
-      { key: "cash_box_instructions", label: "Cash Box Note", type: "text", helpText: "Small note shown near the payment button" },
-    ],
-  },
-  {
-    title: "Success Messages",
-    description: "Customize success messages after check-in or payment",
-    category: "kiosk",
-    fields: [
-      { key: "guest_success_message", label: "Guest Check-in Message", type: "text", helpText: "Message shown after guest check-in (default: Enjoy your swim!)" },
-      { key: "cash_success_message", label: "Cash Payment Message", type: "text", helpText: "Message shown after cash payment. Use {amount} for the payment amount (default: Place {amount} in the cash box.)" },
+      { key: "cash_success_message", label: "Cash Success Message", type: "text", helpText: "Use {amount} for the payment amount (default: Place {amount} in the cash box.)" },
     ],
   },
   {
@@ -336,7 +325,6 @@ const settingGroups = [
       { key: "webhook_daily_summary", label: "Daily Summary", type: "webhook", eventType: "daily_summary", helpText: "Fired daily at 21:00 with the day's stats" },
       { key: "low_balance_threshold", label: "Low Balance Threshold ($)", type: "number", helpText: "Balance below this triggers the low_balance webhook" },
       { key: "membership_expiry_warning_days", label: "Expiry Warning Days", type: "number", helpText: "Days before expiry to fire membership_expiring webhook" },
-      { key: "cash_box_instructions", label: "Cash Box Instructions", type: "text", helpText: "Text shown on the cash payment screen" },
     ],
   },
 ];

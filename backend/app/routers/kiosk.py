@@ -440,17 +440,12 @@ def get_kiosk_settings(request: Request, db: Session = Depends(get_db)):
         "inactivity_timeout_seconds": get_setting(db, "inactivity_timeout_seconds", "30"),
         "inactivity_warning_seconds": get_setting(db, "inactivity_warning_seconds", "10"),
         "family_max_guests": get_setting(db, "family_max_guests", "5"),
-        "cash_box_instructions": get_setting(db, "cash_box_instructions", ""),
         "guest_visit_enabled": get_setting(db, "guest_visit_enabled", "true"),
         # Guest visit screen text
         "guest_welcome_title": get_setting(db, "guest_welcome_title", "Welcome, Guest!"),
         "guest_welcome_subtitle": get_setting(db, "guest_welcome_subtitle", "Enter your details to get started"),
         "guest_instructions": get_setting(db, "guest_instructions", ""),
-        # Cash payment screen text
-        "cash_payment_title": get_setting(db, "cash_payment_title", ""),
-        "cash_payment_instructions": get_setting(db, "cash_payment_instructions", ""),
-        # Success messages
-        "guest_success_message": get_setting(db, "guest_success_message", "Enjoy your swim!"),
+        # Cash payment success message (used for all cash payments - guest, member, split)
         "cash_success_message": get_setting(db, "cash_success_message", "Place {amount} in the cash box."),
         "split_payment_enabled": get_setting(db, "split_payment_enabled", "true"),
         # Kiosk display settings
@@ -1410,8 +1405,15 @@ def guest_visit(data: GuestVisitRequest, request: Request, db: Session = Depends
     db.commit()
     db.refresh(visit)
     logger.info("Guest visit: name=%s, plan=%s, amount=$%s", data.name, plan.name, plan.price)
-    success_msg = get_setting(db, "guest_success_message", "Enjoy your swim!")
-    return GuestVisitResponse(visit_id=visit.id, amount_paid=plan.price, message=f"Welcome, {data.name}! {success_msg}")
+
+    # Use cash success message for cash payments
+    if data.payment_method == "cash":
+        currency = get_setting(db, "currency_symbol", "$")
+        cash_msg = get_setting(db, "cash_success_message", "Place {amount} in the cash box.")
+        cash_msg = cash_msg.replace("{amount}", f"{currency}{plan.price:.2f}")
+        return GuestVisitResponse(visit_id=visit.id, amount_paid=plan.price, message=f"Welcome, {data.name}! {cash_msg}")
+
+    return GuestVisitResponse(visit_id=visit.id, amount_paid=plan.price, message=f"Welcome, {data.name}! Enjoy your swim.")
 
 
 def _build_member_status(db: Session, member: Member) -> MemberStatus:
