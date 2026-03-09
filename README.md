@@ -22,7 +22,53 @@ A self-hosted pool management system with RFID membership cards, payment process
 
 ---
 
-## Installation on Proxmox
+## Quick Install (Recommended)
+
+### Option 1: One-Line Install (Any Linux Server)
+
+Run this on any Debian/Ubuntu server with root access:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/btzll1412/pool-kiosk/main/install.sh | bash
+```
+
+This automatically:
+- Installs Docker and Node.js
+- Clones the repository
+- Builds the frontend
+- Generates secure credentials
+- Starts all services
+
+### Option 2: Proxmox LXC (Fully Automated)
+
+Run this on your **Proxmox host** to create a complete LXC container:
+
+```bash
+# Download and run the Proxmox installer
+curl -fsSL https://raw.githubusercontent.com/btzll1412/pool-kiosk/main/proxmox-create-lxc.sh -o /tmp/proxmox-create-lxc.sh
+bash /tmp/proxmox-create-lxc.sh 200 192.168.1.50
+```
+
+Arguments:
+- `200` - Container ID (CTID)
+- `192.168.1.50` - Static IP address (or use `dhcp`)
+
+This creates a fully configured LXC container with Pool Kiosk running.
+
+### After Installation
+
+Access your system at:
+- **Kiosk UI:** `http://<server-ip>/kiosk`
+- **Admin Panel:** `http://<server-ip>/admin`
+- **API Docs:** `http://<server-ip>/docs`
+
+Default login: `admin` / `changeme` (change immediately!)
+
+---
+
+## Manual Installation on Proxmox
+
+If you prefer step-by-step control, follow this guide.
 
 ### Prerequisites
 
@@ -341,6 +387,8 @@ docker compose down -v       # stop AND delete database volume (destructive!)
 
 ```
 pool-kiosk/
+├── install.sh                  # One-click installer for any Linux
+├── proxmox-create-lxc.sh       # Proxmox LXC creator script
 ├── docker-compose.yml          # Container orchestration
 ├── .env.example                # Environment variable template
 ├── backend/                    # FastAPI + SQLAlchemy backend
