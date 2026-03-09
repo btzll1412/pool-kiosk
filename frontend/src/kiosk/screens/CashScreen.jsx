@@ -130,10 +130,24 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
 
           <NumPad value={amount} onChange={setAmount} maxLength={7} showDecimal />
 
-          {settings.cash_box_instructions && (
-            <p className="mt-4 text-center text-sm text-gray-500">
-              {settings.cash_box_instructions}
-            </p>
+          {(settings.cash_payment_title || settings.cash_payment_instructions || settings.cash_box_instructions) && (
+            <div className="mt-4 text-center space-y-2">
+              {settings.cash_payment_title && (
+                <p className="text-sm font-semibold text-gray-700">
+                  {settings.cash_payment_title}
+                </p>
+              )}
+              {settings.cash_payment_instructions && (
+                <p className="text-sm text-gray-600 whitespace-pre-line">
+                  {settings.cash_payment_instructions}
+                </p>
+              )}
+              {settings.cash_box_instructions && (
+                <p className="text-sm text-gray-500">
+                  {settings.cash_box_instructions}
+                </p>
+              )}
+            </div>
           )}
 
           <KioskButton

@@ -442,6 +442,13 @@ def get_kiosk_settings(request: Request, db: Session = Depends(get_db)):
         "family_max_guests": get_setting(db, "family_max_guests", "5"),
         "cash_box_instructions": get_setting(db, "cash_box_instructions", ""),
         "guest_visit_enabled": get_setting(db, "guest_visit_enabled", "true"),
+        # Guest visit screen text
+        "guest_welcome_title": get_setting(db, "guest_welcome_title", "Welcome, Guest!"),
+        "guest_welcome_subtitle": get_setting(db, "guest_welcome_subtitle", "Enter your details to get started"),
+        "guest_instructions": get_setting(db, "guest_instructions", ""),
+        # Cash payment screen text
+        "cash_payment_title": get_setting(db, "cash_payment_title", ""),
+        "cash_payment_instructions": get_setting(db, "cash_payment_instructions", ""),
         "split_payment_enabled": get_setting(db, "split_payment_enabled", "true"),
         # Kiosk display settings
         "kiosk_welcome_title": get_setting(db, "kiosk_welcome_title", "Welcome to {pool_name}"),
