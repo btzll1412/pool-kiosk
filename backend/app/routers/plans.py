@@ -13,6 +13,7 @@ from app.models.user import User
 from app.schemas.plan import PlanCreate, PlanResponse, PlanUpdate
 from app.services.activity_service import log_activity
 from app.services.auth_service import get_current_user
+from app.services.report_service import is_membership_usable
 
 router = APIRouter()
 
@@ -25,11 +26,13 @@ def list_plans(
     plans = db.query(Plan).order_by(Plan.display_order, Plan.name).all()
     result = []
     for plan in plans:
-        active_subscribers = (
+        # Count only truly usable memberships (not expired, has remaining swims)
+        all_memberships = (
             db.query(Membership)
             .filter(Membership.plan_id == plan.id, Membership.is_active.is_(True))
-            .count()
+            .all()
         )
+        active_subscribers = sum(1 for m in all_memberships if is_membership_usable(m))
         result.append({
             "id": str(plan.id),
             "name": plan.name,
