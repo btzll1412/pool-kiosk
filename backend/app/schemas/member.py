@@ -31,6 +31,14 @@ class MemberUpdate(BaseModel):
     gender: str | None = None  # "male", "female", or None
 
 
+class ActivePlanInfo(BaseModel):
+    """Summary info for an active plan."""
+    plan_id: uuid.UUID
+    plan_name: str
+    plan_type: str  # "unlimited", "limited", "swim_pass"
+    swims_remaining: int | None = None  # For limited/swim_pass plans
+
+
 class MemberResponse(BaseModel):
     id: uuid.UUID
     first_name: str
@@ -50,8 +58,13 @@ class MemberResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MemberWithPlansResponse(MemberResponse):
+    """Member response with active plans included."""
+    active_plans: list[ActivePlanInfo] = []
+
+
 class MemberListResponse(BaseModel):
-    items: list[MemberResponse]
+    items: list[MemberWithPlansResponse]
     total: int
     page: int
     per_page: int
