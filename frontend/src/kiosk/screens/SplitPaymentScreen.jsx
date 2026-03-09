@@ -51,12 +51,12 @@ export default function SplitPaymentScreen({ member, goTo, context, settings }) 
         pin,
         selectedCardId,
       );
+      const cashAmountStr = `${settings.currency}${cashNum.toFixed(2)}`;
+      const cashMsg = (settings.cash_success_message || "Place {amount} in the cash box.").replace("{amount}", cashAmountStr);
       goTo("status", {
         statusType: "success",
         statusTitle: "Payment Complete!",
-        statusMessage:
-          data.message ||
-          `Split: ${settings.currency}${cashNum.toFixed(2)} cash + ${settings.currency}${cardAmount.toFixed(2)} card.`,
+        statusMessage: `${cashMsg} Card charged: ${settings.currency}${cardAmount.toFixed(2)}.`,
       });
     } catch (err) {
       toast.error(err.response?.data?.detail || "Payment failed");
