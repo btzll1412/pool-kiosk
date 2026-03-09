@@ -126,6 +126,15 @@ const settingGroups = [
     ],
   },
   {
+    title: "Success Messages",
+    description: "Customize success messages after check-in or payment",
+    category: "kiosk",
+    fields: [
+      { key: "guest_success_message", label: "Guest Check-in Message", type: "text", helpText: "Message shown after guest check-in (default: Enjoy your swim!)" },
+      { key: "cash_success_message", label: "Cash Payment Message", type: "text", helpText: "Message shown after cash payment. Use {amount} for the payment amount (default: Place {amount} in the cash box.)" },
+    ],
+  },
+  {
     title: "Overlay & Lock",
     description: "Display overlay messages or lock the kiosk",
     category: "kiosk",

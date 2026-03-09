@@ -449,6 +449,9 @@ def get_kiosk_settings(request: Request, db: Session = Depends(get_db)):
         # Cash payment screen text
         "cash_payment_title": get_setting(db, "cash_payment_title", ""),
         "cash_payment_instructions": get_setting(db, "cash_payment_instructions", ""),
+        # Success messages
+        "guest_success_message": get_setting(db, "guest_success_message", "Enjoy your swim!"),
+        "cash_success_message": get_setting(db, "cash_success_message", "Place {amount} in the cash box."),
         "split_payment_enabled": get_setting(db, "split_payment_enabled", "true"),
         # Kiosk display settings
         "kiosk_welcome_title": get_setting(db, "kiosk_welcome_title", "Welcome to {pool_name}"),
@@ -1407,7 +1410,8 @@ def guest_visit(data: GuestVisitRequest, request: Request, db: Session = Depends
     db.commit()
     db.refresh(visit)
     logger.info("Guest visit: name=%s, plan=%s, amount=$%s", data.name, plan.name, plan.price)
-    return GuestVisitResponse(visit_id=visit.id, amount_paid=plan.price, message=f"Welcome, {data.name}! Enjoy your swim.")
+    success_msg = get_setting(db, "guest_success_message", "Enjoy your swim!")
+    return GuestVisitResponse(visit_id=visit.id, amount_paid=plan.price, message=f"Welcome, {data.name}! {success_msg}")
 
 
 def _build_member_status(db: Session, member: Member) -> MemberStatus:

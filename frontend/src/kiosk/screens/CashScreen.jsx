@@ -38,7 +38,8 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
       // Always add overpayment to credit (wantsChange = false)
       const data = await payCash(member.member_id, plan.id, amountNum, pin, false, useCredit);
 
-      let message = `Place ${settings.currency}${amountNum.toFixed(2)} in the cash box.`;
+      const amountStr = `${settings.currency}${amountNum.toFixed(2)}`;
+      let message = (settings.cash_success_message || "Place {amount} in the cash box.").replace("{amount}", amountStr);
       if (data.credit_used > 0) {
         message = `${settings.currency}${Number(data.credit_used).toFixed(2)} credit applied.`;
       }
