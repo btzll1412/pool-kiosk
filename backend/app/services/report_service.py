@@ -14,6 +14,33 @@ from app.models.plan import PlanType
 from app.models.transaction import PaymentMethod, Transaction, TransactionType
 
 
+def is_membership_usable(membership: Membership) -> bool:
+    """
+    Check if a membership is truly usable (active, not expired, has remaining swims).
+
+    A membership is usable if:
+    - is_active is True
+    - AND not expired (valid_until is None or >= today)
+    - AND has swims remaining (for limited/swim_pass plans)
+    """
+    if not membership.is_active:
+        return False
+
+    today = date.today()
+
+    # Check expiration
+    if membership.valid_until and membership.valid_until < today:
+        return False
+
+    # Check swims remaining for limited plans
+    if membership.swims_total is not None:
+        swims_remaining = (membership.swims_total or 0) - (membership.swims_used or 0)
+        if swims_remaining <= 0:
+            return False
+
+    return True
+
+
 def get_dashboard_stats(db: Session) -> dict:
     # Use UTC for consistency with database timestamps
     utc_now = datetime.utcnow()
@@ -33,9 +60,9 @@ def get_dashboard_stats(db: Session) -> dict:
         Transaction.transaction_type == TransactionType.payment,
     ).scalar()
 
-    active_memberships = db.query(func.count(Membership.id)).filter(
-        Membership.is_active.is_(True)
-    ).scalar() or 0
+    # Count truly usable memberships (active, not expired, has remaining swims)
+    all_active = db.query(Membership).filter(Membership.is_active.is_(True)).all()
+    active_memberships = sum(1 for m in all_active if is_membership_usable(m))
 
     guests = db.query(func.count(GuestVisit.id)).filter(
         GuestVisit.created_at.between(today_start, today_end)
@@ -120,20 +147,23 @@ def get_swim_report(db: Session, start_date: date, end_date: date) -> dict:
 
 
 def get_membership_report(db: Session) -> dict:
-    active = db.query(Membership).filter(Membership.is_active.is_(True)).all()
+    all_active = db.query(Membership).filter(Membership.is_active.is_(True)).all()
+
+    # Filter to only truly usable memberships
+    usable = [m for m in all_active if is_membership_usable(m)]
 
     by_plan: dict[str, int] = {}
     expiring_soon = 0
     threshold = date.today() + timedelta(days=7)
 
-    for m in active:
+    for m in usable:
         plan_name = m.plan.name if m.plan else "Unknown"
         by_plan[plan_name] = by_plan.get(plan_name, 0) + 1
         if m.valid_until and m.valid_until <= threshold:
             expiring_soon += 1
 
     return {
-        "total_active": len(active),
+        "total_active": len(usable),
         "by_plan": by_plan,
         "expiring_soon": expiring_soon,
     }

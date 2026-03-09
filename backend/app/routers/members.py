@@ -30,6 +30,7 @@ from app.schemas.member import (
     MemberWithPlansResponse,
     PinResetRequest,
 )
+from app.services.report_service import is_membership_usable
 from app.services.auth_service import get_current_user
 from app.services.member_service import (
     adjust_credit,
@@ -60,15 +61,16 @@ def list_members_endpoint(
     items = []
     for member in members:
         # Get active memberships for this member
-        active_memberships = (
+        all_memberships = (
             db.query(Membership)
             .filter(Membership.member_id == member.id, Membership.is_active == True)
             .all()
         )
 
+        # Filter to only truly usable memberships (not expired, has swims remaining)
         active_plans = []
-        for m in active_memberships:
-            if m.plan:
+        for m in all_memberships:
+            if m.plan and is_membership_usable(m):
                 swims_remaining = None
                 if m.swims_total is not None:
                     swims_remaining = (m.swims_total or 0) - (m.swims_used or 0)
