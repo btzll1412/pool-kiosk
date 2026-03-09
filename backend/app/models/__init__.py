@@ -12,6 +12,7 @@ from app.models.saved_card import SavedCard
 from app.models.activity_log import ActivityLog
 from app.models.pin_lockout import PinLockout
 from app.models.pool_schedule import PoolSchedule, ScheduleOverride, ScheduleType
+from app.models.pending_terminal_payment import PendingTerminalPayment
 
 __all__ = [
     "Member",
@@ -30,4 +31,5 @@ __all__ = [
     "PoolSchedule",
     "ScheduleOverride",
     "ScheduleType",
+    "PendingTerminalPayment",
 ]

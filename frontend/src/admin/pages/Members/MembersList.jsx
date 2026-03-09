@@ -107,12 +107,7 @@ export default function MembersList() {
     {
       key: "created_at",
       label: "Joined",
-      render: (row) =>
-        formatDate(row.created_at, timezone, {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        }),
+      render: (row) => formatDate(row.created_at, timezone),
     },
   ];
 

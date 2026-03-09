@@ -84,7 +84,8 @@ pool-management/
 │   │   │   ├── reports.py           # Analytics & reports
 │   │   │   ├── settings.py          # System settings
 │   │   │   ├── kiosk.py             # Kiosk-specific endpoints
-│   │   │   └── schedules.py         # Pool schedule management
+│   │   │   ├── schedules.py         # Pool schedule management
+│   │   │   └── nfc.py               # NFC reader WebSocket + broadcast endpoints
 │   │   │
 │   │   ├── services/                # Business logic layer
 │   │   │   ├── __init__.py
@@ -95,6 +96,7 @@ pool-management/
 │   │   │   ├── notification_service.py  # Webhook notification system (8 event types)
 │   │   │   ├── email_service.py        # SMTP email sending + templates
 │   │   │   ├── sip_service.py          # FusionPBX SIP call origination
+│   │   │   ├── nfc_reader_service.py   # NFC WebSocket client management
 │   │   │   └── report_service.py
 │   │   │
 │   │   └── payments/                # Modular payment adapters
@@ -977,11 +979,52 @@ try {
 
 ---
 
+## NFC Reader Integration
+
+The system supports PC/SC compatible NFC/RFID card readers for member card scanning. The NFC subsystem consists of:
+
+### Components
+
+| File | Purpose |
+|---|---|
+| `app/routers/nfc.py` | WebSocket + REST endpoints for card broadcasts |
+| `app/services/nfc_reader_service.py` | WebSocket client management |
+
+### Architecture
+
+1. **Physical Reader**: USB PC/SC compatible reader (ACR122U, etc.) connected to kiosk machine
+2. **Python Script**: Runs on kiosk, monitors reader using `pyscard` library
+3. **Kiosk Input**: Script types card UID as keyboard input + presses Enter (for kiosk RFID listener)
+4. **Admin Broadcast**: Script POSTs to `/api/nfc/broadcast` to notify admin browsers
+
+### API Endpoints
+
+| Endpoint | Method | Auth | Description |
+|---|---|---|---|
+| `/api/nfc/ws` | WebSocket | None | Admin browser connects for card scan notifications |
+| `/api/nfc/broadcast` | POST | None | NFC reader script broadcasts scanned card UID |
+| `/api/nfc/status` | GET | None | Returns count of connected WebSocket clients |
+| `/api/nfc/script` | GET | None | Returns Python script for NFC reader. Pass `?backend_url=http://your-server` to configure backend URL |
+
+### WebSocket Message Format
+
+```json
+{"event": "card_scan", "uid": "04A3B2C1D4E5F6"}
+```
+
+### Setup
+
+1. Install reader dependencies on kiosk: `pip install pyscard pyautogui requests`
+2. Download script: `curl http://your-server/api/nfc/script?backend_url=http://your-server > nfc_reader.py`
+3. Run script: `python nfc_reader.py`
+
+---
+
 ## Integrations
 
 - **Home Assistant:** Full webhook integration (8 event types, per-event URL, fire-and-forget)
 - **FusionPBX / SIP:** Outbound call origination for change-needed notifications via REST API
-- **Payment Processors:** Stripe (PaymentIntent + Customer API), Square (Payments + Customers API), Sola (REST API) — all configurable from admin
+- **Payment Processors:** Stripe (PaymentIntent + Customer API), Square (Payments + Customers API), Sola (REST API), USAePay (REST API v2) — all configurable from admin
 - **Email (SMTP):** Auto-charge receipts, membership expiring/expired notifications — SMTP config in admin settings
 - **Future:** SMS notifications, PIN reset via email link
 
@@ -1007,6 +1050,7 @@ try {
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-03-09 | Audit fixes: DB-backed terminal payments, dynamic NFC script URL, date_of_birth column fix, guest count validation, prorated billing guards, NFC documentation, MM/DD/YYYY date format, check-in time filtering | — |
 | 2026-02-25 | Added USAePay terminal payment support (Payment Engine Cloud API, Castles MP200), terminal kiosk screen, terminal API endpoints | — |
 | 2026-02-25 | Added USAePay payment processor adapter with REST API v2 integration | — |
 | 2026-02-24 | Phase 11: Added pool scheduling system (pool_schedules, schedule_overrides tables), gender-based check-in validation, schedule API endpoints, ScheduleManager admin UI | — |

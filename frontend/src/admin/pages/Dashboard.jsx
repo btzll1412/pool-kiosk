@@ -69,7 +69,7 @@ export default function Dashboard() {
           onClick={() => navigate("/admin/transactions")}
         />
         <StatCard
-          title="Active Memberships"
+          title="Active Plans"
           value={stats?.active_memberships ?? 0}
           icon={Users}
           color="amber"
