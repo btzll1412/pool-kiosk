@@ -25,6 +25,7 @@ class TransactionResponse(BaseModel):
     notes: str | None
     created_by: uuid.UUID | None
     created_at: datetime
+    related_transaction_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
 

@@ -38,7 +38,8 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
       // Always add overpayment to credit (wantsChange = false)
       const data = await payCash(member.member_id, plan.id, amountNum, pin, false, useCredit);
 
-      let message = `Place ${settings.currency}${amountNum.toFixed(2)} in the cash box.`;
+      const amountStr = `${settings.currency}${amountNum.toFixed(2)}`;
+      let message = (settings.cash_success_message || "Place {amount} in the cash box.").replace("{amount}", amountStr);
       if (data.credit_used > 0) {
         message = `${settings.currency}${Number(data.credit_used).toFixed(2)} credit applied.`;
       }
@@ -78,7 +79,7 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
         <div className="w-24" />
       </div>
 
-      <div className="flex flex-1 flex-col items-center justify-center px-6">
+      <div className="flex flex-1 flex-col items-center overflow-y-auto px-6 py-6">
         <div className="w-full max-w-sm">
           <div className="mb-6 rounded-2xl bg-white p-5 text-center shadow-sm ring-1 ring-gray-100">
             <p className="text-sm text-gray-500">{plan.name}</p>
@@ -130,10 +131,24 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
 
           <NumPad value={amount} onChange={setAmount} maxLength={7} showDecimal />
 
-          {settings.cash_box_instructions && (
-            <p className="mt-4 text-center text-sm text-gray-500">
-              {settings.cash_box_instructions}
-            </p>
+          {(settings.cash_payment_title || settings.cash_payment_instructions || settings.cash_box_instructions) && (
+            <div className="mt-4 text-center space-y-2">
+              {settings.cash_payment_title && (
+                <p className="text-sm font-semibold text-gray-700">
+                  {settings.cash_payment_title}
+                </p>
+              )}
+              {settings.cash_payment_instructions && (
+                <p className="text-sm text-gray-600 whitespace-pre-line">
+                  {settings.cash_payment_instructions}
+                </p>
+              )}
+              {settings.cash_box_instructions && (
+                <p className="text-sm text-gray-500">
+                  {settings.cash_box_instructions}
+                </p>
+              )}
+            </div>
           )}
 
           <KioskButton

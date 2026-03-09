@@ -51,7 +51,7 @@ export default function FreezeScreen({ member, goTo, context, settings }) {
         <div className="w-24" />
       </div>
 
-      <div className="flex flex-1 flex-col items-center justify-center px-6">
+      <div className="flex flex-1 flex-col items-center overflow-y-auto px-6 py-6">
         <div className="w-full max-w-xs text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50">
             <Snowflake className="h-8 w-8 text-blue-600" />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, Filter } from "lucide-react";
+import { Download, Filter, Link2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { getTransactions } from "../../../api/payments";
 import { exportCsv } from "../../../api/reports";
@@ -137,9 +137,20 @@ export default function TransactionsList() {
       key: "notes",
       label: "Notes",
       render: (row) => (
-        <span className="max-w-[200px] truncate text-gray-500 dark:text-gray-400">
-          {row.notes || "—"}
-        </span>
+        <div className="flex items-center gap-2">
+          {row.related_transaction_id && (
+            <span
+              className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400"
+              title="Part of another transaction"
+            >
+              <Link2 className="h-3 w-3" />
+              Linked
+            </span>
+          )}
+          <span className="max-w-[200px] truncate text-gray-500 dark:text-gray-400">
+            {row.notes || (row.related_transaction_id ? "" : "—")}
+          </span>
+        </div>
       ),
     },
   ];

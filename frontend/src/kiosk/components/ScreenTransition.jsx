@@ -21,7 +21,7 @@ export default function ScreenTransition({ screen, children }) {
 
   return (
     <div
-      className={`flex-1 transition-opacity duration-150 ease-in-out ${
+      className={`flex-1 overflow-y-auto transition-opacity duration-150 ease-in-out ${
         animating ? "opacity-0" : "opacity-100"
       }`}
     >

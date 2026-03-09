@@ -442,6 +442,16 @@ def get_kiosk_settings(request: Request, db: Session = Depends(get_db)):
         "family_max_guests": get_setting(db, "family_max_guests", "5"),
         "cash_box_instructions": get_setting(db, "cash_box_instructions", ""),
         "guest_visit_enabled": get_setting(db, "guest_visit_enabled", "true"),
+        # Guest visit screen text
+        "guest_welcome_title": get_setting(db, "guest_welcome_title", "Welcome, Guest!"),
+        "guest_welcome_subtitle": get_setting(db, "guest_welcome_subtitle", "Enter your details to get started"),
+        "guest_instructions": get_setting(db, "guest_instructions", ""),
+        # Cash payment screen text
+        "cash_payment_title": get_setting(db, "cash_payment_title", ""),
+        "cash_payment_instructions": get_setting(db, "cash_payment_instructions", ""),
+        # Success messages
+        "guest_success_message": get_setting(db, "guest_success_message", "Enjoy your swim!"),
+        "cash_success_message": get_setting(db, "cash_success_message", "Place {amount} in the cash box."),
         "split_payment_enabled": get_setting(db, "split_payment_enabled", "true"),
         # Kiosk display settings
         "kiosk_welcome_title": get_setting(db, "kiosk_welcome_title", "Welcome to {pool_name}"),
@@ -517,19 +527,6 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
     # Create membership
     membership = create_membership(db, data.member_id, data.plan_id)
 
-    # Record credit transaction if credit was used
-    if credit_used > 0:
-        credit_tx = Transaction(
-            member_id=data.member_id,
-            transaction_type=TransactionType.payment,
-            payment_method=PaymentMethod.credit,
-            amount=credit_used,
-            plan_id=data.plan_id,
-            membership_id=membership.id,
-            notes="Credit portion of payment",
-        )
-        db.add(credit_tx)
-
     # Handle cash payment for remaining amount
     change_due = Decimal("0.00")
     credit_added = Decimal("0.00")
@@ -542,6 +539,7 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
             member.credit_balance += overpayment
             credit_added = overpayment
 
+    # Create cash transaction first
     cash_tx = Transaction(
         member_id=data.member_id,
         transaction_type=TransactionType.payment,
@@ -552,6 +550,34 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
         notes="Cash portion of payment" if credit_used > 0 else None,
     )
     db.add(cash_tx)
+    db.flush()  # Get ID for linking
+
+    # Record credit transaction if credit was used (linked to cash tx)
+    if credit_used > 0:
+        credit_tx = Transaction(
+            member_id=data.member_id,
+            transaction_type=TransactionType.payment,
+            payment_method=PaymentMethod.credit,
+            amount=credit_used,
+            plan_id=data.plan_id,
+            membership_id=membership.id,
+            notes="Credit portion of payment",
+            related_transaction_id=cash_tx.id,
+        )
+        db.add(credit_tx)
+
+    # Record credit_add transaction if overpayment was added to account (linked to cash tx)
+    if credit_added > 0:
+        credit_add_tx = Transaction(
+            member_id=data.member_id,
+            transaction_type=TransactionType.credit_add,
+            payment_method=PaymentMethod.cash,
+            amount=credit_added,
+            notes="Overpayment added as credit",
+            related_transaction_id=cash_tx.id,
+        )
+        db.add(credit_add_tx)
+
     db.commit()
     db.refresh(cash_tx)
 
@@ -628,7 +654,7 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
         # Use saved card - note: charge_saved_card_now handles membership creation
         tx = charge_saved_card_now(db, data.saved_card_id, data.plan_id, data.member_id)
 
-        # If credit was used, record credit transaction
+        # If credit was used, record credit transaction (linked to card tx)
         if credit_used > 0:
             credit_tx = Transaction(
                 member_id=data.member_id,
@@ -638,6 +664,7 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
                 plan_id=data.plan_id,
                 membership_id=tx.membership_id,
                 notes="Credit portion of payment",
+                related_transaction_id=tx.id,
             )
             db.add(credit_tx)
             db.commit()
@@ -654,7 +681,7 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
     # New card payment
     tx = process_card_payment(db, data.member_id, data.plan_id)
 
-    # If credit was used, record credit transaction
+    # If credit was used, record credit transaction (linked to card tx)
     if credit_used > 0:
         credit_tx = Transaction(
             member_id=data.member_id,
@@ -664,6 +691,7 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
             plan_id=data.plan_id,
             membership_id=tx.membership_id,
             notes="Credit portion of payment",
+            related_transaction_id=tx.id,
         )
         db.add(credit_tx)
 
@@ -802,20 +830,7 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
     # Create membership
     membership = create_membership(db, data.member_id, data.plan_id)
 
-    # Record credit transaction if credit was used
-    if credit_used > 0:
-        credit_tx = Transaction(
-            member_id=data.member_id,
-            transaction_type=TransactionType.payment,
-            payment_method=PaymentMethod.credit,
-            amount=credit_used,
-            plan_id=data.plan_id,
-            membership_id=membership.id,
-            notes="Credit portion of payment",
-        )
-        db.add(credit_tx)
-
-    # Record card payment transaction
+    # Record card payment transaction first
     card_last4 = card_number[-4:]
     card_tx = Transaction(
         member_id=data.member_id,
@@ -828,6 +843,21 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
         notes=f"Manual card entry - ****{card_last4}",
     )
     db.add(card_tx)
+    db.flush()  # Get ID for linking
+
+    # Record credit transaction if credit was used (linked to card tx)
+    if credit_used > 0:
+        credit_tx = Transaction(
+            member_id=data.member_id,
+            transaction_type=TransactionType.payment,
+            payment_method=PaymentMethod.credit,
+            amount=credit_used,
+            plan_id=data.plan_id,
+            membership_id=membership.id,
+            notes="Credit portion of payment",
+            related_transaction_id=card_tx.id,
+        )
+        db.add(credit_tx)
 
     # Save the card if requested and we got a token back
     if data.save_card and charge_result.card_token:
@@ -948,7 +978,7 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
     # Create the membership once
     membership = create_membership(db, data.member_id, data.plan_id)
 
-    # Record cash transaction
+    # Record cash transaction first
     cash_tx = Transaction(
         member_id=data.member_id,
         transaction_type=TransactionType.payment,
@@ -959,8 +989,9 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
         notes="Split payment (cash portion)",
     )
     db.add(cash_tx)
+    db.flush()  # Get ID for linking
 
-    # Record card transaction
+    # Record card transaction linked to cash transaction
     card_tx = Transaction(
         member_id=data.member_id,
         transaction_type=TransactionType.payment,
@@ -970,6 +1001,7 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
         membership_id=membership.id,
         reference_id=card_reference,
         notes="Split payment (card portion)",
+        related_transaction_id=cash_tx.id,
     )
     db.add(card_tx)
 
@@ -1378,7 +1410,8 @@ def guest_visit(data: GuestVisitRequest, request: Request, db: Session = Depends
     db.commit()
     db.refresh(visit)
     logger.info("Guest visit: name=%s, plan=%s, amount=$%s", data.name, plan.name, plan.price)
-    return GuestVisitResponse(visit_id=visit.id, amount_paid=plan.price, message=f"Welcome, {data.name}! Enjoy your swim.")
+    success_msg = get_setting(db, "guest_success_message", "Enjoy your swim!")
+    return GuestVisitResponse(visit_id=visit.id, amount_paid=plan.price, message=f"Welcome, {data.name}! {success_msg}")
 
 
 def _build_member_status(db: Session, member: Member) -> MemberStatus:
@@ -1615,22 +1648,10 @@ def check_terminal_payment_status(
                 plan = db.query(Plan).filter(Plan.id == pending.plan_id).first()
 
                 if member and plan:
-                    # Apply credit if used
-                    if pending.credit_used > 0:
-                        member.credit_balance -= pending.credit_used
-                        credit_tx = Transaction(
-                            member_id=pending.member_id,
-                            transaction_type=TransactionType.credit_use,
-                            payment_method=PaymentMethod.credit,
-                            amount=pending.credit_used,
-                            notes="Applied to terminal payment",
-                        )
-                        db.add(credit_tx)
-
                     # Create membership
                     membership = create_membership(db, pending.member_id, pending.plan_id)
 
-                    # Create card payment transaction
+                    # Create card payment transaction first
                     effective_price = get_plan_effective_price(plan) - pending.credit_used
                     tx = Transaction(
                         member_id=pending.member_id,
@@ -1643,6 +1664,20 @@ def check_terminal_payment_status(
                         notes=f"Terminal payment - {result.card_brand or 'Card'} ****{result.card_last4 or '????'}",
                     )
                     db.add(tx)
+                    db.flush()  # Get ID for linking
+
+                    # Apply credit if used (linked to card tx)
+                    if pending.credit_used > 0:
+                        member.credit_balance -= pending.credit_used
+                        credit_tx = Transaction(
+                            member_id=pending.member_id,
+                            transaction_type=TransactionType.credit_use,
+                            payment_method=PaymentMethod.credit,
+                            amount=pending.credit_used,
+                            notes="Applied to terminal payment",
+                            related_transaction_id=tx.id,
+                        )
+                        db.add(credit_tx)
 
                     # Mark pending payment as completed and delete it
                     db.delete(pending)

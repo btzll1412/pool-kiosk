@@ -106,6 +106,35 @@ const settingGroups = [
     ],
   },
   {
+    title: "Guest Visit Text",
+    description: "Customize text shown on the guest check-in screen",
+    category: "kiosk",
+    fields: [
+      { key: "guest_welcome_title", label: "Welcome Title", type: "text", helpText: "Default: Welcome, Guest!" },
+      { key: "guest_welcome_subtitle", label: "Welcome Subtitle", type: "text", helpText: "Default: Enter your details to get started" },
+      { key: "guest_instructions", label: "Additional Instructions", type: "textarea", helpText: "Custom instructions shown below the form (optional)" },
+    ],
+  },
+  {
+    title: "Cash Payment Text",
+    description: "Customize text shown on the cash payment screen",
+    category: "kiosk",
+    fields: [
+      { key: "cash_payment_title", label: "Instructions Title", type: "text", helpText: "Title above payment instructions (optional)" },
+      { key: "cash_payment_instructions", label: "Payment Instructions", type: "textarea", helpText: "Custom instructions shown on cash payment screen" },
+      { key: "cash_box_instructions", label: "Cash Box Note", type: "text", helpText: "Small note shown near the payment button" },
+    ],
+  },
+  {
+    title: "Success Messages",
+    description: "Customize success messages after check-in or payment",
+    category: "kiosk",
+    fields: [
+      { key: "guest_success_message", label: "Guest Check-in Message", type: "text", helpText: "Message shown after guest check-in (default: Enjoy your swim!)" },
+      { key: "cash_success_message", label: "Cash Payment Message", type: "text", helpText: "Message shown after cash payment. Use {amount} for the payment amount (default: Place {amount} in the cash box.)" },
+    ],
+  },
+  {
     title: "Overlay & Lock",
     description: "Display overlay messages or lock the kiosk",
     category: "kiosk",

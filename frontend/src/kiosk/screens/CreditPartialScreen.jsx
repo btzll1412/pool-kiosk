@@ -36,7 +36,7 @@ export default function CreditPartialScreen({ goTo, context, settings }) {
         <div className="w-24" />
       </div>
 
-      <div className="flex flex-1 flex-col items-center justify-center px-6">
+      <div className="flex flex-1 flex-col items-center overflow-y-auto px-6 py-6">
         <div className="w-full max-w-md">
           {/* Credit breakdown */}
           <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-100">

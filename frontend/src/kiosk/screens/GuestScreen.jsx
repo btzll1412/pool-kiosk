@@ -74,7 +74,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
         <div className="w-24" />
       </div>
 
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-8">
+      <div className="flex flex-1 flex-col items-center overflow-y-auto px-6 py-8">
         {step === "info" && (
           <div className="w-full max-w-md">
             <div className="mb-8 text-center">
@@ -82,11 +82,16 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
                 <UserPlus className="h-8 w-8 text-brand-600" />
               </div>
               <h2 className="mt-4 text-2xl font-bold text-gray-900">
-                Welcome, Guest!
+                {settings.guest_welcome_title || "Welcome, Guest!"}
               </h2>
               <p className="mt-1 text-sm text-gray-500">
-                Enter your details to get started
+                {settings.guest_welcome_subtitle || "Enter your details to get started"}
               </p>
+              {settings.guest_instructions && (
+                <p className="mt-3 text-sm text-gray-600 whitespace-pre-line">
+                  {settings.guest_instructions}
+                </p>
+              )}
             </div>
 
             <div className="space-y-4">
