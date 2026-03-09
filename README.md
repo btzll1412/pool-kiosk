@@ -101,7 +101,31 @@ git clone https://github.com/btzll1412/pool-kiosk.git
 cd pool-kiosk
 ```
 
-### Step 4: Configure Environment
+### Step 4: Install Node.js and Build Frontend
+
+The frontend must be built before Docker deployment:
+
+```bash
+# Install Node.js 18+ (using NodeSource)
+curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+apt install -y nodejs
+
+# Verify installation
+node --version  # Should show v18.x.x or higher
+npm --version
+
+# Build the frontend
+cd /opt/pool-kiosk/frontend
+npm install
+npm run build
+
+# Return to project root
+cd /opt/pool-kiosk
+```
+
+This creates the `frontend/dist/` folder required by Docker.
+
+### Step 5: Configure Environment
 
 ```bash
 cp .env.example .env
@@ -133,13 +157,28 @@ sed -i "s/change-me-strong-password/$(openssl rand -hex 16)/g" .env
 sed -i "s/change-me-in-production/$(openssl rand -hex 32)/g" .env
 ```
 
-### Step 5: Start the Application
+**Optional environment variables:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `DB_PASSWORD` | `password` | PostgreSQL password (required to change) |
+| `SECRET_KEY` | `change-me-in-production` | JWT signing secret (required to change) |
+| `POOL_NAME` | `My Pool` | Pool name shown on kiosk |
+| `ADMIN_DEFAULT_USERNAME` | `admin` | Default admin username |
+| `ADMIN_DEFAULT_PASSWORD` | `changeme` | Default admin password |
+
+### Step 6: Start the Application
 
 ```bash
 docker compose up -d
 ```
 
 First startup takes 2-3 minutes (builds images, runs database migrations, seeds default admin user and settings).
+
+**Ports used:**
+- `80` - Web interface (Nginx)
+- `8000` - Backend API (direct access)
+- `5433` - PostgreSQL (for external tools)
 
 Watch the logs to confirm everything starts:
 
@@ -156,13 +195,51 @@ backend-1   | INFO:     Uvicorn running on http://0.0.0.0:8000
 
 Press `Ctrl+C` to stop following logs (containers keep running).
 
-### Step 6: Access the System
+### Step 7: Access the System
 
 | Interface | URL | Description |
 |---|---|---|
 | Kiosk | `http://<container-ip>/kiosk` | Customer-facing touch screen |
 | Admin | `http://<container-ip>/admin` | Management dashboard |
 | API Docs | `http://<container-ip>/docs` | Interactive API documentation |
+
+**Default admin login:**
+- Username: `admin` (or value of `ADMIN_DEFAULT_USERNAME`)
+- Password: `changeme` (or value of `ADMIN_DEFAULT_PASSWORD`)
+
+Change the password immediately after first login via Settings.
+
+---
+
+## Alternative: Deploy on Any Linux Server (Non-Proxmox)
+
+If you're not using Proxmox, you can deploy on any Linux server with Docker:
+
+```bash
+# 1. Install Docker
+curl -fsSL https://get.docker.com | sh
+
+# 2. Install Node.js
+curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+apt install -y nodejs git
+
+# 3. Clone and build
+cd /opt
+git clone https://github.com/btzll1412/pool-kiosk.git
+cd pool-kiosk/frontend
+npm install && npm run build
+cd ..
+
+# 4. Configure
+cp .env.example .env
+sed -i "s/change-me-strong-password/$(openssl rand -hex 16)/g" .env
+sed -i "s/change-me-in-production/$(openssl rand -hex 32)/g" .env
+
+# 5. Start
+docker compose up -d
+```
+
+**Note for non-LXC environments:** You can remove `privileged: true` from docker-compose.yml services if not running inside an LXC container.
 
 ---
 
