@@ -426,9 +426,22 @@ pool-management/
 - `GET /api/kiosk/terminal/status/{request_key}` — Poll terminal payment status
 - `DELETE /api/kiosk/terminal/cancel/{request_key}` — Cancel pending terminal payment
 
+### Check-ins (admin auth)
+
+- `GET /api/checkins` — List with filters (search, checkin_type, start_date, end_date, start_time, end_time, unique_only)
+  - `start_time` / `end_time`: Filter by time of day in HH:MM format (e.g., "09:00", "18:00")
+  - Returns: items with member info, total count, unique_members count
+
 ### Members (admin auth)
 
-- `GET /api/members` — List with filters/search/pagination
+- `GET /api/members` — List with filters/search/pagination (includes active_plans for each member)
+  - `search`: Filter by name, phone, or email
+  - `is_active`: Filter by active/inactive status (boolean)
+  - `has_plan`: Filter by whether they have an active usable plan (boolean)
+  - `plan_id`: Filter by specific plan ID (UUID string)
+  - `has_credit`: Filter by credit balance > 0 (boolean)
+  - `joined_after`: Filter members created on or after this date (YYYY-MM-DD)
+  - `joined_before`: Filter members created on or before this date (YYYY-MM-DD)
 - `POST /api/members` — Create member
 - `GET /api/members/{id}` — Get member detail
 - `PUT /api/members/{id}` — Update member
@@ -979,6 +992,36 @@ try {
 
 ---
 
+## Membership Usability Helper
+
+The `is_membership_usable()` helper function in `app/services/report_service.py` determines if a membership is truly active and usable for check-in. This logic is used consistently across:
+
+- Dashboard "Active Plans" count
+- Members list "Plans" column
+- Plans page "active subscribers" count
+- Membership reports
+
+### Usability Criteria
+
+A membership is usable if ALL of the following are true:
+
+| Criterion | Check |
+|---|---|
+| Active flag | `is_active == True` |
+| Not expired | `valid_until` is None OR `valid_until >= today` |
+| Has swims | For limited plans: `swims_used < swims_total` |
+
+### Usage
+
+```python
+from app.services.report_service import is_membership_usable
+
+# Filter to only usable memberships
+usable = [m for m in memberships if is_membership_usable(m)]
+```
+
+---
+
 ## NFC Reader Integration
 
 The system supports PC/SC compatible NFC/RFID card readers for member card scanning. The NFC subsystem consists of:
@@ -1050,7 +1093,8 @@ The system supports PC/SC compatible NFC/RFID card readers for member card scann
 
 | Date | Change | Author |
 |---|---|---|
-| 2026-03-09 | Audit fixes: DB-backed terminal payments, dynamic NFC script URL, date_of_birth column fix, guest count validation, prorated billing guards, NFC documentation, MM/DD/YYYY date format, check-in time filtering | — |
+| 2026-03-09 | Admin enhancements: Time-of-day filtering on check-ins, active plans column in members list, is_membership_usable() helper for consistent plan counting, Dashboard label fix | — |
+| 2026-03-09 | Audit fixes: DB-backed terminal payments, dynamic NFC script URL, date_of_birth column fix, guest count validation, prorated billing guards, NFC documentation, MM/DD/YYYY date format | — |
 | 2026-02-25 | Added USAePay terminal payment support (Payment Engine Cloud API, Castles MP200), terminal kiosk screen, terminal API endpoints | — |
 | 2026-02-25 | Added USAePay payment processor adapter with REST API v2 integration | — |
 | 2026-02-24 | Phase 11: Added pool scheduling system (pool_schedules, schedule_overrides tables), gender-based check-in validation, schedule API endpoints, ScheduleManager admin UI | — |
