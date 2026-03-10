@@ -108,12 +108,41 @@ export async function unfreezeMembership(member_id, pin) {
   return data;
 }
 
-export async function guestVisit(name, phone, payment_method, plan_id) {
-  const { data } = await kiosk.post("/guest", {
+export async function guestVisit(name, phone, payment_method, plan_id, cash_tendered = null) {
+  const payload = {
     name,
     phone,
     payment_method,
     plan_id,
+  };
+  if (cash_tendered !== null) {
+    payload.cash_tendered = String(cash_tendered);
+  }
+  const { data } = await kiosk.post("/guest", payload);
+  return data;
+}
+
+export async function guestPayCard(name, phone, plan_id, card_number, exp_date, cvv) {
+  const { data } = await kiosk.post("/guest/pay/card", {
+    name,
+    phone,
+    plan_id,
+    card_number,
+    exp_date,
+    cvv,
+  });
+  return data;
+}
+
+export async function guestPaySplit(name, phone, plan_id, cash_amount, card_number, exp_date, cvv) {
+  const { data } = await kiosk.post("/guest/pay/split", {
+    name,
+    phone,
+    plan_id,
+    cash_amount: String(cash_amount),
+    card_number,
+    exp_date,
+    cvv,
   });
   return data;
 }

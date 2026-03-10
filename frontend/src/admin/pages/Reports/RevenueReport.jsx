@@ -16,8 +16,10 @@ import PageHeader from "../../../shared/PageHeader";
 import { SkeletonStatCards, SkeletonCard } from "../../../shared/Skeleton";
 import StatCard from "../../../shared/StatCard";
 import { DollarSign, TrendingUp, Users } from "lucide-react";
+import { useTimezone, getTodayDate } from "../../../context/TimezoneContext";
 
 export default function RevenueReport() {
+  const timezone = useTimezone();
   const [revenue, setRevenue] = useState(null);
   const [memberships, setMemberships] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,10 +28,10 @@ export default function RevenueReport() {
 
   useEffect(() => {
     setLoading(true);
-    const end = new Date().toISOString().split("T")[0];
-    const start = new Date(Date.now() - parseInt(range) * 86400000)
-      .toISOString()
-      .split("T")[0];
+    const end = getTodayDate(timezone);
+    const startDate = new Date(getTodayDate(timezone) + "T12:00:00");
+    startDate.setDate(startDate.getDate() - parseInt(range));
+    const start = startDate.toISOString().split("T")[0];
 
     Promise.all([
       getRevenueReport({ start_date: start, end_date: end, group_by: groupBy }),
@@ -41,7 +43,7 @@ export default function RevenueReport() {
       })
       .catch((err) => toast.error(err.response?.data?.detail || "Failed to load reports"))
       .finally(() => setLoading(false));
-  }, [range, groupBy]);
+  }, [range, groupBy, timezone]);
 
   if (loading) {
     return (

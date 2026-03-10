@@ -1,6 +1,7 @@
 import logging
 from datetime import date, datetime, time
 
+import pytz
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -15,6 +16,7 @@ from app.models.membership import Membership
 from app.models.user import User
 from app.schemas.checkin import CheckinListResponse, CheckinResponse, CheckinWithMemberResponse
 from app.services.auth_service import get_current_user
+from app.services.settings_service import get_setting
 
 router = APIRouter()
 
@@ -62,18 +64,38 @@ def list_checkins(
         except (ValueError, IndexError):
             pass
 
-    # Build date range (dates only, time filtering applied separately)
-    start_datetime = datetime.combine(start_date, time.min) if start_date else None
-    end_datetime = datetime.combine(end_date, time.max) if end_date else None
+    # Get configured timezone for date interpretation
+    tz_name = get_setting(db, "timezone", "America/New_York")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.timezone("America/New_York")
+
+    # Build date range in local timezone, then convert to UTC for DB query
+    # This ensures filtering for "March 9" means March 9 in local time, not UTC
+    if start_date:
+        start_local = local_tz.localize(datetime.combine(start_date, time.min))
+        start_datetime = start_local.astimezone(pytz.UTC).replace(tzinfo=None)
+    else:
+        start_datetime = None
+
+    if end_date:
+        end_local = local_tz.localize(datetime.combine(end_date, time.max))
+        end_datetime = end_local.astimezone(pytz.UTC).replace(tzinfo=None)
+    else:
+        end_datetime = None
 
     # Collect all items (member check-ins + guest visits)
     all_items = []
 
     def passes_time_filter(checkin_datetime: datetime) -> bool:
-        """Check if a datetime passes the time-of-day filter."""
+        """Check if a datetime passes the time-of-day filter (in local timezone)."""
         if not filter_start_time and not filter_end_time:
             return True
-        checkin_time = checkin_datetime.time()
+        # Convert UTC datetime to local timezone before extracting time
+        utc_dt = pytz.UTC.localize(checkin_datetime)
+        local_dt = utc_dt.astimezone(local_tz)
+        checkin_time = local_dt.time()
         if filter_start_time and checkin_time < filter_start_time:
             return False
         if filter_end_time and checkin_time > filter_end_time:
@@ -170,16 +192,20 @@ def list_checkins(
             if not passes_time_filter(guest.created_at):
                 continue
 
+            # Build notes with plan name and payment details
+            plan_display = guest.plan_name if guest.plan_name else "Guest Visit"
+            notes = f"Paid ${guest.amount_paid} ({guest.payment_method.value})"
+
             all_items.append({
                 "id": guest.id,
                 "member_id": None,
                 "member_name": f"{guest.name} (Guest)",
                 "membership_id": None,
                 "checkin_type": "guest",
-                "plan_name": "Guest Visit",
+                "plan_name": plan_display,
                 "guest_count": 0,
                 "checked_in_at": guest.created_at,
-                "notes": f"Paid ${guest.amount_paid} ({guest.payment_method.value})",
+                "notes": notes,
                 "is_guest": True,
             })
 

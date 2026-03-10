@@ -104,12 +104,32 @@ class GuestVisitRequest(BaseModel):
     phone: str
     payment_method: PaymentMethod
     plan_id: uuid.UUID
+    cash_tendered: Decimal | None = None  # Actual cash given (for tracking overpayment)
 
 
 class GuestVisitResponse(BaseModel):
     visit_id: uuid.UUID
     amount_paid: Decimal
     message: str
+
+
+class GuestCardPaymentRequest(BaseModel):
+    name: str
+    phone: str | None = None
+    plan_id: uuid.UUID
+    card_number: str
+    exp_date: str  # MMYY format
+    cvv: str
+
+
+class GuestSplitPaymentRequest(BaseModel):
+    name: str
+    phone: str | None = None
+    plan_id: uuid.UUID
+    cash_amount: Decimal  # Amount paid in cash
+    card_number: str
+    exp_date: str  # MMYY format
+    cvv: str
 
 
 class SavedCardRequest(BaseModel):
