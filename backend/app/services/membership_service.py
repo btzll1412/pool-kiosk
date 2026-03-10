@@ -50,8 +50,7 @@ def create_membership(db: Session, member_id: uuid.UUID, plan_id: uuid.UUID) -> 
             if remaining > 0:
                 # Add new swims to existing balance
                 existing.swims_total = (existing.swims_total or 0) + plan.swim_count
-                db.commit()
-                db.refresh(existing)
+                db.flush()  # Flush but don't commit - let caller control transaction
                 logger.info(
                     "Swim pass stacked: member=%s, plan=%s, added=%d swims, new_total=%d, membership=%s",
                     member_id, plan.name, plan.swim_count, existing.swims_total, existing.id
@@ -91,8 +90,7 @@ def create_membership(db: Session, member_id: uuid.UUID, plan_id: uuid.UUID) -> 
         membership.swims_used = 0
 
     db.add(membership)
-    db.commit()
-    db.refresh(membership)
+    db.flush()  # Flush to get ID but don't commit - let caller control transaction
     logger.info("Membership created: member=%s, plan=%s, type=%s, membership=%s", member_id, plan.name, plan.plan_type.value, membership.id)
     return membership
 
