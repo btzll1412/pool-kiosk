@@ -2,8 +2,11 @@ import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+import pytz
 from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
+
+from app.services.settings_service import get_setting
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +45,24 @@ def is_membership_usable(membership: Membership) -> bool:
 
 
 def get_dashboard_stats(db: Session) -> dict:
-    # Use UTC for consistency with database timestamps
-    utc_now = datetime.utcnow()
-    today_start = datetime.combine(utc_now.date(), datetime.min.time())
-    today_end = datetime.combine(utc_now.date(), datetime.max.time())
+    # Use configured timezone for "today" calculation (12am to 12am local time)
+    tz_name = get_setting(db, "timezone", "America/New_York")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.timezone("America/New_York")
+
+    # Get current time in local timezone
+    local_now = datetime.now(local_tz)
+    local_today = local_now.date()
+
+    # Create start/end of day in local timezone, then convert to UTC for DB query
+    today_start_local = local_tz.localize(datetime.combine(local_today, datetime.min.time()))
+    today_end_local = local_tz.localize(datetime.combine(local_today, datetime.max.time()))
+
+    # Convert to UTC (naive) for database comparison
+    today_start = today_start_local.astimezone(pytz.UTC).replace(tzinfo=None)
+    today_end = today_end_local.astimezone(pytz.UTC).replace(tzinfo=None)
 
     total_checkins = db.query(func.count(Checkin.id)).filter(
         Checkin.checked_in_at.between(today_start, today_end)
