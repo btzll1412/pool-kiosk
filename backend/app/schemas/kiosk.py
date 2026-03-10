@@ -112,6 +112,15 @@ class GuestVisitResponse(BaseModel):
     message: str
 
 
+class GuestCardPaymentRequest(BaseModel):
+    name: str
+    phone: str | None = None
+    plan_id: uuid.UUID
+    card_number: str
+    exp_date: str  # MMYY format
+    cvv: str
+
+
 class SavedCardRequest(BaseModel):
     processor_token: str
     card_last4: str

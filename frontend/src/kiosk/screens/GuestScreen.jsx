@@ -1,11 +1,46 @@
 import { useState } from "react";
-import { ArrowLeft, Banknote, CreditCard, UserPlus, AlertCircle } from "lucide-react";
+import { ArrowLeft, Banknote, CreditCard, UserPlus, Delete } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
 import KioskInput from "../components/KioskInput";
 import PlanCard from "../components/PlanCard";
 import NumPad from "../components/NumPad";
-import { getPlans, guestVisit } from "../../api/kiosk";
+import { getPlans, guestVisit, guestPayCard } from "../../api/kiosk";
+
+// Compact number pad for card entry
+function CardNumberPad({ onKey, onBackspace, onClear }) {
+  const keys = [
+    ["1", "2", "3"],
+    ["4", "5", "6"],
+    ["7", "8", "9"],
+    ["clear", "0", "back"],
+  ];
+
+  return (
+    <div className="grid grid-cols-3 gap-2 p-3 bg-gray-100 rounded-xl">
+      {keys.flat().map((key) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => {
+            if (key === "back") onBackspace();
+            else if (key === "clear") onClear();
+            else onKey(key);
+          }}
+          className={`h-12 rounded-lg text-xl font-bold transition-all active:scale-95 ${
+            key === "back"
+              ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+              : key === "clear"
+              ? "bg-red-100 text-red-700 hover:bg-red-200 text-sm"
+              : "bg-white text-gray-900 hover:bg-gray-50 shadow-sm"
+          }`}
+        >
+          {key === "back" ? <Delete className="h-5 w-5 mx-auto" /> : key === "clear" ? "Clear" : key}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function GuestScreen({ goTo, goIdle, settings }) {
   const [step, setStep] = useState("info"); // info | plan | payment | cash | card
@@ -16,6 +51,105 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [loading, setLoading] = useState(false);
   const [cashAmount, setCashAmount] = useState("");
+
+  // Card entry state
+  const [cardNumber, setCardNumber] = useState("");
+  const [expMonth, setExpMonth] = useState("");
+  const [expYear, setExpYear] = useState("");
+  const [cvv, setCvv] = useState("");
+  const [activeField, setActiveField] = useState("card");
+
+  function formatCardNumber(value) {
+    const digits = value.replace(/\D/g, "");
+    return digits.replace(/(\d{4})(?=\d)/g, "$1 ").slice(0, 23);
+  }
+
+  function handleCardNumPadKey(key) {
+    if (activeField === "card") {
+      if (cardNumber.replace(/\s/g, "").length < 19) {
+        const newValue = cardNumber.replace(/\s/g, "") + key;
+        setCardNumber(formatCardNumber(newValue));
+      }
+    } else if (activeField === "cvv") {
+      if (cvv.length < 4) {
+        setCvv(cvv + key);
+      }
+    } else if (activeField === "month") {
+      if (expMonth.length < 2) {
+        const newMonth = expMonth + key;
+        if (newMonth.length === 2) {
+          const monthNum = parseInt(newMonth, 10);
+          if (monthNum >= 1 && monthNum <= 12) {
+            setExpMonth(newMonth);
+            setActiveField("year");
+          } else {
+            toast.error("Month must be 01-12");
+          }
+        } else {
+          setExpMonth(newMonth);
+        }
+      }
+    } else if (activeField === "year") {
+      if (expYear.length < 2) {
+        const newYear = expYear + key;
+        setExpYear(newYear);
+        if (newYear.length === 2) {
+          setActiveField("cvv");
+        }
+      }
+    }
+  }
+
+  function handleCardNumPadBackspace() {
+    if (activeField === "card") {
+      const digits = cardNumber.replace(/\s/g, "");
+      setCardNumber(formatCardNumber(digits.slice(0, -1)));
+    } else if (activeField === "cvv") {
+      setCvv(cvv.slice(0, -1));
+    } else if (activeField === "month") {
+      setExpMonth(expMonth.slice(0, -1));
+    } else if (activeField === "year") {
+      setExpYear(expYear.slice(0, -1));
+    }
+  }
+
+  function handleCardNumPadClear() {
+    if (activeField === "card") setCardNumber("");
+    else if (activeField === "cvv") setCvv("");
+    else if (activeField === "month") setExpMonth("");
+    else if (activeField === "year") setExpYear("");
+  }
+
+  async function handleCardPay() {
+    const cleanCardNumber = cardNumber.replace(/\s/g, "");
+    if (cleanCardNumber.length < 13 || cleanCardNumber.length > 19) {
+      toast.error("Please enter a valid card number");
+      return;
+    }
+    if (!expMonth || !expYear) {
+      toast.error("Please enter the card expiration date");
+      return;
+    }
+    if (cvv.length < 3 || cvv.length > 4) {
+      toast.error("Please enter a valid CVV (3-4 digits)");
+      return;
+    }
+
+    const expDate = `${expMonth.padStart(2, "0")}${expYear}`;
+    setLoading(true);
+    try {
+      const data = await guestPayCard(name.trim(), phone.trim() || null, selectedPlan.id, cleanCardNumber, expDate, cvv);
+      goTo("status", {
+        statusType: "success",
+        statusTitle: `Welcome, ${name.trim()}!`,
+        statusMessage: data.message || "Enjoy your swim!",
+      });
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Payment failed");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   function handleNext() {
     if (!name.trim()) {
@@ -249,33 +383,90 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
         )}
 
         {step === "card" && selectedPlan && (
-          <div className="w-full max-w-md text-center">
-            <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-              <p className="text-sm text-gray-500">{selectedPlan.name}</p>
-              <p className="mt-2 text-4xl font-extrabold text-gray-900">
+          <div className="w-full max-w-sm">
+            {/* Amount */}
+            <div className="mb-4 rounded-xl bg-white p-4 text-center shadow-sm ring-1 ring-gray-100">
+              <p className="text-xs text-gray-500">{selectedPlan.name}</p>
+              <p className="text-3xl font-extrabold text-gray-900">
                 {settings.currency}{Number(selectedPlan.price).toFixed(2)}
               </p>
             </div>
 
-            <div className="rounded-2xl bg-amber-50 p-6 ring-1 ring-amber-200">
-              <AlertCircle className="mx-auto h-12 w-12 text-amber-600" />
-              <h2 className="mt-4 text-xl font-bold text-amber-900">
-                Staff Assistance Required
-              </h2>
-              <p className="mt-2 text-amber-700">
-                Card payments for guests require staff assistance.
-                Please see a staff member to complete your payment.
-              </p>
-            </div>
+            <div className="space-y-3">
+              {/* Card Number */}
+              <button
+                type="button"
+                onClick={() => setActiveField("card")}
+                className={`w-full rounded-xl p-3 text-left font-mono text-lg ring-1 ${
+                  activeField === "card" ? "ring-2 ring-brand-500 bg-brand-50" : "ring-gray-200 bg-white"
+                } ${cardNumber ? "text-gray-900" : "text-gray-400"}`}
+              >
+                <span className="text-xs text-gray-500 block mb-1">Card Number</span>
+                {cardNumber || "0000 0000 0000 0000"}
+              </button>
 
-            <KioskButton
-              variant="ghost"
-              size="lg"
-              onClick={() => setStep("payment")}
-              className="mt-6 w-full"
-            >
-              Choose Different Payment
-            </KioskButton>
+              {/* Exp & CVV row */}
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveField("month")}
+                  className={`rounded-xl p-3 text-center font-mono ring-1 ${
+                    activeField === "month" ? "ring-2 ring-brand-500 bg-brand-50" : "ring-gray-200 bg-white"
+                  } ${expMonth ? "text-gray-900" : "text-gray-400"}`}
+                >
+                  <span className="text-xs text-gray-500 block mb-1">MM</span>
+                  {expMonth || "00"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveField("year")}
+                  className={`rounded-xl p-3 text-center font-mono ring-1 ${
+                    activeField === "year" ? "ring-2 ring-brand-500 bg-brand-50" : "ring-gray-200 bg-white"
+                  } ${expYear ? "text-gray-900" : "text-gray-400"}`}
+                >
+                  <span className="text-xs text-gray-500 block mb-1">YY</span>
+                  {expYear || "00"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveField("cvv")}
+                  className={`rounded-xl p-3 text-center font-mono ring-1 ${
+                    activeField === "cvv" ? "ring-2 ring-brand-500 bg-brand-50" : "ring-gray-200 bg-white"
+                  } ${cvv ? "text-gray-900" : "text-gray-400"}`}
+                >
+                  <span className="text-xs text-gray-500 block mb-1">CVV</span>
+                  {cvv ? "•".repeat(cvv.length) : "•••"}
+                </button>
+              </div>
+
+              {/* Number Pad */}
+              <CardNumberPad
+                onKey={handleCardNumPadKey}
+                onBackspace={handleCardNumPadBackspace}
+                onClear={handleCardNumPadClear}
+              />
+
+              {/* Pay Button */}
+              <KioskButton
+                variant="primary"
+                size="lg"
+                icon={CreditCard}
+                loading={loading}
+                onClick={handleCardPay}
+                className="w-full"
+              >
+                Pay {settings.currency}{Number(selectedPlan.price).toFixed(2)}
+              </KioskButton>
+
+              <KioskButton
+                variant="ghost"
+                size="lg"
+                onClick={() => setStep("payment")}
+                className="w-full"
+              >
+                Choose Different Payment
+              </KioskButton>
+            </div>
           </div>
         )}
       </div>

@@ -28,6 +28,7 @@ from app.schemas.kiosk import (
     CardPaymentRequest,
     CashPaymentRequest,
     CreditPaymentRequest,
+    GuestCardPaymentRequest,
     GuestVisitRequest,
     GuestVisitResponse,
     HostedPaymentSessionResponse,
@@ -1412,6 +1413,86 @@ def guest_visit(data: GuestVisitRequest, request: Request, db: Session = Depends
         cash_msg = get_setting(db, "cash_success_message", "Place {amount} in the cash box.")
         cash_msg = cash_msg.replace("{amount}", f"{currency}{plan.price:.2f}")
         return GuestVisitResponse(visit_id=visit.id, amount_paid=plan.price, message=f"Welcome, {data.name}! {cash_msg}")
+
+    return GuestVisitResponse(visit_id=visit.id, amount_paid=plan.price, message=f"Welcome, {data.name}! Enjoy your swim.")
+
+
+@router.post("/guest/pay/card", response_model=GuestVisitResponse)
+@limiter.limit("10/minute")
+def guest_pay_card(data: GuestCardPaymentRequest, request: Request, db: Session = Depends(get_db)):
+    """
+    Process a card payment for a guest visit with manual card entry.
+    """
+    guest_enabled = get_setting(db, "guest_visit_enabled", "true")
+    if guest_enabled != "true":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Guest visits are disabled")
+
+    plan = db.query(Plan).filter(Plan.id == data.plan_id, Plan.is_active.is_(True)).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    # Validate card number format
+    card_number = data.card_number.replace(" ", "").replace("-", "")
+    if not card_number.isdigit() or len(card_number) < 13 or len(card_number) > 19:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid card number format")
+
+    # Validate expiration format (MMYY)
+    if not data.exp_date.isdigit() or len(data.exp_date) != 4:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Expiration must be in MMYY format")
+
+    # Validate CVV format
+    if not data.cvv.isdigit() or len(data.cvv) < 3 or len(data.cvv) > 4:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CVV must be 3-4 digits")
+
+    # Process card payment
+    adapter = get_payment_adapter(db)
+    if not hasattr(adapter, 'process_manual_card_sale'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Manual card entry not supported by current payment processor"
+        )
+
+    charge_result = adapter.process_manual_card_sale(
+        card_number=card_number,
+        exp_date=data.exp_date,
+        cvv=data.cvv,
+        amount=plan.price,
+        member_id=None,
+        description=f"Guest visit: {data.name} - {plan.name}",
+        save_card=False,
+        customer_name=data.name,
+    )
+
+    if not charge_result.success:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=charge_result.message or "Card payment declined"
+        )
+
+    # Create guest visit record
+    card_last4 = card_number[-4:]
+    visit = GuestVisit(
+        name=data.name,
+        phone=data.phone,
+        payment_method="card",
+        amount_paid=plan.price,
+    )
+    db.add(visit)
+
+    # Create transaction record
+    transaction = Transaction(
+        member_id=None,
+        transaction_type=TransactionType.payment,
+        payment_method=PaymentMethod.card,
+        amount=plan.price,
+        reference_id=charge_result.reference_id,
+        notes=f"Guest visit: {data.name} - {plan.name} (****{card_last4})",
+    )
+    db.add(transaction)
+
+    db.commit()
+    db.refresh(visit)
+    logger.info("Guest card payment: name=%s, plan=%s, amount=$%s, card=****%s", data.name, plan.name, plan.price, card_last4)
 
     return GuestVisitResponse(visit_id=visit.id, amount_paid=plan.price, message=f"Welcome, {data.name}! Enjoy your swim.")
 

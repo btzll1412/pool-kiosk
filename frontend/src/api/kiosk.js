@@ -118,6 +118,18 @@ export async function guestVisit(name, phone, payment_method, plan_id) {
   return data;
 }
 
+export async function guestPayCard(name, phone, plan_id, card_number, exp_date, cvv) {
+  const { data } = await kiosk.post("/guest/pay/card", {
+    name,
+    phone,
+    plan_id,
+    card_number,
+    exp_date,
+    cvv,
+  });
+  return data;
+}
+
 export async function getSavedCards(member_id, pin) {
   const { data } = await kiosk.get("/saved-cards", { params: { member_id, pin } });
   return data;
