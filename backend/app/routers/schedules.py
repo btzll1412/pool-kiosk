@@ -2,6 +2,7 @@ import logging
 import uuid
 from datetime import datetime, time, timedelta
 
+import pytz
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,7 @@ from app.schemas.pool_schedule import (
     WeeklyScheduleResponse,
 )
 from app.services.auth_service import get_current_user
+from app.services.settings_service import get_setting
 
 router = APIRouter()
 
@@ -67,9 +69,20 @@ def get_current_schedule(
     db: Session = Depends(get_db),
 ):
     """Get the current pool status based on schedule. No auth required for kiosk display."""
-    now = datetime.now()
-    current_day = now.weekday()  # 0=Monday
-    current_time = now.time()
+    # Use configured timezone for schedule evaluation
+    tz_name = get_setting(db, "timezone", "America/New_York")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.timezone("America/New_York")
+
+    # Get current time in local timezone
+    local_now = datetime.now(local_tz)
+    current_day = local_now.weekday()  # 0=Monday
+    current_time = local_now.time()
+
+    # For override comparison, use naive datetime in local timezone
+    now = local_now.replace(tzinfo=None)
 
     # First check for active schedule overrides
     active_override = (
@@ -363,9 +376,18 @@ def list_overrides(
     current_user: User = Depends(get_current_user),
 ):
     """List all schedule overrides."""
+    # Use configured timezone for filtering
+    tz_name = get_setting(db, "timezone", "America/New_York")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.timezone("America/New_York")
+
+    local_now = datetime.now(local_tz).replace(tzinfo=None)
+
     query = db.query(ScheduleOverride)
     if not include_expired:
-        query = query.filter(ScheduleOverride.end_datetime > datetime.now())
+        query = query.filter(ScheduleOverride.end_datetime > local_now)
     overrides = query.order_by(ScheduleOverride.start_datetime.desc()).all()
     return overrides
 

@@ -4,6 +4,7 @@ from calendar import monthrange
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
+import pytz
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
@@ -75,6 +76,16 @@ from app.services.rate_limit import limiter
 from app.services.settings_service import get_setting
 
 router = APIRouter()
+
+
+def _get_local_today(db: Session) -> date:
+    """Get today's date in the configured local timezone."""
+    tz_name = get_setting(db, "timezone", "America/New_York")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.timezone("America/New_York")
+    return datetime.now(local_tz).date()
 
 
 @router.post("/scan", response_model=MemberStatus)
@@ -236,9 +247,20 @@ def _get_current_schedule_restrictions(db: Session) -> tuple[ScheduleType | None
     Get current schedule restrictions based on active override or regular schedule.
     Returns (schedule_type, restriction_message) or (None, None) if no restrictions.
     """
-    now = datetime.now()
-    current_day = now.weekday()  # 0=Monday
-    current_time = now.time()
+    # Use configured timezone for schedule evaluation
+    tz_name = get_setting(db, "timezone", "America/New_York")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.timezone("America/New_York")
+
+    # Get current time in local timezone
+    local_now = datetime.now(local_tz)
+    current_day = local_now.weekday()  # 0=Monday
+    current_time = local_now.time()
+
+    # For override comparison, use naive datetime in local timezone
+    now = local_now.replace(tzinfo=None)
 
     # First check for active schedule overrides
     active_override = (
@@ -359,9 +381,9 @@ def kiosk_checkin(data: KioskCheckinRequest, request: Request, db: Session = Dep
 
 
 
-def calculate_prorated_price(plan_price: Decimal, duration_months: int = 1) -> dict:
+def calculate_prorated_price(plan_price: Decimal, duration_months: int = 1, local_today: date | None = None) -> dict:
     """Calculate pro-rated price for remaining days in current month."""
-    today = date.today()
+    today = local_today if local_today is not None else date.today()
     days_in_month = monthrange(today.year, today.month)[1]
     days_remaining = days_in_month - today.day + 1  # Include today
 
@@ -391,16 +413,18 @@ def calculate_prorated_price(plan_price: Decimal, duration_months: int = 1) -> d
 
 
 
-def get_plan_effective_price(plan) -> Decimal:
+def get_plan_effective_price(plan, local_today: date | None = None) -> Decimal:
     """Get the effective price for a plan (prorated for monthly plans)."""
     if plan.plan_type.value == "monthly":
-        prorated = calculate_prorated_price(plan.price, plan.duration_months or 1)
+        prorated = calculate_prorated_price(plan.price, plan.duration_months or 1, local_today)
         return Decimal(prorated["prorated_price"])
     return plan.price
 
 @router.get("/plans")
 @limiter.limit("30/minute")
 def get_kiosk_plans(request: Request, db: Session = Depends(get_db), is_senior: bool = None):
+    local_today = _get_local_today(db)
+
     query = db.query(Plan).filter(Plan.is_active.is_(True))
 
     # Filter by senior status:
@@ -421,7 +445,7 @@ def get_kiosk_plans(request: Request, db: Session = Depends(get_db), is_senior: 
             "duration_days": p.duration_days,
             "duration_months": p.duration_months,
             "is_senior_plan": p.is_senior_plan,
-            "prorated": calculate_prorated_price(p.price, p.duration_months or 1) if p.plan_type.value == "monthly" else None,
+            "prorated": calculate_prorated_price(p.price, p.duration_months or 1, local_today) if p.plan_type.value == "monthly" else None,
         }
         for p in plans
     ]
@@ -480,8 +504,9 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
 
+    local_today = _get_local_today(db)
     credit_used = Decimal("0.00")
-    base_price = get_plan_effective_price(plan)
+    base_price = get_plan_effective_price(plan, local_today)
     effective_price = base_price
 
     # Apply account credit if requested
@@ -612,8 +637,9 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
 
+    local_today = _get_local_today(db)
     credit_used = Decimal("0.00")
-    base_price = get_plan_effective_price(plan)
+    base_price = get_plan_effective_price(plan, local_today)
     effective_price = base_price
 
     # Apply account credit if requested
@@ -768,8 +794,9 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
             detail="CVV must be 3-4 digits"
         )
 
+    local_today = _get_local_today(db)
     credit_used = Decimal("0.00")
-    base_price = get_plan_effective_price(plan)
+    base_price = get_plan_effective_price(plan, local_today)
     effective_price = base_price
 
     # Apply account credit if requested
@@ -1662,7 +1689,7 @@ def guest_pay_split(data: GuestSplitPaymentRequest, request: Request, db: Sessio
 
 
 def _build_member_status(db: Session, member: Member) -> MemberStatus:
-    today = date.today()
+    today = _get_local_today(db)
     active_info = None
     is_frozen = False
     frozen_until = None
@@ -1790,7 +1817,8 @@ def initiate_terminal_payment(
         )
 
     # Calculate effective price (apply credit if requested)
-    base_price = get_plan_effective_price(plan)
+    local_today = _get_local_today(db)
+    base_price = get_plan_effective_price(plan, local_today)
     credit_used = Decimal("0.00")
     effective_price = base_price
 
@@ -1899,7 +1927,8 @@ def check_terminal_payment_status(
                     membership = create_membership(db, pending.member_id, pending.plan_id)
 
                     # Create card payment transaction first
-                    effective_price = get_plan_effective_price(plan) - pending.credit_used
+                    local_today = _get_local_today(db)
+                    effective_price = get_plan_effective_price(plan, local_today) - pending.credit_used
                     tx = Transaction(
                         member_id=pending.member_id,
                         transaction_type=TransactionType.payment,

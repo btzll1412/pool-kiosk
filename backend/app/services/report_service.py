@@ -17,7 +17,17 @@ from app.models.plan import PlanType
 from app.models.transaction import PaymentMethod, Transaction, TransactionType
 
 
-def is_membership_usable(membership: Membership) -> bool:
+def _get_local_today(db: Session) -> date:
+    """Get today's date in the configured local timezone."""
+    tz_name = get_setting(db, "timezone", "America/New_York")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.timezone("America/New_York")
+    return datetime.now(local_tz).date()
+
+
+def is_membership_usable(membership: Membership, local_today: date | None = None) -> bool:
     """
     Check if a membership is truly usable (active, not expired, has remaining swims).
 
@@ -25,11 +35,15 @@ def is_membership_usable(membership: Membership) -> bool:
     - is_active is True
     - AND not expired (valid_until is None or >= today)
     - AND has swims remaining (for limited/swim_pass plans)
+
+    Args:
+        membership: The membership to check
+        local_today: Today's date in the local timezone (optional, defaults to date.today())
     """
     if not membership.is_active:
         return False
 
-    today = date.today()
+    today = local_today if local_today is not None else date.today()
 
     # Check expiration
     if membership.valid_until and membership.valid_until < today:
@@ -79,7 +93,7 @@ def get_dashboard_stats(db: Session) -> dict:
 
     # Count truly usable memberships (active, not expired, has remaining swims)
     all_active = db.query(Membership).filter(Membership.is_active.is_(True)).all()
-    active_memberships = sum(1 for m in all_active if is_membership_usable(m))
+    active_memberships = sum(1 for m in all_active if is_membership_usable(m, local_today))
 
     guests = db.query(func.count(GuestVisit.id)).filter(
         GuestVisit.created_at.between(today_start, today_end)
@@ -97,8 +111,18 @@ def get_dashboard_stats(db: Session) -> dict:
 def get_revenue_report(
     db: Session, start_date: date, end_date: date, group_by: str = "day"
 ) -> tuple[list[dict], Decimal]:
-    start = datetime.combine(start_date, datetime.min.time())
-    end = datetime.combine(end_date, datetime.max.time())
+    # Use configured timezone for date interpretation
+    tz_name = get_setting(db, "timezone", "America/New_York")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.timezone("America/New_York")
+
+    # Convert local dates to UTC for database query
+    start_local = local_tz.localize(datetime.combine(start_date, datetime.min.time()))
+    end_local = local_tz.localize(datetime.combine(end_date, datetime.max.time()))
+    start = start_local.astimezone(pytz.UTC).replace(tzinfo=None)
+    end = end_local.astimezone(pytz.UTC).replace(tzinfo=None)
 
     transactions = (
         db.query(Transaction)
@@ -113,12 +137,16 @@ def get_revenue_report(
     grand_total = Decimal("0.00")
 
     for tx in transactions:
+        # Convert UTC timestamp to local timezone for grouping
+        utc_dt = pytz.UTC.localize(tx.created_at)
+        local_dt = utc_dt.astimezone(local_tz)
+
         if group_by == "month":
-            key = tx.created_at.strftime("%Y-%m")
+            key = local_dt.strftime("%Y-%m")
         elif group_by == "week":
-            key = f"{tx.created_at.isocalendar()[0]}-W{tx.created_at.isocalendar()[1]:02d}"
+            key = f"{local_dt.isocalendar()[0]}-W{local_dt.isocalendar()[1]:02d}"
         else:
-            key = tx.created_at.strftime("%Y-%m-%d")
+            key = local_dt.strftime("%Y-%m-%d")
 
         if key not in buckets:
             buckets[key] = {"total": Decimal("0"), "cash": Decimal("0"), "card": Decimal("0"), "credit": Decimal("0")}
@@ -141,8 +169,18 @@ def get_revenue_report(
 
 
 def get_swim_report(db: Session, start_date: date, end_date: date) -> dict:
-    start = datetime.combine(start_date, datetime.min.time())
-    end = datetime.combine(end_date, datetime.max.time())
+    # Use configured timezone for date interpretation
+    tz_name = get_setting(db, "timezone", "America/New_York")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.timezone("America/New_York")
+
+    # Convert local dates to UTC for database query
+    start_local = local_tz.localize(datetime.combine(start_date, datetime.min.time()))
+    end_local = local_tz.localize(datetime.combine(end_date, datetime.max.time()))
+    start = start_local.astimezone(pytz.UTC).replace(tzinfo=None)
+    end = end_local.astimezone(pytz.UTC).replace(tzinfo=None)
 
     checkins = db.query(Checkin).filter(Checkin.checked_in_at.between(start, end)).all()
 
@@ -164,14 +202,17 @@ def get_swim_report(db: Session, start_date: date, end_date: date) -> dict:
 
 
 def get_membership_report(db: Session) -> dict:
+    # Use configured timezone for date calculations
+    local_today = _get_local_today(db)
+
     all_active = db.query(Membership).filter(Membership.is_active.is_(True)).all()
 
     # Filter to only truly usable memberships
-    usable = [m for m in all_active if is_membership_usable(m)]
+    usable = [m for m in all_active if is_membership_usable(m, local_today)]
 
     by_plan: dict[str, int] = {}
     expiring_soon = 0
-    threshold = date.today() + timedelta(days=7)
+    threshold = local_today + timedelta(days=7)
 
     for m in usable:
         plan_name = m.plan.name if m.plan else "Unknown"

@@ -1,7 +1,8 @@
 import logging
 import uuid
-from datetime import date
+from datetime import date, datetime
 
+import pytz
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -18,6 +19,7 @@ from app.schemas.transaction import (
 )
 from app.services.activity_service import log_activity
 from app.services.auth_service import get_current_user
+from app.services.settings_service import get_setting
 
 router = APIRouter()
 
@@ -34,6 +36,13 @@ def list_transactions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Use configured timezone for date interpretation
+    tz_name = get_setting(db, "timezone", "America/New_York")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.timezone("America/New_York")
+
     query = db.query(Transaction)
     if member_id:
         query = query.filter(Transaction.member_id == member_id)
@@ -42,11 +51,15 @@ def list_transactions(
     if payment_method:
         query = query.filter(Transaction.payment_method == payment_method)
     if start_date:
-        from datetime import datetime
-        query = query.filter(Transaction.created_at >= datetime.combine(start_date, datetime.min.time()))
+        # Convert local date to UTC for database query
+        start_local = local_tz.localize(datetime.combine(start_date, datetime.min.time()))
+        start_utc = start_local.astimezone(pytz.UTC).replace(tzinfo=None)
+        query = query.filter(Transaction.created_at >= start_utc)
     if end_date:
-        from datetime import datetime
-        query = query.filter(Transaction.created_at <= datetime.combine(end_date, datetime.max.time()))
+        # Convert local date to UTC for database query
+        end_local = local_tz.localize(datetime.combine(end_date, datetime.max.time()))
+        end_utc = end_local.astimezone(pytz.UTC).replace(tzinfo=None)
+        query = query.filter(Transaction.created_at <= end_utc)
 
     total = query.count()
     transactions = query.order_by(Transaction.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()

@@ -3,7 +3,9 @@ import logging.handlers
 import os
 import sys
 from contextlib import asynccontextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+
+import pytz
 
 # Configure logging with both console and file output
 LOG_DIR = os.environ.get("LOG_DIR", "/app/logs")
@@ -96,6 +98,16 @@ from app.services.settings_service import get_setting
 logger = logging.getLogger(__name__)
 
 
+def _get_local_today(db: Session) -> date:
+    """Get today's date in the configured local timezone."""
+    tz_name = get_setting(db, "timezone", "America/New_York")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.timezone("America/New_York")
+    return datetime.now(local_tz).date()
+
+
 def run_auto_charge_job():
     """Daily job to process auto-charge on saved cards."""
     db = SessionLocal()
@@ -113,7 +125,7 @@ def run_membership_expiry_check():
     db: Session = SessionLocal()
     try:
         warning_days = int(get_setting(db, "membership_expiry_warning_days", "7"))
-        today = date.today()
+        today = _get_local_today(db)
         warning_date = today + timedelta(days=warning_days)
 
         active_monthly = (
@@ -163,9 +175,10 @@ def run_daily_summary():
     try:
         stats = get_dashboard_stats(db)
         pool_name = get_setting(db, "pool_name", "Pool")
+        local_today = _get_local_today(db)
         notify_daily_summary(db, {
             "pool_name": pool_name,
-            "date": str(date.today()),
+            "date": str(local_today),
             "total_checkins_today": stats["total_checkins_today"],
             "unique_members_today": stats["unique_members_today"],
             "revenue_today": str(stats["revenue_today"]),
