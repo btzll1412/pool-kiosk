@@ -104,6 +104,7 @@ class GuestVisitRequest(BaseModel):
     phone: str
     payment_method: PaymentMethod
     plan_id: uuid.UUID
+    cash_tendered: Decimal | None = None  # Actual cash given (for tracking overpayment)
 
 
 class GuestVisitResponse(BaseModel):

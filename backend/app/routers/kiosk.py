@@ -1384,22 +1384,33 @@ def guest_visit(data: GuestVisitRequest, request: Request, db: Session = Depends
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
+    # Calculate overpayment for cash
+    overpayment = Decimal("0.00")
+    if data.payment_method == "cash" and data.cash_tendered:
+        overpayment = data.cash_tendered - plan.price
+        if overpayment < 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cash amount is less than plan price")
+
     visit = GuestVisit(
         name=data.name,
         phone=data.phone,
         payment_method=data.payment_method,
-        amount_paid=plan.price,
+        amount_paid=data.cash_tendered if data.cash_tendered else plan.price,
     )
     db.add(visit)
 
     # Create a transaction record for revenue tracking
     payment_method_enum = PaymentMethod.cash if data.payment_method == "cash" else PaymentMethod.card
+    notes = f"Guest visit: {data.name} - {plan.name}"
+    if overpayment > 0:
+        notes += f" (Overpaid: ${overpayment:.2f} - no change given)"
+
     transaction = Transaction(
         member_id=None,  # Guest visit, no member
         transaction_type=TransactionType.payment,
         payment_method=payment_method_enum,
-        amount=plan.price,
-        notes=f"Guest visit: {data.name} - {plan.name}",
+        amount=data.cash_tendered if data.cash_tendered else plan.price,
+        notes=notes,
     )
     db.add(transaction)
 

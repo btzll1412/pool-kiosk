@@ -179,7 +179,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
     }
     setLoading(true);
     try {
-      const data = await guestVisit(name.trim(), phone.trim() || null, method, selectedPlan.id);
+      const data = await guestVisit(name.trim(), phone.trim() || null, method, selectedPlan.id, method === "cash" ? parseFloat(cashAmount) : null);
 
       let message = data.message || "Enjoy your swim!";
       // For cash payments, show the cash instruction with the amount
