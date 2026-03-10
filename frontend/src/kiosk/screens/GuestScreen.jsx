@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { ArrowLeft, Banknote, CreditCard, UserPlus, Delete } from "lucide-react";
+import { ArrowLeft, Banknote, CreditCard, UserPlus, Delete, Split } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
 import KioskInput from "../components/KioskInput";
 import PlanCard from "../components/PlanCard";
 import NumPad from "../components/NumPad";
-import { getPlans, guestVisit, guestPayCard } from "../../api/kiosk";
+import { getPlans, guestVisit, guestPayCard, guestPaySplit } from "../../api/kiosk";
 
 // Compact number pad for card entry
 function CardNumberPad({ onKey, onBackspace, onClear }) {
@@ -43,7 +43,7 @@ function CardNumberPad({ onKey, onBackspace, onClear }) {
 }
 
 export default function GuestScreen({ goTo, goIdle, settings }) {
-  const [step, setStep] = useState("info"); // info | plan | payment | cash | card
+  const [step, setStep] = useState("info"); // info | plan | payment | cash | card | splitCash | splitCard
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [plans, setPlans] = useState([]);
@@ -51,6 +51,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [loading, setLoading] = useState(false);
   const [cashAmount, setCashAmount] = useState("");
+  const [splitCashAmount, setSplitCashAmount] = useState("");
 
   // Card entry state
   const [cardNumber, setCardNumber] = useState("");
@@ -151,6 +152,53 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
     }
   }
 
+  async function handleSplitPay() {
+    const cleanCardNumber = cardNumber.replace(/\s/g, "");
+    if (cleanCardNumber.length < 13 || cleanCardNumber.length > 19) {
+      toast.error("Please enter a valid card number");
+      return;
+    }
+    if (!expMonth || !expYear) {
+      toast.error("Please enter the card expiration date");
+      return;
+    }
+    if (cvv.length < 3 || cvv.length > 4) {
+      toast.error("Please enter a valid CVV (3-4 digits)");
+      return;
+    }
+
+    const expDate = `${expMonth.padStart(2, "0")}${expYear}`;
+    setLoading(true);
+    try {
+      const data = await guestPaySplit(
+        name.trim(),
+        phone.trim() || null,
+        selectedPlan.id,
+        parseFloat(splitCashAmount),
+        cleanCardNumber,
+        expDate,
+        cvv
+      );
+      goTo("status", {
+        statusType: "success",
+        statusTitle: `Welcome, ${name.trim()}!`,
+        statusMessage: data.message || "Enjoy your swim!",
+      });
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Payment failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function resetCardFields() {
+    setCardNumber("");
+    setExpMonth("");
+    setExpYear("");
+    setCvv("");
+    setActiveField("card");
+  }
+
   function handleNext() {
     if (!name.trim()) {
       toast.error("Please enter your name");
@@ -207,7 +255,8 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
         <button
           type="button"
           onClick={() => {
-            if (step === "cash" || step === "card") setStep("payment");
+            if (step === "splitCard") setStep("splitCash");
+            else if (step === "cash" || step === "card" || step === "splitCash") setStep("payment");
             else if (step === "payment") setStep("plan");
             else if (step === "plan") setStep("info");
             else goIdle();
@@ -319,7 +368,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
               How would you like to pay?
             </h2>
 
-            <div className="flex justify-center gap-4">
+            <div className="flex justify-center gap-4 flex-wrap">
               <button
                 type="button"
                 disabled={loading}
@@ -336,13 +385,32 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
               <button
                 type="button"
                 disabled={loading}
-                onClick={() => setStep("card")}
+                onClick={() => {
+                  resetCardFields();
+                  setStep("card");
+                }}
                 className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
               >
                 <CreditCard className="h-8 w-8 text-blue-600" />
                 <span className="text-lg font-semibold text-gray-900">Card</span>
                 <span className="text-xs text-gray-400">Credit or Debit</span>
               </button>
+              {settings.split_payment_enabled !== "false" && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => {
+                    setSplitCashAmount("");
+                    resetCardFields();
+                    setStep("splitCash");
+                  }}
+                  className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
+                >
+                  <Split className="h-8 w-8 text-purple-600" />
+                  <span className="text-lg font-semibold text-gray-900">Split</span>
+                  <span className="text-xs text-gray-400">Cash + Card</span>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -456,6 +524,138 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
                 className="w-full"
               >
                 Pay {settings.currency}{Number(selectedPlan.price).toFixed(2)}
+              </KioskButton>
+
+              <KioskButton
+                variant="ghost"
+                size="lg"
+                onClick={() => setStep("payment")}
+                className="w-full"
+              >
+                Choose Different Payment
+              </KioskButton>
+            </div>
+          </div>
+        )}
+
+        {step === "splitCash" && selectedPlan && (
+          <div className="w-full max-w-sm">
+            <div className="mb-4 rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-gray-100">
+              <p className="text-sm text-gray-500">{selectedPlan.name}</p>
+              <p className="text-3xl font-extrabold text-gray-900">
+                {settings.currency}{Number(selectedPlan.price).toFixed(2)}
+              </p>
+              <p className="mt-2 text-xs text-purple-600 font-medium">Split Payment</p>
+            </div>
+
+            <div className="mb-4 rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-gray-100">
+              <p className="text-sm text-gray-500">Cash Portion</p>
+              <p className="text-3xl font-extrabold text-gray-900">
+                {settings.currency}{splitCashAmount || "0.00"}
+              </p>
+              {splitCashAmount && parseFloat(splitCashAmount) > 0 && parseFloat(splitCashAmount) < Number(selectedPlan.price) && (
+                <p className="mt-1 text-sm text-blue-600">
+                  Card: {settings.currency}{(Number(selectedPlan.price) - parseFloat(splitCashAmount)).toFixed(2)}
+                </p>
+              )}
+            </div>
+
+            <NumPad value={splitCashAmount} onChange={setSplitCashAmount} maxLength={7} showDecimal />
+
+            <KioskButton
+              variant="primary"
+              size="xl"
+              loading={loading}
+              disabled={!splitCashAmount || parseFloat(splitCashAmount) <= 0 || parseFloat(splitCashAmount) >= Number(selectedPlan.price)}
+              onClick={() => setStep("splitCard")}
+              className="mt-4 w-full"
+            >
+              Continue to Card Entry
+            </KioskButton>
+
+            {parseFloat(splitCashAmount) >= Number(selectedPlan.price) && (
+              <p className="mt-2 text-center text-sm text-amber-600">
+                Cash must be less than total for split payment
+              </p>
+            )}
+          </div>
+        )}
+
+        {step === "splitCard" && selectedPlan && (
+          <div className="w-full max-w-sm">
+            {/* Amount breakdown */}
+            <div className="mb-4 rounded-xl bg-white p-4 text-center shadow-sm ring-1 ring-gray-100">
+              <p className="text-xs text-gray-500">{selectedPlan.name} - Split Payment</p>
+              <div className="mt-2 flex justify-center gap-4 text-sm">
+                <span className="text-emerald-600">Cash: {settings.currency}{parseFloat(splitCashAmount).toFixed(2)}</span>
+                <span className="text-blue-600">Card: {settings.currency}{(Number(selectedPlan.price) - parseFloat(splitCashAmount)).toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {/* Card Number */}
+              <button
+                type="button"
+                onClick={() => setActiveField("card")}
+                className={`w-full rounded-xl p-3 text-left font-mono text-lg ring-1 ${
+                  activeField === "card" ? "ring-2 ring-brand-500 bg-brand-50" : "ring-gray-200 bg-white"
+                } ${cardNumber ? "text-gray-900" : "text-gray-400"}`}
+              >
+                <span className="text-xs text-gray-500 block mb-1">Card Number</span>
+                {cardNumber || "0000 0000 0000 0000"}
+              </button>
+
+              {/* Exp & CVV row */}
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveField("month")}
+                  className={`rounded-xl p-3 text-center font-mono ring-1 ${
+                    activeField === "month" ? "ring-2 ring-brand-500 bg-brand-50" : "ring-gray-200 bg-white"
+                  } ${expMonth ? "text-gray-900" : "text-gray-400"}`}
+                >
+                  <span className="text-xs text-gray-500 block mb-1">MM</span>
+                  {expMonth || "00"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveField("year")}
+                  className={`rounded-xl p-3 text-center font-mono ring-1 ${
+                    activeField === "year" ? "ring-2 ring-brand-500 bg-brand-50" : "ring-gray-200 bg-white"
+                  } ${expYear ? "text-gray-900" : "text-gray-400"}`}
+                >
+                  <span className="text-xs text-gray-500 block mb-1">YY</span>
+                  {expYear || "00"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveField("cvv")}
+                  className={`rounded-xl p-3 text-center font-mono ring-1 ${
+                    activeField === "cvv" ? "ring-2 ring-brand-500 bg-brand-50" : "ring-gray-200 bg-white"
+                  } ${cvv ? "text-gray-900" : "text-gray-400"}`}
+                >
+                  <span className="text-xs text-gray-500 block mb-1">CVV</span>
+                  {cvv ? "•".repeat(cvv.length) : "•••"}
+                </button>
+              </div>
+
+              {/* Number Pad */}
+              <CardNumberPad
+                onKey={handleCardNumPadKey}
+                onBackspace={handleCardNumPadBackspace}
+                onClear={handleCardNumPadClear}
+              />
+
+              {/* Pay Button */}
+              <KioskButton
+                variant="primary"
+                size="lg"
+                icon={Split}
+                loading={loading}
+                onClick={handleSplitPay}
+                className="w-full"
+              >
+                Complete Split Payment
               </KioskButton>
 
               <KioskButton

@@ -134,6 +134,19 @@ export async function guestPayCard(name, phone, plan_id, card_number, exp_date, 
   return data;
 }
 
+export async function guestPaySplit(name, phone, plan_id, cash_amount, card_number, exp_date, cvv) {
+  const { data } = await kiosk.post("/guest/pay/split", {
+    name,
+    phone,
+    plan_id,
+    cash_amount: String(cash_amount),
+    card_number,
+    exp_date,
+    cvv,
+  });
+  return data;
+}
+
 export async function getSavedCards(member_id, pin) {
   const { data } = await kiosk.get("/saved-cards", { params: { member_id, pin } });
   return data;

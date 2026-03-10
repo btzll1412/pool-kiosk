@@ -122,6 +122,16 @@ class GuestCardPaymentRequest(BaseModel):
     cvv: str
 
 
+class GuestSplitPaymentRequest(BaseModel):
+    name: str
+    phone: str | None = None
+    plan_id: uuid.UUID
+    cash_amount: Decimal  # Amount paid in cash
+    card_number: str
+    exp_date: str  # MMYY format
+    cvv: str
+
+
 class SavedCardRequest(BaseModel):
     processor_token: str
     card_last4: str

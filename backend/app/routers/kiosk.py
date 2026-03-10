@@ -29,6 +29,7 @@ from app.schemas.kiosk import (
     CashPaymentRequest,
     CreditPaymentRequest,
     GuestCardPaymentRequest,
+    GuestSplitPaymentRequest,
     GuestVisitRequest,
     GuestVisitResponse,
     HostedPaymentSessionResponse,
@@ -1396,6 +1397,8 @@ def guest_visit(data: GuestVisitRequest, request: Request, db: Session = Depends
         phone=data.phone,
         payment_method=data.payment_method,
         amount_paid=data.cash_tendered if data.cash_tendered else plan.price,
+        plan_id=plan.id,
+        plan_name=plan.name,
     )
     db.add(visit)
 
@@ -1447,9 +1450,21 @@ def guest_pay_card(data: GuestCardPaymentRequest, request: Request, db: Session 
     if not card_number.isdigit() or len(card_number) < 13 or len(card_number) > 19:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid card number format")
 
-    # Validate expiration format (MMYY)
+    # Validate expiration format (MMYY) and check if card is expired
     if not data.exp_date.isdigit() or len(data.exp_date) != 4:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Expiration must be in MMYY format")
+
+    exp_month = int(data.exp_date[:2])
+    exp_year = int(data.exp_date[2:])
+    if exp_month < 1 or exp_month > 12:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid expiration month")
+
+    # Convert 2-digit year to 4-digit (assume 20xx)
+    exp_year_full = 2000 + exp_year
+    now = datetime.now()
+    # Card expires at the end of the expiration month
+    if exp_year_full < now.year or (exp_year_full == now.year and exp_month < now.month):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Card has expired")
 
     # Validate CVV format
     if not data.cvv.isdigit() or len(data.cvv) < 3 or len(data.cvv) > 4:
@@ -1487,6 +1502,8 @@ def guest_pay_card(data: GuestCardPaymentRequest, request: Request, db: Session 
         phone=data.phone,
         payment_method="card",
         amount_paid=plan.price,
+        plan_id=plan.id,
+        plan_name=plan.name,
     )
     db.add(visit)
 
@@ -1506,6 +1523,132 @@ def guest_pay_card(data: GuestCardPaymentRequest, request: Request, db: Session 
     logger.info("Guest card payment: name=%s, plan=%s, amount=$%s, card=****%s", data.name, plan.name, plan.price, card_last4)
 
     return GuestVisitResponse(visit_id=visit.id, amount_paid=plan.price, message=f"Welcome, {data.name}! Enjoy your swim.")
+
+
+@router.post("/guest/pay/split", response_model=GuestVisitResponse)
+@limiter.limit("10/minute")
+def guest_pay_split(data: GuestSplitPaymentRequest, request: Request, db: Session = Depends(get_db)):
+    """
+    Process a split payment (cash + card) for a guest visit.
+    """
+    guest_enabled = get_setting(db, "guest_visit_enabled", "true")
+    if guest_enabled != "true":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Guest visits are disabled")
+
+    split_enabled = get_setting(db, "split_payment_enabled", "true")
+    if split_enabled != "true":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Split payments are disabled")
+
+    plan = db.query(Plan).filter(Plan.id == data.plan_id, Plan.is_active.is_(True)).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    # Validate cash amount
+    if data.cash_amount <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cash amount must be greater than zero")
+    if data.cash_amount >= plan.price:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cash amount must be less than plan price for split payment")
+
+    card_amount = plan.price - data.cash_amount
+
+    # Validate card number format
+    card_number = data.card_number.replace(" ", "").replace("-", "")
+    if not card_number.isdigit() or len(card_number) < 13 or len(card_number) > 19:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid card number format")
+
+    # Validate expiration format (MMYY) and check if card is expired
+    if not data.exp_date.isdigit() or len(data.exp_date) != 4:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Expiration must be in MMYY format")
+
+    exp_month = int(data.exp_date[:2])
+    exp_year = int(data.exp_date[2:])
+    if exp_month < 1 or exp_month > 12:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid expiration month")
+
+    exp_year_full = 2000 + exp_year
+    now = datetime.now()
+    if exp_year_full < now.year or (exp_year_full == now.year and exp_month < now.month):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Card has expired")
+
+    # Validate CVV format
+    if not data.cvv.isdigit() or len(data.cvv) < 3 or len(data.cvv) > 4:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CVV must be 3-4 digits")
+
+    # Process card portion of payment
+    adapter = get_payment_adapter(db)
+    if not hasattr(adapter, 'process_manual_card_sale'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Manual card entry not supported by current payment processor"
+        )
+
+    charge_result = adapter.process_manual_card_sale(
+        card_number=card_number,
+        exp_date=data.exp_date,
+        cvv=data.cvv,
+        amount=card_amount,
+        member_id=None,
+        description=f"Guest split visit: {data.name} - {plan.name} (card portion)",
+        save_card=False,
+        customer_name=data.name,
+    )
+
+    if not charge_result.success:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=charge_result.message or "Card payment declined"
+        )
+
+    # Create guest visit record
+    card_last4 = card_number[-4:]
+    visit = GuestVisit(
+        name=data.name,
+        phone=data.phone,
+        payment_method="split",
+        amount_paid=plan.price,
+        plan_id=plan.id,
+        plan_name=plan.name,
+    )
+    db.add(visit)
+
+    # Create cash transaction record
+    cash_tx = Transaction(
+        member_id=None,
+        transaction_type=TransactionType.payment,
+        payment_method=PaymentMethod.cash,
+        amount=data.cash_amount,
+        notes=f"Guest split visit (cash): {data.name} - {plan.name}",
+    )
+    db.add(cash_tx)
+
+    # Create card transaction record
+    card_tx = Transaction(
+        member_id=None,
+        transaction_type=TransactionType.payment,
+        payment_method=PaymentMethod.card,
+        amount=card_amount,
+        reference_id=charge_result.reference_id,
+        notes=f"Guest split visit (card): {data.name} - {plan.name} (****{card_last4})",
+    )
+    db.add(card_tx)
+
+    db.commit()
+    db.refresh(visit)
+
+    currency = get_setting(db, "currency_symbol", "$")
+    cash_msg = get_setting(db, "cash_success_message", "Place {amount} in the cash box.")
+    cash_msg = cash_msg.replace("{amount}", f"{currency}{data.cash_amount:.2f}")
+
+    logger.info(
+        "Guest split payment: name=%s, plan=%s, cash=$%s, card=$%s",
+        data.name, plan.name, data.cash_amount, card_amount
+    )
+
+    return GuestVisitResponse(
+        visit_id=visit.id,
+        amount_paid=plan.price,
+        message=f"Welcome, {data.name}! {cash_msg}"
+    )
 
 
 def _build_member_status(db: Session, member: Member) -> MemberStatus:

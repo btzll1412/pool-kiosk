@@ -192,16 +192,20 @@ def list_checkins(
             if not passes_time_filter(guest.created_at):
                 continue
 
+            # Build notes with plan name and payment details
+            plan_display = guest.plan_name if guest.plan_name else "Guest Visit"
+            notes = f"Paid ${guest.amount_paid} ({guest.payment_method.value})"
+
             all_items.append({
                 "id": guest.id,
                 "member_id": None,
                 "member_name": f"{guest.name} (Guest)",
                 "membership_id": None,
                 "checkin_type": "guest",
-                "plan_name": "Guest Visit",
+                "plan_name": plan_display,
                 "guest_count": 0,
                 "checked_in_at": guest.created_at,
-                "notes": f"Paid ${guest.amount_paid} ({guest.payment_method.value})",
+                "notes": notes,
                 "is_guest": True,
             })
 
