@@ -744,12 +744,22 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
             detail="Invalid card number format"
         )
 
-    # Validate expiration format (MMYY)
+    # Validate expiration format (MMYY) and check if card is expired
     if not data.exp_date.isdigit() or len(data.exp_date) != 4:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Expiration must be in MMYY format"
         )
+
+    exp_month = int(data.exp_date[:2])
+    exp_year = int(data.exp_date[2:])
+    if exp_month < 1 or exp_month > 12:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid expiration month")
+
+    exp_year_full = 2000 + exp_year
+    now = datetime.now()
+    if exp_year_full < now.year or (exp_year_full == now.year and exp_month < now.month):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Card has expired")
 
     # Validate CVV format
     if not data.cvv.isdigit() or len(data.cvv) < 3 or len(data.cvv) > 4:

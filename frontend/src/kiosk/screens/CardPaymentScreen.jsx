@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { ArrowLeft, CreditCard, Keyboard, Star, CheckSquare, Square, Delete } from "lucide-react";
+import { ArrowLeft, CreditCard, Keyboard, Star, CheckSquare, Square, Delete, XCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
 import { getSavedCards, payCard, payCardManual, tokenizeCardFromSwipe } from "../../api/kiosk";
@@ -67,6 +67,8 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
   const [swipeData, setSwipeData] = useState("");
   const [swipeStatus, setSwipeStatus] = useState("waiting");
   const swipeInputRef = useRef(null);
+
+  const [paymentError, setPaymentError] = useState(null);
 
   useEffect(() => {
     getSavedCards(member.member_id, pin)
@@ -157,10 +159,11 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
   async function processSwipe(trackData) {
     setSwipeStatus("processing");
     setLoading(true);
+    setPaymentError(null);
     try {
       const tokenResult = await tokenizeCardFromSwipe(trackData, member.member_id, pin, saveCard ? "Swiped Card" : null);
       if (!tokenResult.success) {
-        toast.error(tokenResult.message || "Failed to read card");
+        setPaymentError(tokenResult.message || "Failed to read card");
         setSwipeStatus("error");
         setSwipeData("");
         setLoading(false);
@@ -176,7 +179,8 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
       }
       goTo("status", { statusType: "success", statusTitle: "Payment Complete!", statusMessage: message });
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Payment failed");
+      const errorMsg = err.response?.data?.detail || "Payment failed. Please try again.";
+      setPaymentError(errorMsg);
       setSwipeStatus("error");
       setSwipeData("");
     } finally {
@@ -190,6 +194,7 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
       return;
     }
     setLoading(true);
+    setPaymentError(null);
     try {
       const data = await payCard(member.member_id, plan.id, pin, {
         saved_card_id: selectedCardId,
@@ -201,7 +206,8 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
       }
       goTo("status", { statusType: "success", statusTitle: "Payment Complete!", statusMessage: message });
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Payment failed");
+      const errorMsg = err.response?.data?.detail || "Payment failed. Please try again.";
+      setPaymentError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -223,6 +229,7 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
     }
     const expDate = `${manualExpMonth.padStart(2, "0")}${manualExpYear}`;
     setLoading(true);
+    setPaymentError(null);
     try {
       const data = await payCardManual(member.member_id, plan.id, pin, cleanCardNumber, expDate, manualCvv, saveCard, useCredit);
       let message = data.message || "Card payment processed successfully.";
@@ -231,7 +238,8 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
       }
       goTo("status", { statusType: "success", statusTitle: "Payment Complete!", statusMessage: message });
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Payment failed");
+      const errorMsg = err.response?.data?.detail || "Payment failed. Please try again.";
+      setPaymentError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -272,6 +280,27 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
             {isProrated && <p className="text-xs text-blue-600">Pro-rated: {plan.prorated.days_remaining} days</p>}
             {useCredit && creditAmount > 0 && <p className="text-xs text-emerald-600">-{settings.currency}{creditAmount.toFixed(2)} credit</p>}
           </div>
+
+          {/* Payment Error Display */}
+          {paymentError && (
+            <div className="rounded-xl bg-red-50 p-4 ring-1 ring-red-200">
+              <div className="flex items-start gap-3">
+                <XCircle className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-base font-semibold text-red-800">Payment Failed</h3>
+                  <p className="mt-1 text-sm text-red-700">{paymentError}</p>
+                  <p className="mt-2 text-xs text-red-600">Please try again or use a different card.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPaymentError(null)}
+                className="mt-3 w-full rounded-lg bg-red-100 py-2 text-sm font-medium text-red-800 hover:bg-red-200 transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {cardsLoading ? (
             <div className="flex h-16 items-center justify-center">

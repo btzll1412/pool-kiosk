@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Banknote, CreditCard, UserPlus, Delete, Split } from "lucide-react";
+import { ArrowLeft, Banknote, CreditCard, UserPlus, Delete, Split, XCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
 import KioskInput from "../components/KioskInput";
@@ -59,6 +59,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
   const [expYear, setExpYear] = useState("");
   const [cvv, setCvv] = useState("");
   const [activeField, setActiveField] = useState("card");
+  const [paymentError, setPaymentError] = useState(null);
 
   function formatCardNumber(value) {
     const digits = value.replace(/\D/g, "");
@@ -138,6 +139,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
 
     const expDate = `${expMonth.padStart(2, "0")}${expYear}`;
     setLoading(true);
+    setPaymentError(null);
     try {
       const data = await guestPayCard(name.trim(), phone.trim() || null, selectedPlan.id, cleanCardNumber, expDate, cvv);
       goTo("status", {
@@ -146,7 +148,8 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
         statusMessage: data.message || "Enjoy your swim!",
       });
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Payment failed");
+      const errorMsg = err.response?.data?.detail || "Payment failed. Please try again.";
+      setPaymentError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -169,6 +172,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
 
     const expDate = `${expMonth.padStart(2, "0")}${expYear}`;
     setLoading(true);
+    setPaymentError(null);
     try {
       const data = await guestPaySplit(
         name.trim(),
@@ -185,7 +189,8 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
         statusMessage: data.message || "Enjoy your swim!",
       });
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Payment failed");
+      const errorMsg = err.response?.data?.detail || "Payment failed. Please try again.";
+      setPaymentError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -460,6 +465,27 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
               </p>
             </div>
 
+            {/* Payment Error Display */}
+            {paymentError && (
+              <div className="mb-4 rounded-xl bg-red-50 p-4 ring-1 ring-red-200">
+                <div className="flex items-start gap-3">
+                  <XCircle className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="text-base font-semibold text-red-800">Payment Failed</h3>
+                    <p className="mt-1 text-sm text-red-700">{paymentError}</p>
+                    <p className="mt-2 text-xs text-red-600">Please try again or use a different card.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPaymentError(null)}
+                  className="mt-3 w-full rounded-lg bg-red-100 py-2 text-sm font-medium text-red-800 hover:bg-red-200 transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
             <div className="space-y-3">
               {/* Card Number */}
               <button
@@ -591,6 +617,27 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
                 <span className="text-blue-600">Card: {settings.currency}{(Number(selectedPlan.price) - parseFloat(splitCashAmount)).toFixed(2)}</span>
               </div>
             </div>
+
+            {/* Payment Error Display */}
+            {paymentError && (
+              <div className="mb-4 rounded-xl bg-red-50 p-4 ring-1 ring-red-200">
+                <div className="flex items-start gap-3">
+                  <XCircle className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="text-base font-semibold text-red-800">Payment Failed</h3>
+                    <p className="mt-1 text-sm text-red-700">{paymentError}</p>
+                    <p className="mt-2 text-xs text-red-600">Please try again or use a different card.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPaymentError(null)}
+                  className="mt-3 w-full rounded-lg bg-red-100 py-2 text-sm font-medium text-red-800 hover:bg-red-200 transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
 
             <div className="space-y-3">
               {/* Card Number */}
