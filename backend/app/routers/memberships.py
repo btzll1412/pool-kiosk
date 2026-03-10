@@ -59,6 +59,7 @@ def create_membership_endpoint(
     # If no payment info, just create the membership
     if not data.payment:
         membership = create_membership(db, data.member_id, data.plan_id)
+        db.commit()
         message = "Membership created without payment"
     else:
         payment = data.payment
