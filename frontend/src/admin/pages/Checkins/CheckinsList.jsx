@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Download, Search, Users } from "lucide-react";
 import toast from "react-hot-toast";
 import { getCheckins } from "../../../api/checkins";
-import { useTimezone, formatDate, formatTime, formatDateTime } from "../../../context/TimezoneContext";
+import { useTimezone, formatDate, formatTime, formatDateTime, getTodayDate, getStartOfWeekDate, getStartOfMonthDate } from "../../../context/TimezoneContext";
 import Badge from "../../../shared/Badge";
 import Button from "../../../shared/Button";
 import PageHeader from "../../../shared/PageHeader";
@@ -174,39 +174,36 @@ export default function CheckinsList() {
     },
   ];
 
-  // Set default dates to today for quick filtering
+  // Set default dates to today for quick filtering (using system timezone)
   const setToday = () => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayDate(timezone);
     setFilters((f) => ({ ...f, start_date: today, end_date: today }));
   };
 
   const setThisWeek = () => {
-    const today = new Date();
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay());
+    const today = getTodayDate(timezone);
+    const startOfWeek = getStartOfWeekDate(timezone);
     setFilters((f) => ({
       ...f,
-      start_date: startOfWeek.toISOString().split("T")[0],
-      end_date: today.toISOString().split("T")[0],
+      start_date: startOfWeek,
+      end_date: today,
     }));
   };
 
   const setThisMonth = () => {
-    const today = new Date();
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const today = getTodayDate(timezone);
+    const startOfMonth = getStartOfMonthDate(timezone);
     setFilters((f) => ({
       ...f,
-      start_date: startOfMonth.toISOString().split("T")[0],
-      end_date: today.toISOString().split("T")[0],
+      start_date: startOfMonth,
+      end_date: today,
     }));
   };
 
-  // Check if quick date filters are active
-  const todayStr = new Date().toISOString().split("T")[0];
-  const startOfWeekDate = new Date();
-  startOfWeekDate.setDate(startOfWeekDate.getDate() - startOfWeekDate.getDay());
-  const startOfWeekStr = startOfWeekDate.toISOString().split("T")[0];
-  const startOfMonthStr = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
+  // Check if quick date filters are active (using system timezone)
+  const todayStr = getTodayDate(timezone);
+  const startOfWeekStr = getStartOfWeekDate(timezone);
+  const startOfMonthStr = getStartOfMonthDate(timezone);
 
   const isTodayActive = filters.start_date === todayStr && filters.end_date === todayStr;
   const isThisWeekActive = filters.start_date === startOfWeekStr && filters.end_date === todayStr;

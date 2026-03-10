@@ -18,26 +18,28 @@ import PageHeader from "../../../shared/PageHeader";
 import StatCard from "../../../shared/StatCard";
 import { SkeletonStatCards, SkeletonCard } from "../../../shared/Skeleton";
 import { Activity, TrendingUp, Users } from "lucide-react";
+import { useTimezone, getTodayDate } from "../../../context/TimezoneContext";
 
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b"];
 
 export default function SwimReport() {
+  const timezone = useTimezone();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState("30");
 
   useEffect(() => {
     setLoading(true);
-    const end = new Date().toISOString().split("T")[0];
-    const start = new Date(Date.now() - parseInt(range) * 86400000)
-      .toISOString()
-      .split("T")[0];
+    const end = getTodayDate(timezone);
+    const startDate = new Date(getTodayDate(timezone) + "T12:00:00");
+    startDate.setDate(startDate.getDate() - parseInt(range));
+    const start = startDate.toISOString().split("T")[0];
 
     getSwimReport({ start_date: start, end_date: end })
       .then(setData)
       .catch((err) => toast.error(err.response?.data?.detail || "Failed to load swim report"))
       .finally(() => setLoading(false));
-  }, [range]);
+  }, [range, timezone]);
 
   if (loading) {
     return (
