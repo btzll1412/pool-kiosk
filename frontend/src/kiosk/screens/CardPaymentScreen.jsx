@@ -161,16 +161,11 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
     setLoading(true);
     setPaymentError(null);
     try {
+      // Tokenize the swiped card - returns SavedCardResponse with id field
       const tokenResult = await tokenizeCardFromSwipe(trackData, member.member_id, pin, saveCard ? "Swiped Card" : null);
-      if (!tokenResult.success) {
-        setPaymentError(tokenResult.message || "Failed to read card");
-        setSwipeStatus("error");
-        setSwipeData("");
-        setLoading(false);
-        return;
-      }
+      // Use the saved card to process payment
       const payResult = await payCard(member.member_id, plan.id, pin, {
-        saved_card_id: tokenResult.card_id,
+        saved_card_id: tokenResult.id,
         use_credit: useCredit,
       });
       let message = payResult.message || "Card payment processed successfully.";
