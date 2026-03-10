@@ -7,7 +7,7 @@ import PlanCard from "../components/PlanCard";
 import { getPlans, guestVisit } from "../../api/kiosk";
 
 export default function GuestScreen({ goTo, goIdle, settings }) {
-  const [step, setStep] = useState("info"); // info | plan | method
+  const [step, setStep] = useState("info"); // info | plan | payment
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [plans, setPlans] = useState([]);
@@ -62,7 +62,8 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
         <button
           type="button"
           onClick={() => {
-            if (step === "plan") setStep("info");
+            if (step === "payment") setStep("plan");
+            else if (step === "plan") setStep("info");
             else goIdle();
           }}
           className="flex items-center gap-2 rounded-xl px-4 py-2 text-gray-500 transition-all hover:bg-gray-100 active:bg-gray-200"
@@ -147,35 +148,53 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
             )}
 
             {selectedPlan && (
-              <div className="mt-8 text-center">
-                <p className="mb-4 text-lg font-semibold text-gray-900">
-                  {selectedPlan.name} — {settings.currency}
-                  {Number(selectedPlan.price).toFixed(2)}
-                </p>
-                <div className="flex justify-center gap-4">
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => handlePay("cash")}
-                    className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
-                  >
-                    <Banknote className="h-8 w-8 text-emerald-600" />
-                    <span className="text-lg font-semibold text-gray-900">Cash</span>
-                    <span className="text-xs text-amber-600 font-medium">Exact Change Only</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => handlePay("card")}
-                    className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
-                  >
-                    <CreditCard className="h-8 w-8 text-blue-600" />
-                    <span className="text-lg font-semibold text-gray-900">Card</span>
-                    <span className="text-xs text-gray-400">Credit or Debit</span>
-                  </button>
-                </div>
-              </div>
+              <KioskButton
+                variant="primary"
+                size="xl"
+                onClick={() => setStep("payment")}
+                className="mt-6 w-full max-w-md mx-auto"
+              >
+                Continue to Payment
+              </KioskButton>
             )}
+          </div>
+        )}
+
+        {step === "payment" && selectedPlan && (
+          <div className="w-full max-w-md text-center">
+            <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+              <p className="text-sm text-gray-500">{selectedPlan.name}</p>
+              <p className="mt-2 text-4xl font-extrabold text-gray-900">
+                {settings.currency}{Number(selectedPlan.price).toFixed(2)}
+              </p>
+            </div>
+
+            <h2 className="mb-6 text-xl font-bold text-gray-900">
+              How would you like to pay?
+            </h2>
+
+            <div className="flex justify-center gap-4">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handlePay("cash")}
+                className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
+              >
+                <Banknote className="h-8 w-8 text-emerald-600" />
+                <span className="text-lg font-semibold text-gray-900">Cash</span>
+                <span className="text-xs text-amber-600 font-medium">Exact Change Only</span>
+              </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handlePay("card")}
+                className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
+              >
+                <CreditCard className="h-8 w-8 text-blue-600" />
+                <span className="text-lg font-semibold text-gray-900">Card</span>
+                <span className="text-xs text-gray-400">Credit or Debit</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
