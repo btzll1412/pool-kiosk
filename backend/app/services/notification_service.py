@@ -3,6 +3,7 @@ from datetime import datetime
 from enum import Enum
 
 import httpx
+import pytz
 from sqlalchemy.orm import Session
 
 from app.services.settings_service import get_setting, update_settings
@@ -40,9 +41,18 @@ def fire_webhook(db: Session, event: WebhookEvent, data: dict) -> bool:
     if not url:
         return False
 
+    # Use configured timezone for timestamp
+    tz_name = get_setting(db, "timezone", "America/New_York")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.timezone("America/New_York")
+
+    local_now = datetime.now(local_tz)
+
     payload = {
         "event": event.value,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": local_now.isoformat(),
         "data": data,
     }
 
@@ -57,6 +67,15 @@ def fire_webhook(db: Session, event: WebhookEvent, data: dict) -> bool:
 
 def fire_test_webhook(db: Session, event: WebhookEvent) -> bool:
     """Fire a test webhook with sample data for admin testing."""
+    # Use configured timezone for date
+    tz_name = get_setting(db, "timezone", "America/New_York")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.timezone("America/New_York")
+
+    local_now = datetime.now(local_tz)
+
     test_data = {
         WebhookEvent.change_needed: {"member_name": "Test Member", "amount": "5.00"},
         WebhookEvent.checkin: {"member_name": "Test Member", "member_id": "00000000-0000-0000-0000-000000000000", "checkin_type": "membership", "guest_count": 0},
@@ -65,7 +84,7 @@ def fire_test_webhook(db: Session, event: WebhookEvent) -> bool:
         WebhookEvent.low_balance: {"member_name": "Test Member", "member_id": "00000000-0000-0000-0000-000000000000", "balance": "2.50", "threshold": "5.00"},
         WebhookEvent.auto_charge_success: {"member_name": "Test Member", "member_id": "00000000-0000-0000-0000-000000000000", "plan_name": "Monthly Pass", "amount": "25.00", "card_last4": "4242"},
         WebhookEvent.auto_charge_failed: {"member_name": "Test Member", "member_id": "00000000-0000-0000-0000-000000000000", "plan_name": "Monthly Pass", "amount": "25.00", "card_last4": "4242", "reason": "Test failure"},
-        WebhookEvent.daily_summary: {"pool_name": "Test Pool", "date": str(datetime.now().date()), "total_checkins_today": 42, "unique_members_today": 30, "revenue_today": "350.00", "active_memberships": 120, "guests_today": 5},
+        WebhookEvent.daily_summary: {"pool_name": "Test Pool", "date": str(local_now.date()), "total_checkins_today": 42, "unique_members_today": 30, "revenue_today": "350.00", "active_memberships": 120, "guests_today": 5},
     }
     return fire_webhook(db, event, test_data.get(event, {}))
 

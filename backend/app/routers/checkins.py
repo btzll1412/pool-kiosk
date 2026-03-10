@@ -13,6 +13,7 @@ from app.models.checkin import Checkin, CheckinType
 from app.models.guest_visit import GuestVisit
 from app.models.member import Member
 from app.models.membership import Membership
+from app.models.plan import Plan
 from app.models.user import User
 from app.schemas.checkin import CheckinListResponse, CheckinResponse, CheckinWithMemberResponse
 from app.services.auth_service import get_current_user
@@ -195,6 +196,13 @@ def list_checkins(
             # Build notes with plan name and payment details
             plan_display = guest.plan_name if guest.plan_name else "Guest Visit"
             notes = f"Paid ${guest.amount_paid} ({guest.payment_method.value})"
+
+            # Calculate and show overpayment if any
+            if guest.plan_id:
+                plan = db.query(Plan).filter(Plan.id == guest.plan_id).first()
+                if plan and guest.amount_paid > plan.price:
+                    overpayment = guest.amount_paid - plan.price
+                    notes += f" - Overpaid ${overpayment:.2f}"
 
             all_items.append({
                 "id": guest.id,

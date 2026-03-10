@@ -1,8 +1,9 @@
 import logging
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from calendar import monthrange
 
+import pytz
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -12,6 +13,17 @@ from app.models.membership import Membership
 from app.models.membership_freeze import MembershipFreeze
 from app.models.plan import Plan, PlanType
 from app.services.activity_service import log_activity
+from app.services.settings_service import get_setting
+
+
+def _get_local_today(db: Session) -> date:
+    """Get today's date in the configured local timezone."""
+    tz_name = get_setting(db, "timezone", "America/New_York")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.timezone("America/New_York")
+    return datetime.now(local_tz).date()
 
 
 def create_membership(db: Session, member_id: uuid.UUID, plan_id: uuid.UUID) -> Membership:
@@ -19,7 +31,7 @@ def create_membership(db: Session, member_id: uuid.UUID, plan_id: uuid.UUID) -> 
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
-    today = date.today()
+    today = _get_local_today(db)
 
     # For swim passes, stack onto existing active membership if one exists
     if plan.plan_type == PlanType.swim_pass:
@@ -161,7 +173,7 @@ def freeze_membership(
     if active_freeze:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Membership is already frozen")
 
-    today = date.today()
+    today = _get_local_today(db)
     if freeze_end:
         days = (freeze_end - today).days
     elif freeze_days:
@@ -204,7 +216,7 @@ def unfreeze_membership(db: Session, membership_id: uuid.UUID, user_id: uuid.UUI
             .first()
         )
     if freeze:
-        freeze.freeze_end = date.today()
+        freeze.freeze_end = _get_local_today(db)
 
     membership = db.query(Membership).filter(Membership.id == membership_id).first()
     if not membership:
