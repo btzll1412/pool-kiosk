@@ -167,7 +167,10 @@ export default function CheckinsList() {
       key: "notes",
       label: "Notes",
       render: (row) => (
-        <span className="max-w-[200px] truncate text-gray-500 dark:text-gray-400">
+        <span
+          className="max-w-[300px] truncate text-gray-500 dark:text-gray-400 cursor-help"
+          title={row.notes || ""}
+        >
           {row.notes || "—"}
         </span>
       ),
