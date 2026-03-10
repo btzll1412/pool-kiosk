@@ -16,8 +16,11 @@ from app.models.activity_log import ActivityLog
 from app.models.checkin import Checkin
 from app.models.member import Member
 from app.models.membership import Membership
+from app.models.membership_freeze import MembershipFreeze
+from app.models.pending_terminal_payment import PendingTerminalPayment
 from app.models.plan import Plan
 from app.models.saved_card import SavedCard
+from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.membership import SavedCardCreate, SavedCardResponse
 from app.services.auth_service import hash_pin
@@ -214,23 +217,43 @@ def permanently_delete_member(
     member = db.query(Member).filter(Member.id == member_id).first()
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
-    
+
     if member.is_active:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Member must be deactivated before permanent deletion"
         )
-    
-    # Delete related records
+
+    # Get membership IDs for cascade deletion
+    membership_ids = [m.id for m in db.query(Membership).filter(Membership.member_id == member_id).all()]
+
+    # Delete related records in correct order (respecting FK constraints)
+    # 1. MembershipFreeze references Membership
+    if membership_ids:
+        db.query(MembershipFreeze).filter(MembershipFreeze.membership_id.in_(membership_ids)).delete(synchronize_session=False)
+
+    # 2. PendingTerminalPayment references Member
+    db.query(PendingTerminalPayment).filter(PendingTerminalPayment.member_id == member_id).delete()
+
+    # 3. Transaction references Member, Membership, SavedCard
+    db.query(Transaction).filter(Transaction.member_id == member_id).delete()
+
+    # 4. Checkin references Member
     db.query(Checkin).filter(Checkin.member_id == member_id).delete()
+
+    # 5. Membership references Member
     db.query(Membership).filter(Membership.member_id == member_id).delete()
+
+    # 6. SavedCard references Member
     db.query(SavedCard).filter(SavedCard.member_id == member_id).delete()
+
+    # 7. ActivityLog may reference member as entity_id
     db.query(ActivityLog).filter(ActivityLog.entity_id == member_id).delete()
-    
-    # Delete the member
+
+    # 8. Delete the member
     db.delete(member)
     db.commit()
-    
+
     logger.info("Member permanently deleted: id=%s, by_user=%s", member_id, current_user.id)
     return {"message": "Member permanently deleted"}
 
