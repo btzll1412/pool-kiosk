@@ -1,19 +1,21 @@
 import { useState } from "react";
-import { ArrowLeft, Banknote, CreditCard, UserPlus } from "lucide-react";
+import { ArrowLeft, Banknote, CreditCard, UserPlus, AlertCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
 import KioskInput from "../components/KioskInput";
 import PlanCard from "../components/PlanCard";
+import NumPad from "../components/NumPad";
 import { getPlans, guestVisit } from "../../api/kiosk";
 
 export default function GuestScreen({ goTo, goIdle, settings }) {
-  const [step, setStep] = useState("info"); // info | plan | payment
+  const [step, setStep] = useState("info"); // info | plan | payment | cash | card
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [plans, setPlans] = useState([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [cashAmount, setCashAmount] = useState("");
 
   function handleNext() {
     if (!name.trim()) {
@@ -44,10 +46,19 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
     setLoading(true);
     try {
       const data = await guestVisit(name.trim(), phone.trim() || null, method, selectedPlan.id);
+
+      let message = data.message || "Enjoy your swim!";
+      // For cash payments, show the cash instruction with the amount
+      if (method === "cash") {
+        const amountStr = `${settings.currency}${parseFloat(cashAmount || selectedPlan.price).toFixed(2)}`;
+        const cashMsg = (settings.cash_success_message || "Place {amount} in the cash box.").replace("{amount}", amountStr);
+        message = cashMsg;
+      }
+
       goTo("status", {
         statusType: "success",
         statusTitle: `Welcome, ${name.trim()}!`,
-        statusMessage: data.message || "Enjoy your swim!",
+        statusMessage: message,
       });
     } catch (err) {
       toast.error(err.response?.data?.detail || "Something went wrong");
@@ -62,7 +73,8 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
         <button
           type="button"
           onClick={() => {
-            if (step === "payment") setStep("plan");
+            if (step === "cash" || step === "card") setStep("payment");
+            else if (step === "payment") setStep("plan");
             else if (step === "plan") setStep("info");
             else goIdle();
           }}
@@ -177,7 +189,10 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
               <button
                 type="button"
                 disabled={loading}
-                onClick={() => handlePay("cash")}
+                onClick={() => {
+                  setCashAmount("");
+                  setStep("cash");
+                }}
                 className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
               >
                 <Banknote className="h-8 w-8 text-emerald-600" />
@@ -187,7 +202,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
               <button
                 type="button"
                 disabled={loading}
-                onClick={() => handlePay("card")}
+                onClick={() => setStep("card")}
                 className="flex flex-col items-center gap-2 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:ring-brand-300 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
               >
                 <CreditCard className="h-8 w-8 text-blue-600" />
@@ -195,6 +210,72 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
                 <span className="text-xs text-gray-400">Credit or Debit</span>
               </button>
             </div>
+          </div>
+        )}
+
+        {step === "cash" && selectedPlan && (
+          <div className="w-full max-w-sm">
+            <div className="mb-6 rounded-2xl bg-white p-5 text-center shadow-sm ring-1 ring-gray-100">
+              <p className="text-sm text-gray-500">{selectedPlan.name}</p>
+              <p className="mt-1 text-4xl font-extrabold text-gray-900">
+                {settings.currency}{Number(selectedPlan.price).toFixed(2)}
+              </p>
+              <p className="mt-2 text-xs font-medium text-amber-600">
+                Exact Change Only
+              </p>
+            </div>
+
+            <div className="mb-4 rounded-2xl bg-white p-5 text-center shadow-sm ring-1 ring-gray-100">
+              <p className="text-sm text-gray-500">Amount Tendered</p>
+              <p className="mt-1 text-4xl font-extrabold text-gray-900">
+                {settings.currency}{cashAmount || "0.00"}
+              </p>
+            </div>
+
+            <NumPad value={cashAmount} onChange={setCashAmount} maxLength={7} showDecimal />
+
+            <KioskButton
+              variant="success"
+              size="xl"
+              icon={Banknote}
+              loading={loading}
+              disabled={parseFloat(cashAmount) < Number(selectedPlan.price)}
+              onClick={() => handlePay("cash")}
+              className="mt-4 w-full"
+            >
+              Confirm Payment
+            </KioskButton>
+          </div>
+        )}
+
+        {step === "card" && selectedPlan && (
+          <div className="w-full max-w-md text-center">
+            <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+              <p className="text-sm text-gray-500">{selectedPlan.name}</p>
+              <p className="mt-2 text-4xl font-extrabold text-gray-900">
+                {settings.currency}{Number(selectedPlan.price).toFixed(2)}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-amber-50 p-6 ring-1 ring-amber-200">
+              <AlertCircle className="mx-auto h-12 w-12 text-amber-600" />
+              <h2 className="mt-4 text-xl font-bold text-amber-900">
+                Staff Assistance Required
+              </h2>
+              <p className="mt-2 text-amber-700">
+                Card payments for guests require staff assistance.
+                Please see a staff member to complete your payment.
+              </p>
+            </div>
+
+            <KioskButton
+              variant="ghost"
+              size="lg"
+              onClick={() => setStep("payment")}
+              className="mt-6 w-full"
+            >
+              Choose Different Payment
+            </KioskButton>
           </div>
         )}
       </div>
