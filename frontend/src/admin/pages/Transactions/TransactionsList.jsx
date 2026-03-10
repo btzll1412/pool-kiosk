@@ -147,10 +147,7 @@ export default function TransactionsList() {
               Linked
             </span>
           )}
-          <span
-            className="max-w-[300px] truncate text-gray-500 dark:text-gray-400 cursor-help"
-            title={row.notes || ""}
-          >
+          <span className="max-w-[250px] text-sm text-gray-500 dark:text-gray-400 whitespace-normal break-words leading-tight">
             {row.notes || (row.related_transaction_id ? "" : "—")}
           </span>
         </div>
