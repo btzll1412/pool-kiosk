@@ -14,7 +14,9 @@ export function TimezoneProvider({ children }) {
           setTimezone(s.timezone);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.warn("Failed to load timezone setting, using default:", err.message || err);
+      });
   }, []);
 
   return (
