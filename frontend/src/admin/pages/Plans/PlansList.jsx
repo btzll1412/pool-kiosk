@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Edit, Plus, Trash2, Users } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Edit, Plus, Trash2, Users, X } from "lucide-react";
 import toast from "react-hot-toast";
-import { createPlan, deactivatePlan, getPlans, updatePlan } from "../../../api/plans";
+import { createPlan, deactivatePlan, getPlans, getPlanSubscribers, updatePlan } from "../../../api/plans";
 import Badge from "../../../shared/Badge";
 import Button from "../../../shared/Button";
 import Card from "../../../shared/Card";
@@ -16,6 +17,8 @@ export default function PlansList() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [subscribersModal, setSubscribersModal] = useState(null);
+  const [subscribersLoading, setSubscribersLoading] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -37,6 +40,18 @@ export default function PlansList() {
       load();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to deactivate plan");
+    }
+  };
+
+  const openSubscribers = async (plan) => {
+    setSubscribersLoading(true);
+    try {
+      const data = await getPlanSubscribers(plan.id);
+      setSubscribersModal(data);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to load subscribers");
+    } finally {
+      setSubscribersLoading(false);
     }
   };
 
@@ -149,7 +164,16 @@ export default function PlansList() {
 
               <div className="mt-3 flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
                 <Users className="h-4 w-4" />
-                <span>{plan.active_subscribers || 0} active subscriber{plan.active_subscribers !== 1 ? "s" : ""}</span>
+                {plan.active_subscribers > 0 ? (
+                  <button
+                    onClick={() => openSubscribers(plan)}
+                    className="text-brand-600 hover:text-brand-700 hover:underline dark:text-brand-400 dark:hover:text-brand-300"
+                  >
+                    {plan.active_subscribers} active subscriber{plan.active_subscribers !== 1 ? "s" : ""}
+                  </button>
+                ) : (
+                  <span>0 active subscribers</span>
+                )}
               </div>
 
               {!plan.is_active && (
@@ -181,6 +205,76 @@ export default function PlansList() {
         message={`Are you sure you want to deactivate "${deleteTarget?.name}"? It will no longer appear on the kiosk.`}
         confirmLabel="Deactivate"
       />
+
+      {/* Subscribers Modal */}
+      {subscribersModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setSubscribersModal(null)} />
+          <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col rounded-xl bg-white dark:bg-gray-800 shadow-2xl ring-1 ring-gray-900/5">
+            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 px-6 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  {subscribersModal.plan_name} Subscribers
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {subscribersModal.subscribers.length} active subscriber{subscribersModal.subscribers.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+              <button
+                onClick={() => setSubscribersModal(null)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              {subscribersModal.subscribers.length === 0 ? (
+                <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+                  No active subscribers for this plan.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {subscribersModal.subscribers.map((sub) => (
+                    <div
+                      key={sub.member_id}
+                      className="flex items-center justify-between rounded-lg border border-gray-100 dark:border-gray-700 p-3"
+                    >
+                      <div>
+                        <Link
+                          to={`/admin/members/${sub.member_id}`}
+                          onClick={() => setSubscribersModal(null)}
+                          className="font-medium text-brand-600 hover:text-brand-700 hover:underline dark:text-brand-400 dark:hover:text-brand-300"
+                        >
+                          {sub.first_name} {sub.last_name}
+                        </Link>
+                        {sub.phone && (
+                          <p className="text-sm text-gray-500 dark:text-gray-400">{sub.phone}</p>
+                        )}
+                      </div>
+                      <div className="text-right text-sm text-gray-500 dark:text-gray-400">
+                        {sub.valid_until && (
+                          <p>Expires: {new Date(sub.valid_until).toLocaleDateString()}</p>
+                        )}
+                        {sub.swims_remaining !== null && (
+                          <p>{sub.swims_remaining} swim{sub.swims_remaining !== 1 ? "s" : ""} left</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {subscribersLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/30">
+          <div className="rounded-lg bg-white dark:bg-gray-800 px-6 py-4 shadow-xl">
+            <p className="text-gray-600 dark:text-gray-300">Loading subscribers...</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
