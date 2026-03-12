@@ -95,7 +95,8 @@ export default function MemberDetail() {
   const [swimNotes, setSwimNotes] = useState("");
   const [swimAdjustLoading, setSwimAdjustLoading] = useState(false);
   const [deactivateMembershipTarget, setDeactivateMembershipTarget] = useState(null);
-  const [deactivateCreditOption, setDeactivateCreditOption] = useState("none"); // "none", "full", "remaining"
+  const [deactivateCreditOption, setDeactivateCreditOption] = useState("none"); // "none", "full", "remaining", "custom"
+  const [deactivateCustomAmount, setDeactivateCustomAmount] = useState("");
   const [deactivateLoading, setDeactivateLoading] = useState(false);
 
   // Payment options for Add Membership
@@ -555,23 +556,29 @@ export default function MemberDetail() {
       if (deactivateCreditOption !== "none") {
         const plan = plans.find(p => String(p.id) === String(deactivateMembershipTarget.plan_id));
         let creditAmount = 0;
+        let creditType = "";
 
         if (deactivateCreditOption === "full") {
           creditAmount = Number(plan?.price) || 0;
+          creditType = "full refund";
         } else if (deactivateCreditOption === "remaining" && (deactivateMembershipTarget.swims_total || 0) > 0) {
           // Calculate prorated amount based on remaining swims
           const swimsTotal = deactivateMembershipTarget.swims_total || 1;
           const pricePerSwim = (Number(plan?.price) || 0) / swimsTotal;
           creditAmount = pricePerSwim * (deactivateMembershipTarget.swims_remaining || 0);
           creditAmount = Math.round(creditAmount * 100) / 100; // Round to 2 decimals
+          creditType = "prorated";
+        } else if (deactivateCreditOption === "custom") {
+          creditAmount = Number(deactivateCustomAmount) || 0;
+          creditType = "custom amount";
         }
 
         if (creditAmount > 0 && !isNaN(creditAmount)) {
           await adjustCredit(id, {
             amount: creditAmount,
-            notes: `Refund for deactivated ${deactivateMembershipTarget.plan_name || "membership"} (${deactivateCreditOption === "full" ? "full" : "prorated"})`,
+            notes: `Refund for deactivated ${deactivateMembershipTarget.plan_name || "membership"} (${creditType})`,
           });
-          toast.success(`Membership deactivated. $${creditAmount.toFixed(2)} credit added.`);
+          toast.success(`Membership deactivated. $${creditAmount.toFixed(2)} added to account credit.`);
         } else {
           toast.success("Membership deactivated");
         }
@@ -581,6 +588,7 @@ export default function MemberDetail() {
 
       setDeactivateMembershipTarget(null);
       setDeactivateCreditOption("none");
+      setDeactivateCustomAmount("");
       load();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to deactivate membership");
@@ -1629,6 +1637,7 @@ export default function MemberDetail() {
         onClose={() => {
           setDeactivateMembershipTarget(null);
           setDeactivateCreditOption("none");
+          setDeactivateCustomAmount("");
         }}
         title="Deactivate Membership"
         size="sm"
@@ -1718,7 +1727,40 @@ export default function MemberDetail() {
                     </div>
                   </label>
                 )}
+
+                <label className="flex items-start gap-3 rounded-lg border border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <input
+                    type="radio"
+                    name="creditOption"
+                    value="custom"
+                    checked={deactivateCreditOption === "custom"}
+                    onChange={(e) => setDeactivateCreditOption(e.target.value)}
+                    className="h-4 w-4 text-brand-600 mt-1"
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Custom amount</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Enter a specific credit amount</p>
+                    {deactivateCreditOption === "custom" && (
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={deactivateCustomAmount}
+                          onChange={(e) => setDeactivateCustomAmount(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full pl-7 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                          autoFocus
+                        />
+                      </div>
+                    )}
+                  </div>
+                </label>
               </div>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Credit will be added to the member's account balance.
+              </p>
             </div>
 
             <div className="flex gap-3 pt-2">
@@ -1728,6 +1770,7 @@ export default function MemberDetail() {
                 onClick={() => {
                   setDeactivateMembershipTarget(null);
                   setDeactivateCreditOption("none");
+                  setDeactivateCustomAmount("");
                 }}
               >
                 Cancel
@@ -1737,6 +1780,7 @@ export default function MemberDetail() {
                 className="flex-1"
                 onClick={handleDeactivateMembership}
                 loading={deactivateLoading}
+                disabled={deactivateCreditOption === "custom" && (!deactivateCustomAmount || Number(deactivateCustomAmount) <= 0)}
               >
                 Deactivate
               </Button>
