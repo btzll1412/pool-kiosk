@@ -19,6 +19,8 @@ class GuestVisit(Base):
     amount_paid: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     plan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("plans.id"), nullable=True)
     plan_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    plan_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    change_given: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     plan = relationship("Plan", foreign_keys=[plan_id])
