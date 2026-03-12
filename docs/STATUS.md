@@ -767,4 +767,79 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-03-09 (Admin Panel Enhancements)
+---
+
+## Admin & Auto-Charge Enhancements (2026-03-12)
+
+### Guest Transaction Tracking
+- Added `guest_name` field to Transaction model
+- When giving change to guest visitors, the guest's name is stored in the refund transaction
+- Transactions list shows "Guest - [Name]" for guest transactions
+
+### Revenue Calculation Fix
+- Fixed revenue to properly subtract refunds (change given to guests)
+- Revenue = Payments - Refunds
+- Credit add/use transactions do not affect revenue
+
+### Transactions List Improvements
+- Member names are now clickable links to member detail page
+- Guest transactions display guest name when available
+
+### Plans Page Subscriber Popup
+- Subscriber count on plan cards is now clickable (when > 0)
+- Opens modal showing list of all subscribers to that plan
+- Each subscriber name is clickable link to their member detail page
+
+### Membership Priority Fix
+- Fixed check-in to use membership priority order:
+  1. Monthly memberships (unlimited, preserves swim credits)
+  2. Swim passes (limited swims)
+  3. Single swims (one-time use)
+
+### Auto-Charge System Overhaul
+- **Billing date changed**: Auto-charge now runs on the 1st of every month (not X days from signup)
+- **Admin management**: Added lightning bolt button on saved cards to manage auto-charge
+- **Plan selection**: Can select monthly plans OR swim passes for auto-charge
+- **Swim pass auto-recharge**: When a swim pass is depleted during check-in, system automatically charges and creates new pass
+- **Uses account credit first**: Auto-charge now checks member's credit balance:
+  - If credit ≥ plan price: uses credit only (no card charge)
+  - If credit < plan price: uses all credit, charges remainder to card
+  - Creates separate transactions for credit use and card charge
+
+### Admin Endpoints Added
+- `POST /api/members/{member_id}/saved-cards/{card_id}/auto-charge` — Enable auto-charge
+- `DELETE /api/members/{member_id}/saved-cards/{card_id}/auto-charge` — Disable auto-charge
+
+### Membership Deactivation with Credit Options
+- Replaced simple confirm dialog with full modal
+- Credit options when deactivating:
+  - **No credit** — Just deactivate
+  - **Full refund** — Add full plan price as account credit
+  - **Prorated refund** — (Swim passes) Credit for unused swims only
+  - **Custom amount** — Enter any dollar amount
+- Shows usage info for swim passes (swims used/remaining)
+- Note reminds staff that credit goes to account balance
+
+### Frontend Changes
+- `frontend/src/api/members.js` — Added enableCardAutoCharge(), disableCardAutoCharge()
+- `frontend/src/api/plans.js` — Added getPlanSubscribers()
+- `frontend/src/admin/pages/Members/MemberDetail.jsx` — Auto-charge management UI, deactivation credit modal
+- `frontend/src/admin/pages/Plans/PlansList.jsx` — Clickable subscriber count with modal
+- `frontend/src/admin/pages/Transactions/TransactionsList.jsx` — Clickable member names, guest name display
+
+### Backend Changes
+- `backend/app/models/transaction.py` — Added guest_name field
+- `backend/app/routers/members.py` — Added auto-charge enable/disable endpoints
+- `backend/app/routers/plans.py` — Added GET /{plan_id}/subscribers endpoint
+- `backend/app/routers/transactions.py` — Return guest_name in list
+- `backend/app/routers/guests.py` — Store guest_name in refund transaction
+- `backend/app/services/auto_charge_service.py` — 1st of month billing, credit-first charging, swim pass auto-recharge
+- `backend/app/services/checkin_service.py` — Membership priority, swim pass auto-recharge trigger
+- `backend/app/services/report_service.py` — Revenue = payments - refunds
+
+### Database Migration
+- `l2m3n4o5p6q7_add_transaction_guest_name.py` — Adds guest_name to transactions table
+
+---
+
+## Last Updated: 2026-03-12 (Admin & Auto-Charge Enhancements)
