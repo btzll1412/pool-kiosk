@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import date, timedelta
+from calendar import monthrange
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -14,6 +15,17 @@ from app.services.notification_service import notify_auto_charge_failed, notify_
 from app.services.payment_service import get_payment_adapter
 
 logger = logging.getLogger(__name__)
+
+
+def _get_first_of_next_month(from_date: date = None) -> date:
+    """Calculate the 1st of the next month from the given date."""
+    if from_date is None:
+        from_date = date.today()
+
+    if from_date.month == 12:
+        return date(from_date.year + 1, 1, 1)
+    else:
+        return date(from_date.year, from_date.month + 1, 1)
 
 
 def process_due_charges(db: Session) -> dict:
@@ -93,7 +105,7 @@ def process_due_charges(db: Session) -> dict:
         )
         db.add(tx)
 
-        card.next_charge_date = today + timedelta(days=plan.duration_days or 30)
+        card.next_charge_date = _get_first_of_next_month(today)
         db.commit()
 
         logger.info("Auto-charge succeeded for member %s, plan %s", card.member_id, plan.name)
@@ -142,7 +154,7 @@ def enable_auto_charge(
 
     card.auto_charge_enabled = True
     card.auto_charge_plan_id = plan.id
-    card.next_charge_date = date.today() + timedelta(days=plan.duration_days or 30)
+    card.next_charge_date = _get_first_of_next_month()
 
     db.commit()
     db.refresh(card)

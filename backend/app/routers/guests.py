@@ -108,7 +108,8 @@ def give_change(
         transaction_type=TransactionType.refund,
         payment_method=PaymentMethod.cash,
         amount=data.amount,
-        notes=f"Change given to guest: {visit.name} (overpaid on {visit.plan_name})",
+        guest_name=visit.name,
+        notes=f"Change given for overpayment on {visit.plan_name}",
         created_by=current_user.id,
     )
     db.add(refund_tx)

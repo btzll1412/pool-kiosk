@@ -1,12 +1,13 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 from app.database import get_db
+from app.models.member import Member
 from app.models.membership import Membership
 from app.models.plan import Plan
 from app.models.user import User
@@ -73,7 +74,6 @@ def update_plan(
 ):
     plan = db.query(Plan).filter(Plan.id == plan_id).first()
     if not plan:
-        from fastapi import HTTPException, status
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
     before = {"name": plan.name, "price": str(plan.price), "is_active": plan.is_active}
     for field, value in data.model_dump(exclude_unset=True).items():
@@ -93,10 +93,50 @@ def deactivate_plan(
 ):
     plan = db.query(Plan).filter(Plan.id == plan_id).first()
     if not plan:
-        from fastapi import HTTPException, status
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
     plan.is_active = False
     db.commit()
     db.refresh(plan)
     log_activity(db, user_id=current_user.id, action="plan.deactivate", entity_type="plan", entity_id=plan.id)
     return plan
+
+
+@router.get("/{plan_id}/subscribers")
+def get_plan_subscribers(
+    plan_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all active subscribers for a plan."""
+    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    # Get all active memberships for this plan
+    memberships = (
+        db.query(Membership)
+        .filter(Membership.plan_id == plan_id, Membership.is_active.is_(True))
+        .all()
+    )
+
+    # Filter to only usable memberships and get member details
+    subscribers = []
+    for m in memberships:
+        if is_membership_usable(m):
+            member = db.query(Member).filter(Member.id == m.member_id).first()
+            if member:
+                subscribers.append({
+                    "member_id": str(member.id),
+                    "first_name": member.first_name,
+                    "last_name": member.last_name,
+                    "phone": member.phone,
+                    "membership_id": str(m.id),
+                    "valid_until": m.valid_until.isoformat() if m.valid_until else None,
+                    "swims_remaining": (m.swims_total - m.swims_used) if m.swims_total else None,
+                })
+
+    return {
+        "plan_id": str(plan_id),
+        "plan_name": plan.name,
+        "subscribers": subscribers,
+    }

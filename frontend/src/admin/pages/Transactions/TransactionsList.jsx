@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Download, Filter, Link2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { getTransactions } from "../../../api/payments";
@@ -84,7 +85,18 @@ export default function TransactionsList() {
       label: "Member",
       render: (row) => (
         <span className="font-medium text-gray-900 dark:text-gray-100">
-          {row.member_name || <span className="text-gray-400">Guest</span>}
+          {row.member_id && row.member_name ? (
+            <Link
+              to={`/admin/members/${row.member_id}`}
+              className="text-brand-600 hover:text-brand-700 hover:underline dark:text-brand-400 dark:hover:text-brand-300"
+            >
+              {row.member_name}
+            </Link>
+          ) : row.guest_name ? (
+            <span className="text-amber-600 dark:text-amber-400">Guest - {row.guest_name}</span>
+          ) : (
+            <span className="text-gray-400">Guest</span>
+          )}
         </span>
       ),
     },

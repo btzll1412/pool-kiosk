@@ -86,10 +86,18 @@ def get_dashboard_stats(db: Session) -> dict:
         Checkin.checked_in_at.between(today_start, today_end)
     ).scalar() or 0
 
-    revenue = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+    # Calculate revenue: payments minus refunds
+    payments = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
         Transaction.created_at.between(today_start, today_end),
         Transaction.transaction_type == TransactionType.payment,
     ).scalar()
+
+    refunds = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+        Transaction.created_at.between(today_start, today_end),
+        Transaction.transaction_type == TransactionType.refund,
+    ).scalar()
+
+    revenue = Decimal(str(payments)) - Decimal(str(refunds))
 
     # Count truly usable memberships (active, not expired, has remaining swims)
     all_active = db.query(Membership).filter(Membership.is_active.is_(True)).all()
@@ -124,11 +132,12 @@ def get_revenue_report(
     start = start_local.astimezone(pytz.UTC).replace(tzinfo=None)
     end = end_local.astimezone(pytz.UTC).replace(tzinfo=None)
 
+    # Get both payments and refunds
     transactions = (
         db.query(Transaction)
         .filter(
             Transaction.created_at.between(start, end),
-            Transaction.transaction_type == TransactionType.payment,
+            Transaction.transaction_type.in_([TransactionType.payment, TransactionType.refund]),
         )
         .all()
     )
@@ -151,15 +160,17 @@ def get_revenue_report(
         if key not in buckets:
             buckets[key] = {"total": Decimal("0"), "cash": Decimal("0"), "card": Decimal("0"), "credit": Decimal("0")}
 
-        buckets[key]["total"] += tx.amount
-        grand_total += tx.amount
+        # Add payments, subtract refunds
+        amount = tx.amount if tx.transaction_type == TransactionType.payment else -tx.amount
+        buckets[key]["total"] += amount
+        grand_total += amount
 
         if tx.payment_method == PaymentMethod.cash:
-            buckets[key]["cash"] += tx.amount
+            buckets[key]["cash"] += amount
         elif tx.payment_method == PaymentMethod.card:
-            buckets[key]["card"] += tx.amount
+            buckets[key]["card"] += amount
         elif tx.payment_method == PaymentMethod.credit:
-            buckets[key]["credit"] += tx.amount
+            buckets[key]["credit"] += amount
 
     items = [
         {"period": k, "total": v["total"], "cash": v["cash"], "card": v["card"], "credit": v["credit"]}
