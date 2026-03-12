@@ -45,6 +45,8 @@ import {
   tokenizeCardFromSwipe,
   tokenizeCardFromFull,
   unlockMemberPin,
+  enableCardAutoCharge,
+  disableCardAutoCharge,
 } from "../../../api/members";
 import {
   adjustMembershipSwims,
@@ -135,6 +137,12 @@ export default function MemberDetail() {
   const [showAssignCard, setShowAssignCard] = useState(false);
   const [newCardUid, setNewCardUid] = useState("");
   const [assignCardLoading, setAssignCardLoading] = useState(false);
+
+  // Auto-charge management
+  const [showAutoChargeModal, setShowAutoChargeModal] = useState(false);
+  const [autoChargeCard, setAutoChargeCard] = useState(null);
+  const [autoChargePlanId, setAutoChargePlanId] = useState("");
+  const [autoChargeLoading, setAutoChargeLoading] = useState(false);
 
   // Listen for NFC scans when modal is open
   const { connected: nfcConnected } = useNFCReader({
@@ -292,6 +300,33 @@ export default function MemberDetail() {
       load();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to remove saved card");
+    }
+  };
+
+  const handleEnableAutoCharge = async () => {
+    if (!autoChargePlanId || !autoChargeCard) return;
+    setAutoChargeLoading(true);
+    try {
+      await enableCardAutoCharge(id, autoChargeCard.id, autoChargePlanId);
+      toast.success("Auto-charge enabled");
+      setShowAutoChargeModal(false);
+      setAutoChargeCard(null);
+      setAutoChargePlanId("");
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to enable auto-charge");
+    } finally {
+      setAutoChargeLoading(false);
+    }
+  };
+
+  const handleDisableAutoCharge = async (cardId) => {
+    try {
+      await disableCardAutoCharge(id, cardId);
+      toast.success("Auto-charge disabled");
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to disable auto-charge");
     }
   };
 
@@ -787,18 +822,53 @@ export default function MemberDetail() {
                         </p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleDeleteSavedCard(sc.id)}
-                      className="rounded p-1 text-gray-400 dark:text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      {sc.auto_charge_enabled ? (
+                        <button
+                          onClick={() => handleDisableAutoCharge(sc.id)}
+                          className="rounded p-1 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors"
+                          title="Disable auto-charge"
+                        >
+                          <Zap className="h-3.5 w-3.5" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setAutoChargeCard(sc);
+                            setAutoChargePlanId("");
+                            setShowAutoChargeModal(true);
+                          }}
+                          className="rounded p-1 text-gray-400 dark:text-gray-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 hover:text-emerald-500 transition-colors"
+                          title="Enable auto-charge"
+                        >
+                          <Zap className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDeleteSavedCard(sc.id)}
+                        className="rounded p-1 text-gray-400 dark:text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                   {sc.auto_charge_enabled && (
-                    <div className="mt-2 flex items-center gap-1.5 text-xs text-emerald-600">
-                      <Zap className="h-3 w-3" />
-                      Auto-charge: {sc.auto_charge_plan_name}
-                      {sc.next_charge_date && ` · Next: ${sc.next_charge_date}`}
+                    <div className="mt-2 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                        <Zap className="h-3 w-3" />
+                        Auto-charge: {sc.auto_charge_plan_name}
+                        {sc.next_charge_date && ` · Next: ${sc.next_charge_date}`}
+                      </div>
+                      <button
+                        onClick={() => {
+                          setAutoChargeCard(sc);
+                          setAutoChargePlanId("");
+                          setShowAutoChargeModal(true);
+                        }}
+                        className="text-brand-600 dark:text-brand-400 hover:underline"
+                      >
+                        Change plan
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1784,6 +1854,83 @@ export default function MemberDetail() {
               }
             >
               {addCardMethod === "manual" ? "Record Card" : "Save Card"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Auto-Charge Setup Modal */}
+      <Modal
+        open={showAutoChargeModal}
+        onClose={() => {
+          setShowAutoChargeModal(false);
+          setAutoChargeCard(null);
+          setAutoChargePlanId("");
+        }}
+        title={autoChargeCard?.auto_charge_enabled ? "Change Auto-Charge Plan" : "Enable Auto-Charge"}
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            {autoChargeCard?.auto_charge_enabled
+              ? `Currently charging ${autoChargeCard.auto_charge_plan_name} to this card on the 1st of each month.`
+              : `Set up automatic monthly billing for ${autoChargeCard?.card_brand || "Card"} **** ${autoChargeCard?.card_last4}`}
+          </p>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Select Monthly Plan
+            </label>
+            <select
+              value={autoChargePlanId}
+              onChange={(e) => setAutoChargePlanId(e.target.value)}
+              className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+            >
+              <option value="">-- Select a plan --</option>
+              <optgroup label="Monthly Plans (charges on 1st of month)">
+                {plans
+                  .filter((p) => p.plan_type === "monthly" && p.is_active)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} - ${p.price}/month
+                    </option>
+                  ))}
+              </optgroup>
+              <optgroup label="Swim Passes (recharges when depleted)">
+                {plans
+                  .filter((p) => p.plan_type === "swim_pass" && p.is_active)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} - ${p.price} ({p.swims_included} swims)
+                    </option>
+                  ))}
+              </optgroup>
+            </select>
+            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+              Monthly plans charge on the 1st of each month. Swim passes auto-recharge when swims are depleted.
+            </p>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => {
+                setShowAutoChargeModal(false);
+                setAutoChargeCard(null);
+                setAutoChargePlanId("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              className="flex-1"
+              onClick={handleEnableAutoCharge}
+              disabled={!autoChargePlanId || autoChargeLoading}
+              loading={autoChargeLoading}
+            >
+              {autoChargeCard?.auto_charge_enabled ? "Update" : "Enable"}
             </Button>
           </div>
         </div>
