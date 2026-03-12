@@ -11,6 +11,7 @@ class TransactionResponse(BaseModel):
     id: uuid.UUID
     member_id: uuid.UUID | None
     member_name: str | None = None
+    guest_name: str | None = None
     transaction_type: TransactionType
     payment_method: PaymentMethod
     amount: Decimal

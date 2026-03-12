@@ -71,6 +71,7 @@ def list_transactions(
             id=tx.id,
             member_id=tx.member_id,
             member_name=f"{tx.member.first_name} {tx.member.last_name}" if tx.member else None,
+            guest_name=tx.guest_name,
             transaction_type=tx.transaction_type,
             payment_method=tx.payment_method,
             amount=tx.amount,

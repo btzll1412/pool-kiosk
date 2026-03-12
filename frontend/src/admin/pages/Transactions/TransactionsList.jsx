@@ -84,7 +84,13 @@ export default function TransactionsList() {
       label: "Member",
       render: (row) => (
         <span className="font-medium text-gray-900 dark:text-gray-100">
-          {row.member_name || <span className="text-gray-400">Guest</span>}
+          {row.member_name || (
+            row.guest_name ? (
+              <span className="text-amber-600 dark:text-amber-400">Guest - {row.guest_name}</span>
+            ) : (
+              <span className="text-gray-400">Guest</span>
+            )
+          )}
         </span>
       ),
     },
