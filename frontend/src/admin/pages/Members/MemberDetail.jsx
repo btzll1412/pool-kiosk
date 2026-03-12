@@ -95,6 +95,8 @@ export default function MemberDetail() {
   const [swimNotes, setSwimNotes] = useState("");
   const [swimAdjustLoading, setSwimAdjustLoading] = useState(false);
   const [deactivateMembershipTarget, setDeactivateMembershipTarget] = useState(null);
+  const [deactivateCreditOption, setDeactivateCreditOption] = useState("none"); // "none", "full", "remaining"
+  const [deactivateLoading, setDeactivateLoading] = useState(false);
 
   // Payment options for Add Membership
   const [chargeNow, setChargeNow] = useState(false);
@@ -544,13 +546,45 @@ export default function MemberDetail() {
 
   const handleDeactivateMembership = async () => {
     if (!deactivateMembershipTarget) return;
+    setDeactivateLoading(true);
     try {
+      // Deactivate the membership
       await updateMembership(deactivateMembershipTarget.id, { is_active: false });
-      toast.success("Membership deactivated");
+
+      // If credit option selected, add credit to member account
+      if (deactivateCreditOption !== "none") {
+        const plan = plans.find(p => p.id === deactivateMembershipTarget.plan_id);
+        let creditAmount = 0;
+
+        if (deactivateCreditOption === "full") {
+          creditAmount = plan?.price || 0;
+        } else if (deactivateCreditOption === "remaining" && deactivateMembershipTarget.swims_total > 0) {
+          // Calculate prorated amount based on remaining swims
+          const pricePerSwim = (plan?.price || 0) / deactivateMembershipTarget.swims_total;
+          creditAmount = pricePerSwim * (deactivateMembershipTarget.swims_remaining || 0);
+          creditAmount = Math.round(creditAmount * 100) / 100; // Round to 2 decimals
+        }
+
+        if (creditAmount > 0) {
+          await adjustCredit(id, {
+            amount: creditAmount,
+            notes: `Refund for deactivated ${deactivateMembershipTarget.plan_name} (${deactivateCreditOption === "full" ? "full" : "prorated"})`,
+          });
+          toast.success(`Membership deactivated. $${creditAmount.toFixed(2)} credit added.`);
+        } else {
+          toast.success("Membership deactivated");
+        }
+      } else {
+        toast.success("Membership deactivated");
+      }
+
       setDeactivateMembershipTarget(null);
+      setDeactivateCreditOption("none");
       load();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to deactivate membership");
+    } finally {
+      setDeactivateLoading(false);
     }
   };
 
@@ -1588,15 +1622,122 @@ export default function MemberDetail() {
         </div>
       </Modal>
 
-      {/* Deactivate Membership Confirmation */}
-      <ConfirmDialog
+      {/* Deactivate Membership Modal */}
+      <Modal
         open={!!deactivateMembershipTarget}
-        onClose={() => setDeactivateMembershipTarget(null)}
-        onConfirm={handleDeactivateMembership}
+        onClose={() => {
+          setDeactivateMembershipTarget(null);
+          setDeactivateCreditOption("none");
+        }}
         title="Deactivate Membership"
-        message={`Are you sure you want to deactivate this ${deactivateMembershipTarget?.plan_name || "membership"}? The member will no longer be able to use it.`}
-        confirmLabel="Deactivate"
-      />
+        size="sm"
+      >
+        {deactivateMembershipTarget && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Deactivating <strong>{deactivateMembershipTarget.plan_name}</strong>. The member will no longer be able to use this membership.
+            </p>
+
+            {/* Show usage info for swim passes */}
+            {deactivateMembershipTarget.plan_type === "swim_pass" && deactivateMembershipTarget.swims_total > 0 && (
+              <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
+                <p className="text-sm text-gray-700 dark:text-gray-300">
+                  <strong>Usage:</strong> {deactivateMembershipTarget.swims_total - (deactivateMembershipTarget.swims_remaining || 0)} of {deactivateMembershipTarget.swims_total} swims used
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {deactivateMembershipTarget.swims_remaining || 0} swims remaining
+                </p>
+              </div>
+            )}
+
+            {/* Credit options */}
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Credit Option
+              </label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <input
+                    type="radio"
+                    name="creditOption"
+                    value="none"
+                    checked={deactivateCreditOption === "none"}
+                    onChange={(e) => setDeactivateCreditOption(e.target.value)}
+                    className="h-4 w-4 text-brand-600"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No credit</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Just deactivate the membership</p>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <input
+                    type="radio"
+                    name="creditOption"
+                    value="full"
+                    checked={deactivateCreditOption === "full"}
+                    onChange={(e) => setDeactivateCreditOption(e.target.value)}
+                    className="h-4 w-4 text-brand-600"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Full refund - ${plans.find(p => p.id === deactivateMembershipTarget.plan_id)?.price?.toFixed(2) || "0.00"}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Add full plan price as account credit</p>
+                  </div>
+                </label>
+
+                {deactivateMembershipTarget.plan_type === "swim_pass" && deactivateMembershipTarget.swims_total > 0 && (deactivateMembershipTarget.swims_remaining || 0) < deactivateMembershipTarget.swims_total && (
+                  <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <input
+                      type="radio"
+                      name="creditOption"
+                      value="remaining"
+                      checked={deactivateCreditOption === "remaining"}
+                      onChange={(e) => setDeactivateCreditOption(e.target.value)}
+                      className="h-4 w-4 text-brand-600"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Prorated refund - ${(() => {
+                          const plan = plans.find(p => p.id === deactivateMembershipTarget.plan_id);
+                          const pricePerSwim = (plan?.price || 0) / deactivateMembershipTarget.swims_total;
+                          return (pricePerSwim * (deactivateMembershipTarget.swims_remaining || 0)).toFixed(2);
+                        })()}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Credit for {deactivateMembershipTarget.swims_remaining || 0} unused swims
+                      </p>
+                    </div>
+                  </label>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => {
+                  setDeactivateMembershipTarget(null);
+                  setDeactivateCreditOption("none");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                className="flex-1"
+                onClick={handleDeactivateMembership}
+                loading={deactivateLoading}
+              >
+                Deactivate
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Deactivate Card Confirmation */}
       <ConfirmDialog
