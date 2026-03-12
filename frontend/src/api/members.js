@@ -88,3 +88,11 @@ export const chargeCard = (memberId, cardNumber, expDate, cvv, amount, descripti
   client.post(`/members/${memberId}/charge-card`, null, {
     params: { card_number: cardNumber, exp_date: expDate, cvv, amount, description, save_card: saveCard }
   }).then((r) => r.data);
+
+export const enableCardAutoCharge = (memberId, cardId, planId) =>
+  client.post(`/members/${memberId}/saved-cards/${cardId}/auto-charge`, null, {
+    params: { plan_id: planId }
+  }).then((r) => r.data);
+
+export const disableCardAutoCharge = (memberId, cardId) =>
+  client.delete(`/members/${memberId}/saved-cards/${cardId}/auto-charge`).then((r) => r.data);

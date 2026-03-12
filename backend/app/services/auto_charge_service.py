@@ -129,7 +129,7 @@ def process_due_charges(db: Session) -> dict:
 def enable_auto_charge(
     db: Session, saved_card_id: uuid.UUID, plan_id: uuid.UUID, member_id: uuid.UUID
 ) -> SavedCard:
-    """Enable auto-charge on a saved card for a specific monthly plan."""
+    """Enable auto-charge on a saved card for a monthly or swim pass plan."""
     card = db.query(SavedCard).filter(
         SavedCard.id == saved_card_id, SavedCard.member_id == member_id
     ).first()
@@ -139,10 +139,10 @@ def enable_auto_charge(
     plan = db.query(Plan).filter(Plan.id == plan_id, Plan.is_active.is_(True)).first()
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
-    if plan.plan_type != PlanType.monthly:
+    if plan.plan_type not in (PlanType.monthly, PlanType.swim_pass):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Auto-charge is only available for monthly plans",
+            detail="Auto-charge is only available for monthly and swim pass plans",
         )
 
     # Disable auto-charge on other cards for this member
@@ -154,7 +154,11 @@ def enable_auto_charge(
 
     card.auto_charge_enabled = True
     card.auto_charge_plan_id = plan.id
-    card.next_charge_date = _get_first_of_next_month()
+    # Monthly plans charge on 1st of month; swim pass plans charge when depleted (no date needed)
+    if plan.plan_type == PlanType.monthly:
+        card.next_charge_date = _get_first_of_next_month()
+    else:
+        card.next_charge_date = None  # Swim pass auto-recharge triggers on depletion
 
     db.commit()
     db.refresh(card)
@@ -178,6 +182,92 @@ def disable_auto_charge(
     db.commit()
     db.refresh(card)
     return card
+
+
+def auto_recharge_swim_pass(db: Session, member_id: uuid.UUID) -> tuple[bool, str]:
+    """
+    Check if member has auto-recharge enabled for a swim pass and charge if so.
+    Returns (success, message) tuple.
+    Called when a swim pass is depleted during check-in.
+    """
+    # Find a saved card with auto-charge enabled for a swim pass plan
+    card = (
+        db.query(SavedCard)
+        .join(Plan, SavedCard.auto_charge_plan_id == Plan.id)
+        .filter(
+            SavedCard.member_id == member_id,
+            SavedCard.auto_charge_enabled.is_(True),
+            Plan.plan_type == PlanType.swim_pass,
+            Plan.is_active.is_(True),
+        )
+        .first()
+    )
+
+    if not card:
+        return False, "No auto-recharge configured"
+
+    plan = db.query(Plan).filter(Plan.id == card.auto_charge_plan_id).first()
+    if not plan:
+        return False, "Auto-recharge plan not found"
+
+    member = db.query(Member).filter(Member.id == member_id).first()
+    if not member:
+        return False, "Member not found"
+
+    customer_name = f"{member.first_name} {member.last_name}"
+
+    adapter = get_payment_adapter(db)
+    charge_result = adapter.charge_saved_card(
+        token=card.processor_token,
+        amount=plan.price,
+        member_id=str(member_id),
+        description=f"Auto-recharge: {plan.name}",
+        customer_name=customer_name,
+    )
+
+    if not charge_result.success:
+        logger.warning("Auto-recharge failed for member %s: %s", member_id, charge_result.message)
+        notify_auto_charge_failed(
+            db, member_name=customer_name,
+            member_id=str(member_id), plan_name=plan.name,
+            amount=str(plan.price), card_last4=card.card_last4 or "",
+            reason=charge_result.message or "Charge declined",
+        )
+        return False, charge_result.message or "Card charge failed"
+
+    # Create new membership
+    membership = create_membership(db, member_id, plan.id)
+
+    # Record transaction
+    tx = Transaction(
+        member_id=member_id,
+        transaction_type=TransactionType.payment,
+        payment_method=PaymentMethod.card,
+        amount=plan.price,
+        plan_id=plan.id,
+        membership_id=membership.id,
+        saved_card_id=card.id,
+        reference_id=charge_result.reference_id,
+        notes="Auto-recharge (swim pass depleted)",
+    )
+    db.add(tx)
+    db.commit()
+
+    logger.info("Auto-recharge succeeded for member %s, plan %s", member_id, plan.name)
+    notify_auto_charge_success(
+        db, member_name=customer_name,
+        member_id=str(member_id), plan_name=plan.name,
+        amount=str(plan.price), card_last4=card.card_last4 or "",
+    )
+
+    if member.email:
+        from app.services.email_service import send_auto_charge_receipt
+        send_auto_charge_receipt(
+            db, member.email, customer_name, plan.name,
+            str(plan.price), card.card_last4 or "",
+        )
+
+    return True, f"Auto-recharged {plan.name} - ${plan.price}"
 
 
 def charge_saved_card_now(

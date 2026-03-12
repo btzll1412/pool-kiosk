@@ -445,6 +445,48 @@ def delete_member_saved_card(
     return {"message": "Saved card removed"}
 
 
+@router.post("/{member_id}/saved-cards/{card_id}/auto-charge")
+def enable_card_auto_charge(
+    member_id: uuid.UUID,
+    card_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Enable auto-charge on a saved card for a specific monthly plan (admin action)."""
+    from app.services.auto_charge_service import enable_auto_charge
+    card = enable_auto_charge(db, card_id, plan_id, member_id)
+    plan = db.query(Plan).filter(Plan.id == card.auto_charge_plan_id).first()
+    logger.info("Admin enabled auto-charge: member=%s, card=%s, plan=%s, by=%s",
+               member_id, card_id, plan_id, current_user.id)
+    return {
+        "id": str(card.id),
+        "auto_charge_enabled": card.auto_charge_enabled,
+        "auto_charge_plan_id": str(card.auto_charge_plan_id) if card.auto_charge_plan_id else None,
+        "auto_charge_plan_name": plan.name if plan else None,
+        "next_charge_date": str(card.next_charge_date) if card.next_charge_date else None,
+    }
+
+
+@router.delete("/{member_id}/saved-cards/{card_id}/auto-charge")
+def disable_card_auto_charge(
+    member_id: uuid.UUID,
+    card_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Disable auto-charge on a saved card (admin action)."""
+    from app.services.auto_charge_service import disable_auto_charge
+    card = disable_auto_charge(db, card_id, member_id)
+    logger.info("Admin disabled auto-charge: member=%s, card=%s, by=%s",
+               member_id, card_id, current_user.id)
+    return {
+        "id": str(card.id),
+        "auto_charge_enabled": card.auto_charge_enabled,
+        "message": "Auto-charge disabled",
+    }
+
+
 @router.post("/{member_id}/saved-cards/tokenize-swipe", response_model=SavedCardResponse, status_code=201)
 def admin_tokenize_card_from_swipe(
     member_id: uuid.UUID,

@@ -14,6 +14,7 @@ from app.models.member import Member
 from app.models.membership import Membership
 from app.models.plan import PlanType
 from app.services.settings_service import get_setting
+from app.services.auto_charge_service import auto_recharge_swim_pass
 
 
 def _get_local_today(db: Session) -> date:
@@ -37,9 +38,20 @@ def perform_checkin(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found or inactive")
 
     membership = _get_active_membership(db, member_id)
+    auto_recharged = False
 
     if membership:
         checkin_type, deducted = _process_membership_checkin(db, membership, guest_count)
+
+        # Check if swim pass is now depleted and auto-recharge is enabled
+        if membership.plan_type == PlanType.swim_pass:
+            remaining = (membership.swims_total or 0) - membership.swims_used
+            if remaining == 0:
+                # Attempt auto-recharge for next time
+                success, message = auto_recharge_swim_pass(db, member_id)
+                if success:
+                    auto_recharged = True
+                    logger.info("Auto-recharge triggered after swim pass depletion: member=%s, message=%s", member_id, message)
     else:
         logger.warning("Check-in failed — no active membership: member=%s", member_id)
         raise HTTPException(
@@ -52,11 +64,13 @@ def perform_checkin(
         membership_id=membership.id if membership else None,
         checkin_type=checkin_type,
         guest_count=guest_count,
+        notes="Auto-recharged swim pass" if auto_recharged else None,
     )
     db.add(checkin)
     db.commit()
     db.refresh(checkin)
-    logger.info("Check-in completed: member=%s, type=%s, guests=%d, checkin=%s", member_id, checkin_type.value, guest_count, checkin.id)
+    logger.info("Check-in completed: member=%s, type=%s, guests=%d, checkin=%s, auto_recharged=%s",
+                member_id, checkin_type.value, guest_count, checkin.id, auto_recharged)
     return checkin
 
 
