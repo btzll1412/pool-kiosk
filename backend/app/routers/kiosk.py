@@ -1436,6 +1436,7 @@ def guest_visit(data: GuestVisitRequest, request: Request, db: Session = Depends
         amount_paid=data.cash_tendered if data.cash_tendered else plan.price,
         plan_id=plan.id,
         plan_name=plan.name,
+        plan_price=plan.price,
     )
     db.add(visit)
 
@@ -1541,6 +1542,7 @@ def guest_pay_card(data: GuestCardPaymentRequest, request: Request, db: Session 
         amount_paid=plan.price,
         plan_id=plan.id,
         plan_name=plan.name,
+        plan_price=plan.price,
     )
     db.add(visit)
 
@@ -1645,6 +1647,7 @@ def guest_pay_split(data: GuestSplitPaymentRequest, request: Request, db: Sessio
         amount_paid=plan.price,
         plan_id=plan.id,
         plan_name=plan.name,
+        plan_price=plan.price,
     )
     db.add(visit)
 
