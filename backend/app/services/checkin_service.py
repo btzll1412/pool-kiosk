@@ -61,6 +61,14 @@ def perform_checkin(
 
 
 def _get_active_membership(db: Session, member_id: uuid.UUID) -> Membership | None:
+    """
+    Get the active membership to use for check-in.
+
+    Priority order:
+    1. Monthly memberships (unlimited during period, preserves swim credits)
+    2. Swim passes (limited swims)
+    3. Single swims (one-time use)
+    """
     today = _get_local_today(db)
     memberships = (
         db.query(Membership)
@@ -70,17 +78,30 @@ def _get_active_membership(db: Session, member_id: uuid.UUID) -> Membership | No
         )
         .all()
     )
+
+    # Separate by type for priority ordering
+    monthly = []
+    swim_pass = []
+    single = []
+
     for m in memberships:
         if m.plan_type == PlanType.monthly:
             if m.valid_from and m.valid_until and m.valid_from <= today <= m.valid_until:
-                return m
+                monthly.append(m)
         elif m.plan_type == PlanType.swim_pass:
             if m.swims_total and m.swims_used < m.swims_total:
-                return m
+                swim_pass.append(m)
         elif m.plan_type == PlanType.single:
-            # Single swim works like a 1-swim pass
             if m.swims_total and m.swims_used < m.swims_total:
-                return m
+                single.append(m)
+
+    # Return in priority order: monthly first, then swim pass, then single
+    if monthly:
+        return monthly[0]
+    if swim_pass:
+        return swim_pass[0]
+    if single:
+        return single[0]
     return None
 
 
