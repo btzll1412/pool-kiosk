@@ -2,6 +2,7 @@ import logging
 import uuid
 from datetime import date, timedelta
 from calendar import monthrange
+from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -71,49 +72,100 @@ def process_due_charges(db: Session) -> dict:
             continue
 
         customer_name = f"{member.first_name} {member.last_name}"
-        charge_result = adapter.charge_saved_card(
-            token=card.processor_token,
-            amount=plan.price,
-            member_id=str(card.member_id),
-            description=f"Auto-charge: {plan.name}",
-            customer_name=customer_name,
-        )
+        plan_price = plan.price
+        credit_used = Decimal("0.00")
+        card_charge_amount = plan_price
 
-        if not charge_result.success:
-            logger.warning("Auto-charge failed for card %s: %s", card.id, charge_result.message)
-            notify_auto_charge_failed(
-                db, member_name=f"{member.first_name} {member.last_name}",
-                member_id=str(card.member_id), plan_name=plan.name,
-                amount=str(plan.price), card_last4=card.card_last4 or "",
-                reason=charge_result.message or "Charge declined",
+        # Check if member has account credit to apply
+        if member.credit_balance and member.credit_balance > 0:
+            if member.credit_balance >= plan_price:
+                # Credit covers entire plan - no card charge needed
+                credit_used = plan_price
+                card_charge_amount = Decimal("0.00")
+            else:
+                # Partial credit - charge remainder to card
+                credit_used = member.credit_balance
+                card_charge_amount = plan_price - credit_used
+
+        # Charge card if needed
+        charge_result = None
+        if card_charge_amount > 0:
+            charge_result = adapter.charge_saved_card(
+                token=card.processor_token,
+                amount=card_charge_amount,
+                member_id=str(card.member_id),
+                description=f"Auto-charge: {plan.name}" + (f" (${credit_used} credit applied)" if credit_used > 0 else ""),
+                customer_name=customer_name,
             )
-            results["failed"] += 1
-            continue
+
+            if not charge_result.success:
+                logger.warning("Auto-charge failed for card %s: %s", card.id, charge_result.message)
+                notify_auto_charge_failed(
+                    db, member_name=f"{member.first_name} {member.last_name}",
+                    member_id=str(card.member_id), plan_name=plan.name,
+                    amount=str(card_charge_amount), card_last4=card.card_last4 or "",
+                    reason=charge_result.message or "Charge declined",
+                )
+                results["failed"] += 1
+                continue
 
         membership = create_membership(db, card.member_id, plan.id)
 
-        tx = Transaction(
-            member_id=card.member_id,
-            transaction_type=TransactionType.payment,
-            payment_method=PaymentMethod.card,
-            amount=plan.price,
-            plan_id=plan.id,
-            membership_id=membership.id,
-            saved_card_id=card.id,
-            reference_id=charge_result.reference_id,
-            notes="Auto-charge",
-        )
-        db.add(tx)
+        # Deduct credit if used
+        if credit_used > 0:
+            member.credit_balance -= credit_used
+            credit_tx = Transaction(
+                member_id=card.member_id,
+                transaction_type=TransactionType.credit_use,
+                payment_method=PaymentMethod.credit,
+                amount=credit_used,
+                plan_id=plan.id,
+                membership_id=membership.id,
+                notes=f"Auto-charge: credit applied for {plan.name}",
+            )
+            db.add(credit_tx)
+
+        # Record card payment transaction if charged
+        if card_charge_amount > 0 and charge_result:
+            tx = Transaction(
+                member_id=card.member_id,
+                transaction_type=TransactionType.payment,
+                payment_method=PaymentMethod.card,
+                amount=card_charge_amount,
+                plan_id=plan.id,
+                membership_id=membership.id,
+                saved_card_id=card.id,
+                reference_id=charge_result.reference_id,
+                notes=f"Auto-charge" + (f" (${credit_used} credit also applied)" if credit_used > 0 else ""),
+            )
+            db.add(tx)
 
         card.next_charge_date = _get_first_of_next_month(today)
         db.commit()
 
-        logger.info("Auto-charge succeeded for member %s, plan %s", card.member_id, plan.name)
+        # Log success with credit info
+        if credit_used > 0 and card_charge_amount > 0:
+            logger.info("Auto-charge succeeded for member %s, plan %s: $%s credit + $%s card",
+                       card.member_id, plan.name, credit_used, card_charge_amount)
+        elif credit_used > 0:
+            logger.info("Auto-charge succeeded for member %s, plan %s: $%s credit only (no card charge)",
+                       card.member_id, plan.name, credit_used)
+        else:
+            logger.info("Auto-charge succeeded for member %s, plan %s: $%s card",
+                       card.member_id, plan.name, card_charge_amount)
+
         member_name = f"{member.first_name} {member.last_name}"
+        # Build amount string for notification
+        if credit_used > 0 and card_charge_amount > 0:
+            amount_str = f"${card_charge_amount} charged (${credit_used} credit applied)"
+        elif credit_used > 0:
+            amount_str = f"${credit_used} credit used (no card charge)"
+        else:
+            amount_str = str(plan.price)
         notify_auto_charge_success(
             db, member_name=member_name,
             member_id=str(card.member_id), plan_name=plan.name,
-            amount=str(plan.price), card_last4=card.card_last4 or "",
+            amount=amount_str, card_last4=card.card_last4 or "",
         )
         if member.email:
             from app.services.email_service import send_auto_charge_receipt
