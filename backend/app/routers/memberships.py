@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -23,7 +23,7 @@ from app.schemas.membership import (
     SwimAdjustRequest,
 )
 from app.services.auth_service import get_current_user
-from app.services.auto_charge_service import charge_saved_card_now, enable_auto_charge
+from app.services.auto_charge_service import charge_saved_card_now, enable_auto_charge, _get_first_of_next_month
 from app.services.membership_service import (
     adjust_swims,
     create_membership,
@@ -148,7 +148,7 @@ def create_membership_endpoint(
                     if payment.enable_autopay and plan.plan_type == PlanType.monthly:
                         new_card.auto_charge_enabled = True
                         new_card.auto_charge_plan_id = plan.id
-                        new_card.next_charge_date = date.today() + timedelta(days=plan.duration_days or 30)
+                        new_card.next_charge_date = _get_first_of_next_month()
                         message = f"Membership created, card saved, and autopay enabled"
                     else:
                         message = f"Membership created and card saved"
