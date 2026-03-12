@@ -553,22 +553,23 @@ export default function MemberDetail() {
 
       // If credit option selected, add credit to member account
       if (deactivateCreditOption !== "none") {
-        const plan = plans.find(p => p.id === deactivateMembershipTarget.plan_id);
+        const plan = plans.find(p => String(p.id) === String(deactivateMembershipTarget.plan_id));
         let creditAmount = 0;
 
         if (deactivateCreditOption === "full") {
-          creditAmount = plan?.price || 0;
-        } else if (deactivateCreditOption === "remaining" && deactivateMembershipTarget.swims_total > 0) {
+          creditAmount = Number(plan?.price) || 0;
+        } else if (deactivateCreditOption === "remaining" && (deactivateMembershipTarget.swims_total || 0) > 0) {
           // Calculate prorated amount based on remaining swims
-          const pricePerSwim = (plan?.price || 0) / deactivateMembershipTarget.swims_total;
+          const swimsTotal = deactivateMembershipTarget.swims_total || 1;
+          const pricePerSwim = (Number(plan?.price) || 0) / swimsTotal;
           creditAmount = pricePerSwim * (deactivateMembershipTarget.swims_remaining || 0);
           creditAmount = Math.round(creditAmount * 100) / 100; // Round to 2 decimals
         }
 
-        if (creditAmount > 0) {
+        if (creditAmount > 0 && !isNaN(creditAmount)) {
           await adjustCredit(id, {
             amount: creditAmount,
-            notes: `Refund for deactivated ${deactivateMembershipTarget.plan_name} (${deactivateCreditOption === "full" ? "full" : "prorated"})`,
+            notes: `Refund for deactivated ${deactivateMembershipTarget.plan_name || "membership"} (${deactivateCreditOption === "full" ? "full" : "prorated"})`,
           });
           toast.success(`Membership deactivated. $${creditAmount.toFixed(2)} credit added.`);
         } else {
@@ -1639,10 +1640,10 @@ export default function MemberDetail() {
             </p>
 
             {/* Show usage info for swim passes */}
-            {deactivateMembershipTarget.plan_type === "swim_pass" && deactivateMembershipTarget.swims_total > 0 && (
+            {deactivateMembershipTarget.plan_type === "swim_pass" && (deactivateMembershipTarget.swims_total || 0) > 0 && (
               <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
                 <p className="text-sm text-gray-700 dark:text-gray-300">
-                  <strong>Usage:</strong> {deactivateMembershipTarget.swims_total - (deactivateMembershipTarget.swims_remaining || 0)} of {deactivateMembershipTarget.swims_total} swims used
+                  <strong>Usage:</strong> {(deactivateMembershipTarget.swims_total || 0) - (deactivateMembershipTarget.swims_remaining || 0)} of {deactivateMembershipTarget.swims_total || 0} swims used
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {deactivateMembershipTarget.swims_remaining || 0} swims remaining
@@ -1682,13 +1683,16 @@ export default function MemberDetail() {
                   />
                   <div>
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Full refund - ${plans.find(p => p.id === deactivateMembershipTarget.plan_id)?.price?.toFixed(2) || "0.00"}
+                      Full refund - ${(() => {
+                        const plan = plans.find(p => String(p.id) === String(deactivateMembershipTarget.plan_id));
+                        return plan?.price ? Number(plan.price).toFixed(2) : "0.00";
+                      })()}
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">Add full plan price as account credit</p>
                   </div>
                 </label>
 
-                {deactivateMembershipTarget.plan_type === "swim_pass" && deactivateMembershipTarget.swims_total > 0 && (deactivateMembershipTarget.swims_remaining || 0) < deactivateMembershipTarget.swims_total && (
+                {deactivateMembershipTarget.plan_type === "swim_pass" && (deactivateMembershipTarget.swims_total || 0) > 0 && (deactivateMembershipTarget.swims_remaining || 0) < (deactivateMembershipTarget.swims_total || 0) && (
                   <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">
                     <input
                       type="radio"
@@ -1701,9 +1705,11 @@ export default function MemberDetail() {
                     <div>
                       <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
                         Prorated refund - ${(() => {
-                          const plan = plans.find(p => p.id === deactivateMembershipTarget.plan_id);
-                          const pricePerSwim = (plan?.price || 0) / deactivateMembershipTarget.swims_total;
-                          return (pricePerSwim * (deactivateMembershipTarget.swims_remaining || 0)).toFixed(2);
+                          const plan = plans.find(p => String(p.id) === String(deactivateMembershipTarget.plan_id));
+                          const swimsTotal = deactivateMembershipTarget.swims_total || 1;
+                          const pricePerSwim = (plan?.price || 0) / swimsTotal;
+                          const amount = pricePerSwim * (deactivateMembershipTarget.swims_remaining || 0);
+                          return isNaN(amount) ? "0.00" : amount.toFixed(2);
                         })()}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
