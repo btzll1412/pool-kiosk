@@ -842,4 +842,41 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-03-12 (Admin & Auto-Charge Enhancements)
+## Kiosk View Plans & Auto-Reload (2026-03-18)
+
+### View Plans Screen
+- Added "View Plans" button on kiosk idle screen (next to "Search Account" and "Guest Visit")
+- New ViewPlansScreen displays all available plans in read-only grid
+- Shows plan name, type, price, swim count/duration
+- Info message tells users how to purchase (e.g., "use your member account or visit as a guest")
+- Message is admin-configurable via Settings > Kiosk Display > "View Plans Screen"
+
+### Kiosk Auto-Reload (Version-Based)
+- Kiosk automatically detects code changes and reloads when on idle screen
+- Checks every 30 seconds (configurable) if JS bundle has changed
+- Only reloads when new code is deployed — no constant refreshing
+- Settings still auto-refresh every 30 seconds without reload (existing behavior)
+- Configurable via Settings > Kiosk Display > Kiosk Hardware > "Auto-Reload Interval"
+- Set to 0 to disable auto-reload completely
+
+### How It Works
+| Change Type | How Kiosk Picks It Up |
+|-------------|----------------------|
+| Settings changes (admin panel) | Auto-fetched every 30 seconds, no reload needed |
+| Code changes (deploy new version) | Version check detects new bundle hash, triggers reload |
+
+### Admin Settings Added
+- `kiosk_plans_message` — Message shown on View Plans screen (textarea)
+- `kiosk_reload_interval_seconds` — Auto-reload check interval, default 30, set to 0 to disable
+
+### Files Added
+- `frontend/src/kiosk/screens/ViewPlansScreen.jsx` — Read-only plans display screen
+
+### Files Modified
+- `frontend/src/kiosk/KioskApp.jsx` — Added ViewPlansScreen, version-based reload logic
+- `frontend/src/kiosk/screens/IdleScreen.jsx` — Added "View Plans" button with Tag icon
+- `frontend/src/admin/pages/Settings/Settings.jsx` — Added View Plans Screen and Auto-Reload settings
+
+---
+
+## Last Updated: 2026-03-18 (Kiosk View Plans & Auto-Reload)
