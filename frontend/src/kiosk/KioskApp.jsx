@@ -55,6 +55,8 @@ const SCREENS = {
 
 // Refresh settings every 30 seconds when on idle screen
 const SETTINGS_REFRESH_INTERVAL = 30000;
+// Full page reload interval when on idle (default 30 seconds)
+const PAGE_RELOAD_INTERVAL = 30000;
 
 export default function KioskApp() {
   const [screen, setScreen] = useState("idle");
@@ -62,6 +64,7 @@ export default function KioskApp() {
   const [context, setContext] = useState({});
   const [settings, setSettings] = useState({});
   const refreshIntervalRef = useRef(null);
+  const reloadIntervalRef = useRef(null);
 
   // Fetch settings function
   const fetchSettings = useCallback(() => {
@@ -98,6 +101,40 @@ export default function KioskApp() {
       }
     }
   }, [screen, fetchSettings]);
+
+  // Silent full page reload when on idle screen to pick up code changes
+  useEffect(() => {
+    if (screen === "idle") {
+      // Get reload interval from settings (default 30 seconds, 0 = disabled)
+      const reloadSeconds = Number(settings.kiosk_reload_interval_seconds);
+      // Use 30 seconds if not set, or skip if explicitly set to 0
+      const effectiveSeconds = settings.kiosk_reload_interval_seconds === "0" || settings.kiosk_reload_interval_seconds === 0
+        ? 0
+        : (reloadSeconds || 30);
+
+      if (effectiveSeconds > 0) {
+        const reloadMs = effectiveSeconds * 1000;
+
+        reloadIntervalRef.current = setInterval(() => {
+          // Only reload if still on idle screen
+          window.location.reload();
+        }, reloadMs);
+      }
+
+      return () => {
+        if (reloadIntervalRef.current) {
+          clearInterval(reloadIntervalRef.current);
+          reloadIntervalRef.current = null;
+        }
+      };
+    } else {
+      // Clear reload interval when not on idle screen
+      if (reloadIntervalRef.current) {
+        clearInterval(reloadIntervalRef.current);
+        reloadIntervalRef.current = null;
+      }
+    }
+  }, [screen, settings.kiosk_reload_interval_seconds]);
 
   const goTo = useCallback((nextScreen, ctx = {}) => {
     setContext((prev) => ({ ...prev, ...ctx }));
