@@ -63,8 +63,16 @@ export default function KioskApp() {
   const [member, setMember] = useState(null);
   const [context, setContext] = useState({});
   const [settings, setSettings] = useState({});
+  const [pageReady, setPageReady] = useState(false);
   const refreshIntervalRef = useRef(null);
   const reloadIntervalRef = useRef(null);
+
+  // Fade in on initial page load (for smooth reload transitions)
+  useEffect(() => {
+    // Small delay to ensure CSS is loaded
+    const timer = setTimeout(() => setPageReady(true), 50);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Fetch settings function
   const fetchSettings = useCallback(() => {
@@ -103,6 +111,7 @@ export default function KioskApp() {
   }, [screen, fetchSettings]);
 
   // Silent full page reload when on idle screen to pick up code changes
+  // Uses fade transition to hide the reload flicker
   useEffect(() => {
     if (screen === "idle") {
       // Get reload interval from settings (default 30 seconds, 0 = disabled)
@@ -116,8 +125,27 @@ export default function KioskApp() {
         const reloadMs = effectiveSeconds * 1000;
 
         reloadIntervalRef.current = setInterval(() => {
-          // Only reload if still on idle screen
-          window.location.reload();
+          // Create a fade overlay to hide the reload
+          const overlay = document.createElement("div");
+          overlay.style.cssText = `
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(to bottom right, #0284c7, #0369a1, #1e3a5f);
+            z-index: 99999;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+          `;
+          document.body.appendChild(overlay);
+
+          // Fade in the overlay
+          requestAnimationFrame(() => {
+            overlay.style.opacity = "1";
+          });
+
+          // Wait for fade to complete, then reload
+          setTimeout(() => {
+            window.location.reload();
+          }, 350);
         }, reloadMs);
       }
 
@@ -193,7 +221,11 @@ export default function KioskApp() {
 
   return (
     <SecretExitTrigger staffExitPin={staffExitPin}>
-      <div className="flex h-screen w-screen flex-col overflow-hidden bg-gray-50">
+      <div
+        className={`flex h-screen w-screen flex-col overflow-hidden bg-gray-50 transition-opacity duration-300 ${
+          pageReady ? "opacity-100" : "opacity-0"
+        }`}
+      >
         <RFIDListener onScan={handleScan} disabled={!isIdle} />
 
       {!isIdle && (
