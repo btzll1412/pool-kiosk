@@ -1,4 +1,4 @@
-import { CreditCard, Lock, Search, UserPlus, Waves } from "lucide-react";
+import { CreditCard, Lock, Search, Tag, UserPlus, Waves } from "lucide-react";
 import KioskButton from "../components/KioskButton";
 
 export default function IdleScreen({ goTo, settings }) {
@@ -105,7 +105,7 @@ export default function IdleScreen({ goTo, settings }) {
           </span>
         </div>
 
-        <div className="mt-12 flex flex-col gap-4 sm:flex-row">
+        <div className="mt-12 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:justify-center">
           <KioskButton
             variant="secondary"
             size="xl"
@@ -123,6 +123,15 @@ export default function IdleScreen({ goTo, settings }) {
             className="min-w-[200px] bg-white/10 text-white ring-white/20 hover:bg-white/20 active:bg-white/30"
           >
             Guest Visit
+          </KioskButton>
+          <KioskButton
+            variant="secondary"
+            size="xl"
+            icon={Tag}
+            onClick={() => goTo("viewPlans")}
+            className="min-w-[200px] bg-white/10 text-white ring-white/20 hover:bg-white/20 active:bg-white/30"
+          >
+            View Plans
           </KioskButton>
         </div>
 

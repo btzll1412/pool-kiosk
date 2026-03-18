@@ -116,6 +116,14 @@ const settingGroups = [
     ],
   },
   {
+    title: "View Plans Screen",
+    description: "Customize the read-only plans display screen",
+    category: "kiosk",
+    fields: [
+      { key: "kiosk_plans_message", label: "Plans Info Message", type: "textarea", helpText: "Message shown on the View Plans screen telling users how to purchase. Default: To purchase a plan, please use your member account or visit as a guest." },
+    ],
+  },
+  {
     title: "Cash Payment Message",
     description: "Customize the message shown after any cash payment (guest, member, or split)",
     category: "kiosk",
