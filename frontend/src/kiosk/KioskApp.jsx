@@ -55,24 +55,27 @@ const SCREENS = {
 
 // Refresh settings every 30 seconds when on idle screen
 const SETTINGS_REFRESH_INTERVAL = 30000;
-// Full page reload interval when on idle (default 30 seconds)
-const PAGE_RELOAD_INTERVAL = 30000;
+// Check for new version every 30 seconds
+const VERSION_CHECK_INTERVAL = 30000;
+
+// Get current bundle version from the page
+function getCurrentBundleHash() {
+  const scripts = document.querySelectorAll('script[src*="assets/index-"]');
+  for (const script of scripts) {
+    const match = script.src.match(/index-([A-Za-z0-9]+)\.js/);
+    if (match) return match[1];
+  }
+  return null;
+}
 
 export default function KioskApp() {
   const [screen, setScreen] = useState("idle");
   const [member, setMember] = useState(null);
   const [context, setContext] = useState({});
   const [settings, setSettings] = useState({});
-  const [pageReady, setPageReady] = useState(false);
   const refreshIntervalRef = useRef(null);
-  const reloadIntervalRef = useRef(null);
-
-  // Fade in on initial page load (for smooth reload transitions)
-  useEffect(() => {
-    // Small delay to ensure CSS is loaded
-    const timer = setTimeout(() => setPageReady(true), 50);
-    return () => clearTimeout(timer);
-  }, []);
+  const versionCheckRef = useRef(null);
+  const currentVersionRef = useRef(getCurrentBundleHash());
 
   // Fetch settings function
   const fetchSettings = useCallback(() => {
@@ -110,56 +113,47 @@ export default function KioskApp() {
     }
   }, [screen, fetchSettings]);
 
-  // Silent full page reload when on idle screen to pick up code changes
-  // Uses fade transition to hide the reload flicker
+  // Check for new version and reload only when code changes (on idle screen only)
   useEffect(() => {
     if (screen === "idle") {
-      // Get reload interval from settings (default 30 seconds, 0 = disabled)
+      // Check if auto-reload is disabled
       const reloadSeconds = Number(settings.kiosk_reload_interval_seconds);
-      // Use 30 seconds if not set, or skip if explicitly set to 0
-      const effectiveSeconds = settings.kiosk_reload_interval_seconds === "0" || settings.kiosk_reload_interval_seconds === 0
-        ? 0
-        : (reloadSeconds || 30);
-
-      if (effectiveSeconds > 0) {
-        const reloadMs = effectiveSeconds * 1000;
-
-        reloadIntervalRef.current = setInterval(() => {
-          // Create a fade overlay to hide the reload
-          const overlay = document.createElement("div");
-          overlay.style.cssText = `
-            position: fixed;
-            inset: 0;
-            background: linear-gradient(to bottom right, #0284c7, #0369a1, #1e3a5f);
-            z-index: 99999;
-            opacity: 0;
-            transition: opacity 0.3s ease-in-out;
-          `;
-          document.body.appendChild(overlay);
-
-          // Fade in the overlay
-          requestAnimationFrame(() => {
-            overlay.style.opacity = "1";
-          });
-
-          // Wait for fade to complete, then reload
-          setTimeout(() => {
-            window.location.reload();
-          }, 350);
-        }, reloadMs);
+      if (settings.kiosk_reload_interval_seconds === "0" || settings.kiosk_reload_interval_seconds === 0) {
+        return;
       }
 
+      const checkInterval = (reloadSeconds || 30) * 1000;
+
+      versionCheckRef.current = setInterval(async () => {
+        try {
+          // Fetch the index.html to check for new bundle
+          const response = await fetch("/kiosk?_=" + Date.now(), { cache: "no-store" });
+          const html = await response.text();
+
+          // Extract bundle hash from fetched HTML
+          const match = html.match(/index-([A-Za-z0-9]+)\.js/);
+          const newVersion = match ? match[1] : null;
+
+          // Only reload if version actually changed
+          if (newVersion && currentVersionRef.current && newVersion !== currentVersionRef.current) {
+            window.location.reload();
+          }
+        } catch {
+          // Ignore fetch errors
+        }
+      }, checkInterval);
+
       return () => {
-        if (reloadIntervalRef.current) {
-          clearInterval(reloadIntervalRef.current);
-          reloadIntervalRef.current = null;
+        if (versionCheckRef.current) {
+          clearInterval(versionCheckRef.current);
+          versionCheckRef.current = null;
         }
       };
     } else {
-      // Clear reload interval when not on idle screen
-      if (reloadIntervalRef.current) {
-        clearInterval(reloadIntervalRef.current);
-        reloadIntervalRef.current = null;
+      // Clear interval when not on idle screen
+      if (versionCheckRef.current) {
+        clearInterval(versionCheckRef.current);
+        versionCheckRef.current = null;
       }
     }
   }, [screen, settings.kiosk_reload_interval_seconds]);
@@ -221,11 +215,7 @@ export default function KioskApp() {
 
   return (
     <SecretExitTrigger staffExitPin={staffExitPin}>
-      <div
-        className={`flex h-screen w-screen flex-col overflow-hidden bg-gray-50 transition-opacity duration-300 ${
-          pageReady ? "opacity-100" : "opacity-0"
-        }`}
-      >
+      <div className="flex h-screen w-screen flex-col overflow-hidden bg-gray-50">
         <RFIDListener onScan={handleScan} disabled={!isIdle} />
 
       {!isIdle && (
