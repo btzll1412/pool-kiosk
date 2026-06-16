@@ -145,7 +145,9 @@ pool-management/
 │       │   │   └── StatusScreen.jsx     # Timed status display
 │       │   └── components/
 │       │       ├── RFIDListener.jsx     # Captures RFID keyboard input
-│       │       ├── NumPad.jsx           # Touch-friendly number pad
+│       │       ├── KioskInput.jsx       # Input with virtual keyboard/numpad, Next button
+│       │       ├── VirtualKeyboard.jsx  # QWERTY on-screen keyboard with Next/Done side buttons
+│       │       ├── NumPad.jsx           # Touch-friendly number pad with Next/Done
 │       │       ├── MemberCard.jsx       # Member info display widget
 │       │       ├── PlanCard.jsx         # Plan option display
 │       │       ├── ScreenTransition.jsx # Fade crossfade between screens
@@ -465,6 +467,8 @@ pool-management/
 - `POST /api/plans` — Create plan
 - `PUT /api/plans/{id}` — Update plan
 - `DELETE /api/plans/{id}` — Deactivate plan
+- `POST /api/plans/{id}/reactivate` — Reactivate deactivated plan
+- `DELETE /api/plans/{id}/permanent` — Permanently delete plan (only if no memberships exist)
 
 ### Memberships (admin auth)
 
@@ -586,22 +590,49 @@ pool-management/
 | sip_change_needed_number | "" | Phone number for change-needed notifications |
 | sip_fusionpbx_api_url | "" | FusionPBX REST API base URL |
 | sip_fusionpbx_api_key | "" | FusionPBX API key (masked) |
+| **Kiosk Display** | | |
+| kiosk_welcome_title | "Welcome to {pool_name}" | Title on kiosk home screen |
+| kiosk_welcome_subtitle | "Scan your membership card..." | Subtitle on kiosk home screen |
+| kiosk_card_instruction | "Hold your card near the reader" | Card scan instruction text |
+| kiosk_help_text | "Need help? Please ask a staff member." | Help text at bottom |
+| kiosk_overlay_enabled | "false" | Show announcement overlay |
+| kiosk_overlay_text | "" | Overlay message text |
+| kiosk_locked | "false" | Lock kiosk (disable all interactions) |
+| kiosk_lock_message | "Kiosk is currently unavailable..." | Message shown when locked |
+| kiosk_bg_type | "gradient" | Background type: gradient, color, image |
+| kiosk_bg_color | "#0284c7" | Solid background color |
+| kiosk_bg_image | "" | Background image URL |
+| kiosk_bg_image_mode | "cover" | Image mode: cover, tile |
+| kiosk_ui_scale | "normal" | Home screen size: normal, large, xlarge |
+| kiosk_reload_interval_seconds | "30" | Auto-reload check interval (0 to disable) |
+| kiosk_plans_message | "" | Message on View Plans screen |
+| staff_exit_pin | "0000" | PIN to exit kiosk mode |
+| senior_age_threshold | "65" | Age to qualify for senior discounts |
+| **Backup** | | |
+| backup_enabled | "false" | Enable automatic backups |
+| backup_schedule | "daily" | Backup schedule: hourly, daily, weekly |
+| backup_hour | "2" | Hour to run daily backups (0-23) |
+| backup_retention_count | "7" | Number of backups to keep |
+| backup_remote_type | "local" | Storage: local, s3, sftp |
 
 ---
 
 ## Kiosk Screen Flow
 
 ```
-[IDLE SCREEN]
+[IDLE SCREEN]  (configurable scale: normal/large/xlarge via kiosk_ui_scale)
   → Scan card → [MEMBER SCREEN]
   → Tap "Search Account" → [SEARCH SCREEN] → [MEMBER SCREEN]
   → Tap "Guest Visit" → [GUEST SCREEN]
   → Tap "New Member" → [SIGNUP SCREEN] → [MEMBER SCREEN]
+  → Tap "View Plans" → [VIEW PLANS SCREEN]
 
 [SIGNUP SCREEN]
   → Enter first name, last name, phone (required), email (optional)
+  → Date of Birth (MM/DD/YYYY typeable with numpad)
   → Set 4-digit PIN
-  → Submit → creates member → proceeds to [MEMBER SCREEN]
+  → Scan NFC card (optional — saved to member on signup)
+  → Submit → creates member + assigns card → proceeds to [MEMBER SCREEN]
   → Can then check in or purchase plan
 
 [MEMBER SCREEN]  (shows name, status, balance)
@@ -642,10 +673,12 @@ pool-management/
 
 [MANAGE CARDS SCREEN]
   → List of saved cards with friendly names (e.g. "My Visa ****4242")
-  → Add new card → payment processor flow → "Save this card?"
+  → Add new card:
+      → "Use Card Reader" — swipe/tap on physical reader
+      → "Enter Card Manually" — type card number, expiry (MM/YY), CVV
+      → Tokenizes via payment processor (USAePay customer API)
       → Auto-generated name shown, tap to rename
-      → e.g. "Visa ending 4242" → user types "My Visa"
-  → Delete card → confirm with PIN
+  → Delete card → confirmation popup before removal
   → Set as default card
 
 [PAYMENT SCREEN]

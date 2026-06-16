@@ -879,4 +879,60 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-03-18 (Kiosk View Plans & Auto-Reload)
+## Kiosk & Admin Fixes + Features (2026-06-16)
+
+### Bug Fixes
+
+1. **NFC card not saved during kiosk signup** — `kiosk_signup` endpoint received `rfid_uid` but never created a Card record. Fixed by calling `assign_card()` after member creation.
+2. **Members list not alphabetical** — Sort was case-sensitive (uppercase before lowercase). Fixed with `func.lower()` on last_name, first_name.
+3. **Member deletion failing with cards/PIN lockouts** — Permanent delete cascade was missing `cards` and `pin_lockouts` tables. Added cleanup for both FK references.
+4. **Deactivate member navigated away** — Changed to stay on member detail page and close the confirmation dialog.
+5. **Virtual keyboard blocking kiosk input** — Frontend build on LXC 201 was stale. Rebuilt from source.
+6. **Admin "Add & Charge Card" button always disabled** — `useExistingCard` defaulted to `true` but radio toggle was hidden when no saved cards existed. Fixed with `effectiveUseExisting` logic.
+7. **Duplicate transaction on card charge** — `chargeCard` created a transaction, then `createMembership` created another. Removed duplicate payment payload when card was already charged.
+8. **USAePay "Transaction amount required" error** — $0 auth not supported. Changed to customer API for tokenization (no charge needed).
+
+### New Features
+
+9. **Virtual keyboard Next button** — Large "Next ▶" and "Done" buttons on the side of the on-screen keyboard and numpad. Next tabs to the next input field.
+10. **Manual card entry on kiosk** — "Enter Card Manually" option on Add Card screen with card number, expiry (MM/YY), CVV fields. Uses `tokenize-full` endpoint with USAePay customer API.
+11. **Delete saved card confirmation** — Popup dialog before removing a saved card on kiosk.
+12. **Configurable home screen scale** — New `kiosk_ui_scale` setting (normal/large/xlarge) in Admin > Settings > Kiosk Hardware. Scales all icons, text, and buttons on the idle screen.
+13. **Plan reactivation** — Inactive plans can be reactivated from the Plans page.
+14. **Plan permanent deletion** — Plans with no members can be permanently deleted. Plans with existing memberships are blocked with an error message.
+15. **Pro-rate and custom charge amounts** — When adding a membership with payment, admin can choose: Full price, Pro-rate for rest of month, or Custom amount. Works for all payment methods (cash, saved card, new card).
+16. **Typeable DOB field** — Date of Birth changed from date picker to MM/DD/YYYY text input on kiosk signup, kiosk edit profile, and admin member form. Works with on-screen numpad. Auto-formats and calculates age as you type.
+17. **Members list display format** — Names displayed as "Last, First" to match alphabetical sort order.
+
+### Backend Changes
+- `backend/app/routers/kiosk.py` — NFC card assignment on signup, added `kiosk_ui_scale` and `kiosk_reload_interval_seconds` to settings endpoint
+- `backend/app/routers/members.py` — Card and PinLockout cleanup in permanent delete, `func.lower()` import
+- `backend/app/routers/memberships.py` — `charge_amount` override support for pro-rate/custom pricing
+- `backend/app/routers/plans.py` — Added reactivate and permanent delete endpoints
+- `backend/app/schemas/kiosk.py` — Added `cvv` field to TokenizeFullCardRequest
+- `backend/app/schemas/membership.py` — Added `charge_amount` field to PaymentInfo
+- `backend/app/services/auto_charge_service.py` — `amount_override` parameter on `charge_saved_card_now()`
+- `backend/app/services/member_service.py` — Case-insensitive member sort
+- `backend/app/services/settings_service.py` — Added `kiosk_ui_scale` default
+- `backend/app/payments/usaepay_adapter.py` — `generate_card_token()` via customer API for manual card tokenization
+
+### Frontend Changes
+- `frontend/src/kiosk/components/VirtualKeyboard.jsx` — Next/Done buttons on side panel
+- `frontend/src/kiosk/components/NumPad.jsx` — Next/Done buttons at bottom
+- `frontend/src/kiosk/components/KioskInput.jsx` — `onNext` handler, `data-kiosk-input` attribute for tab navigation
+- `frontend/src/kiosk/screens/SignUpScreen.jsx` — Typeable MM/DD/YYYY DOB with numpad
+- `frontend/src/kiosk/screens/EditProfileScreen.jsx` — Typeable MM/DD/YYYY DOB with numpad
+- `frontend/src/kiosk/screens/AddCardScreen.jsx` — Full manual card entry with card number, expiry, CVV
+- `frontend/src/kiosk/screens/SavedCardsScreen.jsx` — Delete confirmation popup
+- `frontend/src/kiosk/screens/IdleScreen.jsx` — Configurable UI scale (normal/large/xlarge)
+- `frontend/src/admin/pages/Members/MemberDetail.jsx` — Fixed charge flow, pro-rate/custom amounts, effectiveUseExisting, deactivate stays on page
+- `frontend/src/admin/pages/Members/MemberForm.jsx` — Typeable MM/DD/YYYY DOB
+- `frontend/src/admin/pages/Members/MembersList.jsx` — "Last, First" name display
+- `frontend/src/admin/pages/Plans/PlansList.jsx` — Reactivate and permanent delete buttons
+- `frontend/src/admin/pages/Settings/Settings.jsx` — Home Screen Size setting
+- `frontend/src/api/kiosk.js` — `tokenizeCardFromFull` with CVV parameter
+- `frontend/src/api/plans.js` — `reactivatePlan()`, `permanentlyDeletePlan()`
+
+---
+
+## Last Updated: 2026-06-16 (Kiosk & Admin Fixes + Features)
