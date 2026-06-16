@@ -64,16 +64,18 @@ def create_membership_endpoint(
     else:
         payment = data.payment
 
+        # Determine charge amount (prorate/custom override or full price)
+        effective_price = Decimal(str(payment.charge_amount)) if payment.charge_amount else plan.price
+
         if payment.payment_method == "cash":
             # Cash payment
             membership = create_membership(db, data.member_id, data.plan_id)
-            amount_tendered = Decimal(str(payment.amount_tendered)) if payment.amount_tendered else plan.price
-            plan_price = Decimal(str(plan.price))
+            amount_tendered = Decimal(str(payment.amount_tendered)) if payment.amount_tendered else effective_price
             credit_added = Decimal("0.00")
 
             # Handle overpayment - add to member's credit balance
-            if amount_tendered > plan_price:
-                credit_added = amount_tendered - plan_price
+            if amount_tendered > effective_price:
+                credit_added = amount_tendered - effective_price
                 member.credit_balance += credit_added
 
                 # Create credit_add transaction for the overpayment
@@ -87,16 +89,16 @@ def create_membership_endpoint(
                 )
                 db.add(credit_tx)
 
-            # Create payment transaction for the plan price
+            # Create payment transaction
             tx = Transaction(
                 member_id=data.member_id,
                 transaction_type=TransactionType.payment,
                 payment_method=PaymentMethod.cash,
-                amount=plan_price,
+                amount=effective_price,
                 plan_id=data.plan_id,
                 membership_id=membership.id,
                 created_by=current_user.id,
-                notes=f"Cash payment via admin (${amount_tendered} tendered)",
+                notes=f"Cash payment via admin (${amount_tendered} tendered, charged ${effective_price})",
             )
             db.add(tx)
             db.commit()
@@ -104,23 +106,23 @@ def create_membership_endpoint(
             transaction_id = tx.id
 
             if credit_added > 0:
-                message = f"Membership created with cash payment. ${credit_added} added to account credit."
+                message = f"Membership created with cash payment of ${effective_price}. ${credit_added} added to account credit."
             else:
-                message = f"Membership created with cash payment of ${plan_price}"
-            logger.info("Admin cash payment: member=%s, plan=%s, tendered=$%s, credit_added=$%s, by=%s",
-                       data.member_id, plan.name, amount_tendered, credit_added, current_user.id)
+                message = f"Membership created with cash payment of ${effective_price}"
+            logger.info("Admin cash payment: member=%s, plan=%s, tendered=$%s, charged=$%s, credit_added=$%s, by=%s",
+                       data.member_id, plan.name, amount_tendered, effective_price, credit_added, current_user.id)
 
         elif payment.payment_method == "card":
             if payment.saved_card_id:
-                # Use existing saved card
-                tx = charge_saved_card_now(db, payment.saved_card_id, data.plan_id, data.member_id)
+                # Use existing saved card with optional custom amount
+                tx = charge_saved_card_now(db, payment.saved_card_id, data.plan_id, data.member_id, amount_override=effective_price)
                 transaction_id = tx.id
                 saved_card_id = payment.saved_card_id
                 # Get the membership that was created by charge_saved_card_now
                 membership = db.query(Membership).filter_by(id=tx.membership_id).first()
-                message = f"Membership created and charged ${plan.price} to saved card"
-                logger.info("Admin saved card payment: member=%s, plan=%s, card=%s, by=%s",
-                           data.member_id, plan.name, payment.saved_card_id, current_user.id)
+                message = f"Membership created and charged ${effective_price} to saved card"
+                logger.info("Admin saved card payment: member=%s, plan=%s, amount=$%s, card=%s, by=%s",
+                           data.member_id, plan.name, effective_price, payment.saved_card_id, current_user.id)
 
             elif payment.card_last4 and payment.card_brand:
                 # New card details provided

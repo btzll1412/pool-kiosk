@@ -323,7 +323,8 @@ def auto_recharge_swim_pass(db: Session, member_id: uuid.UUID) -> tuple[bool, st
 
 
 def charge_saved_card_now(
-    db: Session, saved_card_id: uuid.UUID, plan_id: uuid.UUID, member_id: uuid.UUID
+    db: Session, saved_card_id: uuid.UUID, plan_id: uuid.UUID, member_id: uuid.UUID,
+    amount_override: "Decimal | None" = None,
 ) -> Transaction:
     """Charge a saved card on-demand for a kiosk payment."""
     card = db.query(SavedCard).filter(
@@ -336,13 +337,15 @@ def charge_saved_card_now(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
+    charge_amount = amount_override if amount_override is not None else plan.price
+
     member = db.query(Member).filter(Member.id == member_id).first()
     customer_name = f"{member.first_name} {member.last_name}" if member else None
 
     adapter = get_payment_adapter(db)
     charge_result = adapter.charge_saved_card(
         token=card.processor_token,
-        amount=plan.price,
+        amount=charge_amount,
         member_id=str(member_id),
         description=f"Purchase: {plan.name}",
         customer_name=customer_name,
@@ -360,7 +363,7 @@ def charge_saved_card_now(
         member_id=member_id,
         transaction_type=TransactionType.payment,
         payment_method=PaymentMethod.card,
-        amount=plan.price,
+        amount=charge_amount,
         plan_id=plan.id,
         membership_id=membership.id,
         saved_card_id=card.id,

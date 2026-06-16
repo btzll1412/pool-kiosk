@@ -7,13 +7,16 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.activity_log import ActivityLog
+from app.models.card import Card
 from app.models.checkin import Checkin
+from app.models.pin_lockout import PinLockout
 from app.models.member import Member
 from app.models.membership import Membership
 from app.models.membership_freeze import MembershipFreeze
@@ -247,10 +250,16 @@ def permanently_delete_member(
     # 6. SavedCard references Member
     db.query(SavedCard).filter(SavedCard.member_id == member_id).delete()
 
-    # 7. ActivityLog may reference member as entity_id
+    # 7. Card references Member
+    db.query(Card).filter(Card.member_id == member_id).delete()
+
+    # 8. PinLockout references Member
+    db.query(PinLockout).filter(PinLockout.member_id == member_id).delete()
+
+    # 9. ActivityLog may reference member as entity_id
     db.query(ActivityLog).filter(ActivityLog.entity_id == member_id).delete()
 
-    # 8. Delete the member
+    # 10. Delete the member
     db.delete(member)
     db.commit()
 
@@ -821,7 +830,7 @@ def export_members_csv(
     current_user: User = Depends(get_current_user),
 ):
     """Export all members as CSV."""
-    members = db.query(Member).order_by(Member.last_name, Member.first_name).all()
+    members = db.query(Member).order_by(func.lower(Member.last_name), func.lower(Member.first_name)).all()
 
     output = io.StringIO()
     writer = csv.writer(output)

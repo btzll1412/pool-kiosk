@@ -11,5 +11,11 @@ export const updatePlan = (id, data) =>
 export const deactivatePlan = (id) =>
   client.delete(`/plans/${id}`).then((r) => r.data);
 
+export const reactivatePlan = (id) =>
+  client.post(`/plans/${id}/reactivate`).then((r) => r.data);
+
+export const permanentlyDeletePlan = (id) =>
+  client.delete(`/plans/${id}/permanent`).then((r) => r.data);
+
 export const getPlanSubscribers = (id) =>
   client.get(`/plans/${id}/subscribers`).then((r) => r.data);

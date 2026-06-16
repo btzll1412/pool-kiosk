@@ -149,6 +149,14 @@ const settingGroups = [
     fields: [
       { key: "staff_exit_pin", label: "Staff Exit PIN", type: "password", helpText: "PIN to exit kiosk mode (tap bottom-left corner 5 times to access)" },
       { key: "kiosk_reload_interval_seconds", label: "Auto-Reload Interval (seconds)", type: "number", helpText: "Full page reload while on idle screen to pick up updates. Default: 30. Set to 0 to disable." },
+      {
+        key: "kiosk_ui_scale", label: "Home Screen Size", type: "select", helpText: "Scale of icons and text on the kiosk home screen",
+        options: [
+          { value: "normal", label: "Normal" },
+          { value: "large", label: "Large" },
+          { value: "xlarge", label: "Extra Large" },
+        ],
+      },
     ],
   },
   {

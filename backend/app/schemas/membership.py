@@ -11,6 +11,7 @@ class PaymentInfo(BaseModel):
     """Payment information for membership creation."""
     payment_method: str  # "cash" or "card"
     amount_tendered: Decimal | None = None  # For cash payments
+    charge_amount: Decimal | None = None  # Override amount to charge (prorate/custom)
     saved_card_id: uuid.UUID | None = None  # Use existing saved card
     card_last4: str | None = None  # For new card tokenization
     card_brand: str | None = None  # For new card tokenization

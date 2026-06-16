@@ -92,6 +92,7 @@ DEFAULT_SETTINGS = {
     "kiosk_bg_color": "#0284c7",
     "kiosk_bg_image": "",
     "kiosk_bg_image_mode": "cover",
+    "kiosk_ui_scale": "normal",
     # Backup settings
     "backup_enabled": "false",
     "backup_schedule": "daily",

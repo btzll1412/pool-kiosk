@@ -19,6 +19,7 @@ export default function KioskInput({
   numeric = false,
   showDecimal = false,
   autoFocus = false,
+  inputId,
 }) {
   const [showKeyboard, setShowKeyboard] = useState(false);
   const inputRef = useRef(null);
@@ -40,8 +41,21 @@ export default function KioskInput({
   const handleClose = () => {
     signalActivity();
     setShowKeyboard(false);
-    // Keep focus on input for continued physical typing
     inputRef.current?.blur();
+  };
+
+  const handleNext = () => {
+    signalActivity();
+    setShowKeyboard(false);
+    // Find the next kiosk input and focus it
+    const allInputs = Array.from(document.querySelectorAll("[data-kiosk-input]"));
+    const currentIndex = allInputs.indexOf(inputRef.current);
+    if (currentIndex >= 0 && currentIndex < allInputs.length - 1) {
+      allInputs[currentIndex + 1].focus();
+    } else {
+      // Last input — just close
+      inputRef.current?.blur();
+    }
   };
 
   const isNumeric = numeric || type === "tel" || type === "number";
@@ -67,6 +81,7 @@ export default function KioskInput({
             placeholder={placeholder}
             maxLength={maxLength}
             autoFocus={autoFocus}
+            data-kiosk-input={inputId || ""}
             className={`w-full rounded-2xl border-0 bg-white py-4 text-lg font-medium text-gray-900 shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-brand-500 ${Icon ? "pl-12 pr-4" : "px-4"} ${className}`}
           />
         </div>
@@ -85,6 +100,7 @@ export default function KioskInput({
               value={value}
               onChange={handleVirtualChange}
               onClose={handleClose}
+              onNext={handleNext}
               maxLength={maxLength}
               showDecimal={showDecimal}
             />
@@ -93,6 +109,7 @@ export default function KioskInput({
               value={value}
               onChange={handleVirtualChange}
               onClose={handleClose}
+              onNext={handleNext}
             />
           )}
         </>

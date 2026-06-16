@@ -115,6 +115,8 @@ export default function MemberDetail() {
   const [newCardExpYear, setNewCardExpYear] = useState("");
   const [newCardCvv, setNewCardCvv] = useState("");
   const [cardEntryMode, setCardEntryMode] = useState("record"); // "record" or "charge"
+  const [chargeAmountMode, setChargeAmountMode] = useState("full"); // "full" | "prorate" | "custom"
+  const [customChargeAmount, setCustomChargeAmount] = useState("");
 
   // Add Card on File
   const [showAddCard, setShowAddCard] = useState(false);
@@ -220,7 +222,8 @@ export default function MemberDetail() {
     try {
       await deactivateMember(id);
       toast.success("Member deactivated");
-      navigate("/admin/members");
+      setShowDeactivate(false);
+      load();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to deactivate member");
     }
@@ -338,9 +341,10 @@ export default function MemberDetail() {
     setAddMembershipLoading(true);
     try {
       const selectedPlan = plans.find(p => p.id === selectedPlanId);
+      const effectiveUseExisting = useExistingCard && savedCards.length > 0;
 
       // If charging with full card details, process real charge first
-      if (chargeNow && paymentMethod === "card" && !useExistingCard && cardEntryMode === "charge") {
+      if (chargeNow && paymentMethod === "card" && !effectiveUseExisting && cardEntryMode === "charge") {
         // Validate card details
         const cleanCardNumber = newCardNumber.replace(/\s/g, "");
         if (cleanCardNumber.length < 13 || cleanCardNumber.length > 19) {
@@ -360,7 +364,7 @@ export default function MemberDetail() {
         }
 
         const expDate = `${newCardExpMonth.padStart(2, "0")}${newCardExpYear.slice(-2)}`;
-        const amount = selectedPlan ? selectedPlan.price : "0";
+        const amount = getChargeAmount(selectedPlan);
 
         // Charge the card via admin API
         try {
@@ -384,19 +388,22 @@ export default function MemberDetail() {
       const payload = { member_id: id, plan_id: selectedPlanId };
 
       // Build payment info if charging now (for record-keeping)
+      const chargeAmt = getChargeAmount(selectedPlan);
       if (chargeNow) {
         if (paymentMethod === "cash") {
           payload.payment = {
             payment_method: "cash",
-            amount_tendered: cashAmount ? parseFloat(cashAmount) : null,
+            amount_tendered: cashAmount ? parseFloat(cashAmount) : parseFloat(chargeAmt),
+            charge_amount: parseFloat(chargeAmt),
           };
         } else if (paymentMethod === "card") {
-          if (useExistingCard && selectedSavedCardId) {
+          if (effectiveUseExisting && selectedSavedCardId) {
             payload.payment = {
               payment_method: "card",
               saved_card_id: selectedSavedCardId,
+              charge_amount: parseFloat(chargeAmt),
             };
-          } else if (!useExistingCard && cardEntryMode === "record" && newCardLast4) {
+          } else if (!effectiveUseExisting && cardEntryMode === "record" && newCardLast4) {
             // Record-only mode
             payload.payment = {
               payment_method: "card",
@@ -405,27 +412,34 @@ export default function MemberDetail() {
               save_card: saveNewCard,
               enable_autopay: enableAutopay,
             };
-          } else if (!useExistingCard && cardEntryMode === "charge") {
-            // Already charged above, just record last4
-            const cleanCardNumber = newCardNumber.replace(/\s/g, "");
-            payload.payment = {
-              payment_method: "card",
-              card_last4: cleanCardNumber.slice(-4),
-              card_brand: detectCardBrand(cleanCardNumber),
-              save_card: false, // Already saved during charge if requested
-              enable_autopay: enableAutopay,
-            };
+          } else if (!effectiveUseExisting && cardEntryMode === "charge") {
+            // Already charged and recorded via chargeCard above — don't add payment to avoid duplicate transaction
           }
         }
       }
 
       const result = await createMembership(payload);
-      toast.success(result.message || "Membership added");
+      const msg = result.message || "Membership added";
+      // Show charge success prominently if payment was involved
+      if (chargeNow && paymentMethod === "card") {
+        const effectiveUseExisting2 = useExistingCard && savedCards.length > 0;
+        const chargedAmt = !effectiveUseExisting2 && cardEntryMode === "charge"
+          ? getChargeAmount(plans.find(p => p.id === selectedPlanId))
+          : plans.find(p => p.id === selectedPlanId)?.price;
+        toast.success(`Card charged $${Number(chargedAmt).toFixed(2)} successfully!\n${msg}`, { duration: 5000 });
+      } else {
+        toast.success(msg);
+      }
       setShowAddMembership(false);
       resetMembershipForm();
       load();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Failed to add membership");
+      const detail = err.response?.data?.detail || "";
+      if (err.response?.status === 402) {
+        toast.error(`Payment failed: ${detail || "Card was declined"}. Membership was NOT created.`, { duration: 6000 });
+      } else {
+        toast.error(detail || "Failed to add membership");
+      }
     } finally {
       setAddMembershipLoading(false);
     }
@@ -445,6 +459,22 @@ export default function MemberDetail() {
     return formatted.slice(0, 23);
   }
 
+  const getProrateAmount = (plan) => {
+    if (!plan) return "0";
+    const price = Number(plan.price);
+    const today = new Date();
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const daysRemaining = daysInMonth - today.getDate() + 1;
+    return (price * daysRemaining / daysInMonth).toFixed(2);
+  };
+
+  const getChargeAmount = (plan) => {
+    if (!plan) return "0";
+    if (chargeAmountMode === "prorate") return getProrateAmount(plan);
+    if (chargeAmountMode === "custom") return customChargeAmount || "0";
+    return String(plan.price);
+  };
+
   const resetMembershipForm = () => {
     setSelectedPlanId("");
     setChargeNow(false);
@@ -461,6 +491,8 @@ export default function MemberDetail() {
     setNewCardExpYear("");
     setNewCardCvv("");
     setCardEntryMode("record");
+    setChargeAmountMode("full");
+    setCustomChargeAmount("");
   };
 
   const handleAddCard = async () => {
@@ -1276,6 +1308,59 @@ export default function MemberDetail() {
           {/* Payment Options */}
           {chargeNow && selectedPlanId && (
             <div className="space-y-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              {/* Charge Amount Options */}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Amount to Charge
+                </label>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="chargeAmountMode"
+                      checked={chargeAmountMode === "full"}
+                      onChange={() => setChargeAmountMode("full")}
+                      className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                      Full price — ${Number(plans.find(p => p.id === selectedPlanId)?.price || 0).toFixed(2)}
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="chargeAmountMode"
+                      checked={chargeAmountMode === "prorate"}
+                      onChange={() => setChargeAmountMode("prorate")}
+                      className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                      Pro-rate for rest of month — ${getProrateAmount(plans.find(p => p.id === selectedPlanId))}
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="chargeAmountMode"
+                      checked={chargeAmountMode === "custom"}
+                      onChange={() => setChargeAmountMode("custom")}
+                      className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Custom amount</span>
+                  </label>
+                  {chargeAmountMode === "custom" && (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={customChargeAmount}
+                      onChange={(e) => setCustomChargeAmount(e.target.value)}
+                      placeholder="Enter amount"
+                    />
+                  )}
+                </div>
+              </div>
+
               {/* Payment Method Selection */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -1315,8 +1400,8 @@ export default function MemberDetail() {
                   step="0.01"
                   value={cashAmount}
                   onChange={(e) => setCashAmount(e.target.value)}
-                  placeholder={`Plan price: $${Number(plans.find(p => p.id === selectedPlanId)?.price || 0).toFixed(2)}`}
-                  helpText="Leave blank to use plan price"
+                  placeholder={`Charge amount: $${getChargeAmount(plans.find(p => p.id === selectedPlanId))}`}
+                  helpText="Leave blank to use the charge amount above. Overpayment is added as credit."
                 />
               )}
 
@@ -1554,16 +1639,17 @@ export default function MemberDetail() {
             <Button
               onClick={handleAddMembership}
               loading={addMembershipLoading}
-              disabled={
-                !selectedPlanId ||
-                (chargeNow && paymentMethod === "card" && useExistingCard && !selectedSavedCardId) ||
-                (chargeNow && paymentMethod === "card" && !useExistingCard && cardEntryMode === "record" && newCardLast4.length !== 4) ||
-                (chargeNow && paymentMethod === "card" && !useExistingCard && cardEntryMode === "charge" && (
-                  newCardNumber.replace(/\s/g, "").length < 13 || !newCardExpMonth || !newCardExpYear || newCardCvv.length < 3
-                ))
-              }
+              disabled={(() => {
+                if (!selectedPlanId) return true;
+                if (!chargeNow || paymentMethod !== "card") return false;
+                const effectiveUseExisting = useExistingCard && savedCards.length > 0;
+                if (effectiveUseExisting) return !selectedSavedCardId;
+                if (cardEntryMode === "record") return newCardLast4.length !== 4;
+                if (cardEntryMode === "charge") return newCardNumber.replace(/\s/g, "").length < 13 || !newCardExpMonth || !newCardExpYear || newCardCvv.length < 3;
+                return false;
+              })()}
             >
-              {chargeNow && paymentMethod === "card" && !useExistingCard && cardEntryMode === "charge"
+              {chargeNow && paymentMethod === "card" && !(useExistingCard && savedCards.length > 0) && cardEntryMode === "charge"
                 ? "Add & Charge Card"
                 : chargeNow ? "Add & Charge" : "Add Membership"}
             </Button>

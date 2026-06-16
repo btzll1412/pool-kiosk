@@ -40,6 +40,31 @@ export default function IdleScreen({ goTo, settings }) {
   const bgStyle = getBackgroundStyle();
   const isCustomBg = bgType !== "gradient";
 
+  const uiScale = settings.kiosk_ui_scale || "normal";
+  const s = {
+    normal: {
+      icon: "h-24 w-24", iconInner: "h-14 w-14", title: "text-5xl", subtitle: "text-xl",
+      cardIcon: "h-6 w-6", cardText: "text-lg", cardPad: "px-6 py-3",
+      btnIcon: "h-8 w-8", btnLabel: "text-lg", btnSub: "text-sm", btnPad: "px-6 py-4",
+      actionIcon: "h-6 w-6", actionText: "text-base", actionPad: "min-w-[200px]",
+      help: "text-sm", gap: "mt-12",
+    },
+    large: {
+      icon: "h-32 w-32", iconInner: "h-20 w-20", title: "text-6xl", subtitle: "text-2xl",
+      cardIcon: "h-8 w-8", cardText: "text-xl", cardPad: "px-8 py-4",
+      btnIcon: "h-10 w-10", btnLabel: "text-xl", btnSub: "text-base", btnPad: "px-8 py-5",
+      actionIcon: "h-8 w-8", actionText: "text-lg", actionPad: "min-w-[240px]",
+      help: "text-base", gap: "mt-16",
+    },
+    xlarge: {
+      icon: "h-40 w-40", iconInner: "h-24 w-24", title: "text-7xl", subtitle: "text-3xl",
+      cardIcon: "h-10 w-10", cardText: "text-2xl", cardPad: "px-10 py-5",
+      btnIcon: "h-12 w-12", btnLabel: "text-2xl", btnSub: "text-lg", btnPad: "px-10 py-6",
+      actionIcon: "h-10 w-10", actionText: "text-xl", actionPad: "min-w-[280px]",
+      help: "text-lg", gap: "mt-20",
+    },
+  }[uiScale];
+
   // Locked screen
   if (isLocked) {
     return (
@@ -78,64 +103,64 @@ export default function IdleScreen({ goTo, settings }) {
         <button
           type="button"
           onClick={() => goTo("signup")}
-          className="flex cursor-pointer flex-col items-center rounded-2xl bg-white/10 px-6 py-4 backdrop-blur-sm transition-all hover:bg-white/20 active:scale-95"
+          className={`flex cursor-pointer flex-col items-center rounded-2xl bg-white/10 ${s.btnPad} backdrop-blur-sm transition-all hover:bg-white/20 active:scale-95`}
         >
-          <UserPlus className="h-8 w-8 text-white" />
-          <span className="mt-2 text-lg font-bold text-white">New Member</span>
-          <span className="text-sm text-white/70">Sign Up</span>
+          <UserPlus className={`${s.btnIcon} text-white`} />
+          <span className={`mt-2 ${s.btnLabel} font-bold text-white`}>New Member</span>
+          <span className={`${s.btnSub} text-white/70`}>Sign Up</span>
         </button>
       </div>
 
       {/* Center content */}
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center text-center">
-        <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-3xl bg-white/15 backdrop-blur-sm">
-          <Waves className="h-14 w-14 text-white" />
+        <div className={`mb-4 flex ${s.icon} items-center justify-center rounded-3xl bg-white/15 backdrop-blur-sm`}>
+          <Waves className={`${s.iconInner} text-white`} />
         </div>
-        <h1 className="text-5xl font-extrabold tracking-tight">
+        <h1 className={`${s.title} font-extrabold tracking-tight`}>
           {welcomeTitle}
         </h1>
-        <p className="mt-3 text-xl text-white/80">
+        <p className={`mt-3 ${s.subtitle} text-white/80`}>
           {welcomeSubtitle}
         </p>
 
-        <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white/10 px-6 py-3 backdrop-blur-sm">
-          <CreditCard className="h-6 w-6 text-white/80" />
-          <span className="text-lg font-medium text-white/90">
+        <div className={`mt-4 flex items-center gap-3 rounded-2xl bg-white/10 ${s.cardPad} backdrop-blur-sm`}>
+          <CreditCard className={`${s.cardIcon} text-white/80`} />
+          <span className={`${s.cardText} font-medium text-white/90`}>
             {cardInstruction}
           </span>
         </div>
 
-        <div className="mt-12 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:justify-center">
+        <div className={`${s.gap} flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:justify-center`}>
           <KioskButton
             variant="secondary"
             size="xl"
             icon={Search}
             onClick={() => goTo("search")}
-            className="min-w-[200px] bg-white/10 text-white ring-white/20 hover:bg-white/20 active:bg-white/30"
+            className={`${s.actionPad} bg-white/10 text-white ring-white/20 hover:bg-white/20 active:bg-white/30`}
           >
-            Search Account
+            <span className={s.actionText}>Search Account</span>
           </KioskButton>
           <KioskButton
             variant="secondary"
             size="xl"
             icon={UserPlus}
             onClick={() => goTo("guest")}
-            className="min-w-[200px] bg-white/10 text-white ring-white/20 hover:bg-white/20 active:bg-white/30"
+            className={`${s.actionPad} bg-white/10 text-white ring-white/20 hover:bg-white/20 active:bg-white/30`}
           >
-            Guest Visit
+            <span className={s.actionText}>Guest Visit</span>
           </KioskButton>
           <KioskButton
             variant="secondary"
             size="xl"
             icon={Tag}
             onClick={() => goTo("viewPlans")}
-            className="min-w-[200px] bg-white/10 text-white ring-white/20 hover:bg-white/20 active:bg-white/30"
+            className={`${s.actionPad} bg-white/10 text-white ring-white/20 hover:bg-white/20 active:bg-white/30`}
           >
-            View Plans
+            <span className={s.actionText}>View Plans</span>
           </KioskButton>
         </div>
 
-        <p className="mt-16 text-sm text-white/60">
+        <p className={`mt-16 ${s.help} text-white/60`}>
           {helpText}
         </p>
       </div>

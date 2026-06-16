@@ -234,10 +234,11 @@ export async function tokenizeCardFromSwipe(trackData, memberId, pin, friendlyNa
   return data;
 }
 
-export async function tokenizeCardFromFull(cardNumber, expDate, memberId, pin, friendlyName) {
+export async function tokenizeCardFromFull(cardNumber, expDate, memberId, pin, friendlyName, cvv) {
   const { data } = await kiosk.post("/saved-cards/tokenize-full", {
     card_number: cardNumber,
     exp_date: expDate,
+    cvv: cvv || null,
     member_id: memberId,
     pin,
     friendly_name: friendlyName,

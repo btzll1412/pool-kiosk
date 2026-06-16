@@ -186,6 +186,7 @@ class TokenizeFullCardRequest(BaseModel):
     """Request to tokenize card from full card details (via hosted payment callback)."""
     card_number: str
     exp_date: str  # MMYY format
+    cvv: str | None = None
     friendly_name: str | None = None
     member_id: uuid.UUID
     pin: str | None = None  # Optional for kiosk, not required for admin

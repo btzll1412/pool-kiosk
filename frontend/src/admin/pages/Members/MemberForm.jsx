@@ -48,7 +48,7 @@ export default function MemberForm() {
             email: m.email || "",
             pin: "",
             notes: m.notes || "",
-            date_of_birth: m.date_of_birth || "",
+            date_of_birth: m.date_of_birth ? (() => { const [y,mo,d] = m.date_of_birth.split("-"); return `${mo}/${d}/${y}`; })() : "",
             is_senior: m.is_senior || false,
             gender: m.gender || "",
           })
@@ -58,20 +58,35 @@ export default function MemberForm() {
     }
   }, [id, isEdit]);
 
-  // Calculate age from DOB
-  function calculateAge(dob) {
+  function dobToIso(dob) {
     if (!dob) return null;
+    const digits = dob.replace(/\D/g, "");
+    if (digits.length !== 8) return null;
+    return `${digits.slice(4, 8)}-${digits.slice(0, 2)}-${digits.slice(2, 4)}`;
+  }
+
+  function calculateAge(iso) {
+    if (!iso) return null;
     const today = new Date();
-    const birthDate = new Date(dob);
+    const birthDate = new Date(iso);
+    if (isNaN(birthDate)) return null;
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--;
     }
-    return age;
+    return age >= 0 ? age : null;
   }
 
-  const age = calculateAge(form.date_of_birth);
+  function formatDobInput(val) {
+    const raw = val.replace(/\D/g, "");
+    let formatted = raw;
+    if (raw.length > 2) formatted = raw.slice(0, 2) + "/" + raw.slice(2);
+    if (raw.length > 4) formatted = raw.slice(0, 2) + "/" + raw.slice(2, 4) + "/" + raw.slice(4, 8);
+    return formatted;
+  }
+
+  const age = calculateAge(dobToIso(form.date_of_birth));
   const qualifiesForSenior = age !== null && age >= seniorAgeThreshold;
 
   const handleChange = (field) => (e) =>
@@ -86,7 +101,7 @@ export default function MemberForm() {
       if (!payload.email) payload.email = null;
       if (!payload.pin) delete payload.pin;
       if (!payload.notes) payload.notes = null;
-      if (!payload.date_of_birth) payload.date_of_birth = null;
+      payload.date_of_birth = dobToIso(payload.date_of_birth) || null;
       if (!payload.gender) payload.gender = null;
 
       if (isEdit) {
@@ -191,30 +206,23 @@ export default function MemberForm() {
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Date of Birth
-              </label>
-              <input
-                type="date"
-                value={form.date_of_birth}
-                onChange={(e) => {
-                  const newDob = e.target.value;
-                  setForm(f => {
-                    const newAge = calculateAge(newDob);
-                    return {
-                      ...f,
-                      date_of_birth: newDob,
-                      is_senior: newAge !== null && newAge >= seniorAgeThreshold ? true : f.is_senior
-                    };
-                  });
-                }}
-                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-inset focus:ring-brand-600 dark:bg-gray-800"
-              />
-              {age !== null && (
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Age: {age} years old</p>
-              )}
-            </div>
+            <Input
+              label={`Date of Birth${age !== null ? ` (Age: ${age})` : ""}`}
+              value={form.date_of_birth}
+              onChange={(e) => {
+                const newDob = formatDobInput(e.target.value);
+                setForm(f => {
+                  const newAge = calculateAge(dobToIso(newDob));
+                  return {
+                    ...f,
+                    date_of_birth: newDob,
+                    is_senior: newAge !== null && newAge >= seniorAgeThreshold ? true : f.is_senior
+                  };
+                });
+              }}
+              placeholder="MM/DD/YYYY"
+              maxLength={10}
+            />
             {qualifiesForSenior && (
               <div className="flex items-center">
                 <label className="flex items-center gap-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 p-4 cursor-pointer">

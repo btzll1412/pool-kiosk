@@ -71,6 +71,7 @@ from app.services.membership_service import create_membership, freeze_membership
 from app.services.notification_service import notify_checkin, send_change_notification
 from app.services.payment_service import get_payment_adapter, process_card_payment, process_cash_payment
 from app.services.auth_service import hash_pin
+from app.services.member_service import assign_card
 from app.services.pin_service import verify_member_pin
 from app.services.rate_limit import limiter
 from app.services.settings_service import get_setting
@@ -193,6 +194,14 @@ def kiosk_signup(data: KioskSignupRequest, request: Request, db: Session = Depen
     db.commit()
     db.refresh(member)
     logger.info("Kiosk signup: member=%s, name=%s %s", member.id, member.first_name, member.last_name)
+
+    # Assign NFC card if one was scanned during signup
+    if data.rfid_uid:
+        try:
+            assign_card(db, member.id, data.rfid_uid)
+        except HTTPException:
+            logger.warning("Kiosk signup: card assignment failed for rfid=%s, member=%s", data.rfid_uid, member.id)
+
     return _build_member_status(db, member)
 
 
@@ -489,6 +498,8 @@ def get_kiosk_settings(request: Request, db: Session = Depends(get_db)):
         "kiosk_bg_image_mode": get_setting(db, "kiosk_bg_image_mode", "cover"),
         "staff_exit_pin": get_setting(db, "staff_exit_pin", "0000"),
         "senior_age_threshold": get_setting(db, "senior_age_threshold", "65"),
+        "kiosk_ui_scale": get_setting(db, "kiosk_ui_scale", "normal"),
+        "kiosk_reload_interval_seconds": get_setting(db, "kiosk_reload_interval_seconds", "30"),
     }
 
 
@@ -1292,7 +1303,7 @@ def tokenize_card_from_full_details(data: TokenizeFullCardRequest, request: Requ
         )
 
     try:
-        token, last4, card_brand = adapter.generate_card_token(data.card_number, data.exp_date, str(data.member_id))
+        token, last4, card_brand = adapter.generate_card_token(data.card_number, data.exp_date, str(data.member_id), cvv=data.cvv or "")
     except RuntimeError as e:
         logger.error("Failed to tokenize card: member=%s, error=%s", data.member_id, e)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
