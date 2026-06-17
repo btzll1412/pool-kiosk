@@ -117,6 +117,8 @@ export default function MemberDetail() {
   const [cardEntryMode, setCardEntryMode] = useState("record"); // "record" or "charge"
   const [chargeAmountMode, setChargeAmountMode] = useState("full"); // "full" | "prorate" | "custom"
   const [customChargeAmount, setCustomChargeAmount] = useState("");
+  const [startDate, setStartDate] = useState(""); // MM/DD/YYYY format
+  const [billingDay, setBillingDay] = useState(""); // 1-28 or empty for default
 
   // Add Card on File
   const [showAddCard, setShowAddCard] = useState(false);
@@ -387,6 +389,19 @@ export default function MemberDetail() {
 
       const payload = { member_id: id, plan_id: selectedPlanId };
 
+      // Add custom start date if provided (convert MM/DD/YYYY to YYYY-MM-DD)
+      if (startDate) {
+        const sd = startDate.replace(/\D/g, "");
+        if (sd.length === 8) {
+          payload.start_date = `${sd.slice(4, 8)}-${sd.slice(0, 2)}-${sd.slice(2, 4)}`;
+        }
+      }
+      // Add billing day override if set
+      if (billingDay) {
+        const bd = parseInt(billingDay, 10);
+        if (bd >= 1 && bd <= 28) payload.billing_day = bd;
+      }
+
       // Build payment info if charging now (for record-keeping)
       const chargeAmt = getChargeAmount(selectedPlan);
       if (chargeNow) {
@@ -493,6 +508,8 @@ export default function MemberDetail() {
     setCardEntryMode("record");
     setChargeAmountMode("full");
     setCustomChargeAmount("");
+    setStartDate("");
+    setBillingDay("");
   };
 
   const handleAddCard = async () => {
@@ -1288,6 +1305,51 @@ export default function MemberDetail() {
                 ))}
             </select>
           </div>
+
+          {/* Start Date & Billing Day (monthly plans only) */}
+          {selectedPlanId && plans.find(p => p.id === selectedPlanId)?.plan_type === "monthly" && (
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Start Date (optional)"
+                value={startDate}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\D/g, "");
+                  let fmt = raw;
+                  if (raw.length > 2) fmt = raw.slice(0, 2) + "/" + raw.slice(2);
+                  if (raw.length > 4) fmt = raw.slice(0, 2) + "/" + raw.slice(2, 4) + "/" + raw.slice(4, 8);
+                  setStartDate(fmt);
+                  // Auto-suggest billing day from start date
+                  if (raw.length >= 4 && !billingDay) {
+                    const day = parseInt(raw.slice(2, 4), 10);
+                    if (day >= 1 && day <= 28) setBillingDay(String(day));
+                  }
+                }}
+                placeholder="MM/DD/YYYY (default: today)"
+                maxLength={10}
+                helpText="When the membership started. Leave blank for today."
+              />
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Billing Day (optional)
+                </label>
+                <select
+                  value={billingDay}
+                  onChange={(e) => setBillingDay(e.target.value)}
+                  className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                >
+                  <option value="">1st of month (default)</option>
+                  {[...Array(28)].map((_, i) => (
+                    <option key={i + 1} value={String(i + 1)}>
+                      {i + 1}{i === 0 ? "st" : i === 1 ? "nd" : i === 2 ? "rd" : "th"} of each month
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  When auto-charge runs and membership renews.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Charge Now Checkbox */}
           {selectedPlanId && (

@@ -29,6 +29,31 @@ def _get_first_of_next_month(from_date: date = None) -> date:
         return date(from_date.year, from_date.month + 1, 1)
 
 
+def _get_next_billing_date(from_date: date = None, billing_day: int = None) -> date:
+    """Calculate the next billing date based on a custom billing day.
+
+    If billing_day is None or 1, falls back to 1st of next month.
+    billing_day is clamped to 1-28 to avoid month-length issues.
+    """
+    if from_date is None:
+        from_date = date.today()
+
+    if not billing_day or billing_day <= 1:
+        return _get_first_of_next_month(from_date)
+
+    billing_day = min(billing_day, 28)
+
+    # If we haven't passed the billing day this month, use this month
+    if from_date.day < billing_day:
+        return date(from_date.year, from_date.month, billing_day)
+
+    # Otherwise, use next month
+    if from_date.month == 12:
+        return date(from_date.year + 1, 1, billing_day)
+    else:
+        return date(from_date.year, from_date.month + 1, billing_day)
+
+
 def process_due_charges(db: Session) -> dict:
     """Find all saved cards with auto-charge due today or earlier and charge them."""
     today = date.today()
@@ -109,7 +134,7 @@ def process_due_charges(db: Session) -> dict:
                 results["failed"] += 1
                 continue
 
-        membership = create_membership(db, card.member_id, plan.id)
+        membership = create_membership(db, card.member_id, plan.id, billing_day=card.billing_day)
 
         # Deduct credit if used
         if credit_used > 0:
@@ -140,7 +165,7 @@ def process_due_charges(db: Session) -> dict:
             )
             db.add(tx)
 
-        card.next_charge_date = _get_first_of_next_month(today)
+        card.next_charge_date = _get_next_billing_date(today, card.billing_day)
         db.commit()
 
         # Log success with credit info
@@ -179,7 +204,8 @@ def process_due_charges(db: Session) -> dict:
 
 
 def enable_auto_charge(
-    db: Session, saved_card_id: uuid.UUID, plan_id: uuid.UUID, member_id: uuid.UUID
+    db: Session, saved_card_id: uuid.UUID, plan_id: uuid.UUID, member_id: uuid.UUID,
+    billing_day: int = None,
 ) -> SavedCard:
     """Enable auto-charge on a saved card for a monthly or swim pass plan."""
     card = db.query(SavedCard).filter(
@@ -206,9 +232,10 @@ def enable_auto_charge(
 
     card.auto_charge_enabled = True
     card.auto_charge_plan_id = plan.id
-    # Monthly plans charge on 1st of month; swim pass plans charge when depleted (no date needed)
+    card.billing_day = billing_day if billing_day and 1 <= billing_day <= 28 else None
+    # Monthly plans charge on billing day; swim pass plans charge when depleted (no date needed)
     if plan.plan_type == PlanType.monthly:
-        card.next_charge_date = _get_first_of_next_month()
+        card.next_charge_date = _get_next_billing_date(billing_day=card.billing_day)
     else:
         card.next_charge_date = None  # Swim pass auto-recharge triggers on depletion
 
@@ -324,7 +351,7 @@ def auto_recharge_swim_pass(db: Session, member_id: uuid.UUID) -> tuple[bool, st
 
 def charge_saved_card_now(
     db: Session, saved_card_id: uuid.UUID, plan_id: uuid.UUID, member_id: uuid.UUID,
-    amount_override: "Decimal | None" = None,
+    amount_override: "Decimal | None" = None, start_date: "date | None" = None, billing_day: int = None,
 ) -> Transaction:
     """Charge a saved card on-demand for a kiosk payment."""
     card = db.query(SavedCard).filter(
@@ -357,7 +384,9 @@ def charge_saved_card_now(
             detail=charge_result.message or "Card charge failed",
         )
 
-    membership = create_membership(db, member_id, plan_id)
+    # Use explicitly passed billing_day, or fall back to card's billing_day
+    effective_billing_day = billing_day or (card.billing_day if hasattr(card, 'billing_day') else None)
+    membership = create_membership(db, member_id, plan_id, start_date=start_date, billing_day=effective_billing_day)
 
     tx = Transaction(
         member_id=member_id,

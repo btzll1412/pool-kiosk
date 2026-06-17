@@ -23,7 +23,7 @@ from app.schemas.membership import (
     SwimAdjustRequest,
 )
 from app.services.auth_service import get_current_user
-from app.services.auto_charge_service import charge_saved_card_now, enable_auto_charge, _get_first_of_next_month
+from app.services.auto_charge_service import charge_saved_card_now, enable_auto_charge, _get_first_of_next_month, _get_next_billing_date
 from app.services.membership_service import (
     adjust_swims,
     create_membership,
@@ -58,7 +58,7 @@ def create_membership_endpoint(
 
     # If no payment info, just create the membership
     if not data.payment:
-        membership = create_membership(db, data.member_id, data.plan_id)
+        membership = create_membership(db, data.member_id, data.plan_id, start_date=data.start_date, billing_day=data.billing_day)
         db.commit()
         message = "Membership created without payment"
     else:
@@ -69,7 +69,7 @@ def create_membership_endpoint(
 
         if payment.payment_method == "cash":
             # Cash payment
-            membership = create_membership(db, data.member_id, data.plan_id)
+            membership = create_membership(db, data.member_id, data.plan_id, start_date=data.start_date, billing_day=data.billing_day)
             amount_tendered = Decimal(str(payment.amount_tendered)) if payment.amount_tendered else effective_price
             credit_added = Decimal("0.00")
 
@@ -115,7 +115,7 @@ def create_membership_endpoint(
         elif payment.payment_method == "card":
             if payment.saved_card_id:
                 # Use existing saved card with optional custom amount
-                tx = charge_saved_card_now(db, payment.saved_card_id, data.plan_id, data.member_id, amount_override=effective_price)
+                tx = charge_saved_card_now(db, payment.saved_card_id, data.plan_id, data.member_id, amount_override=effective_price, start_date=data.start_date, billing_day=data.billing_day)
                 transaction_id = tx.id
                 saved_card_id = payment.saved_card_id
                 # Get the membership that was created by charge_saved_card_now
@@ -126,7 +126,7 @@ def create_membership_endpoint(
 
             elif payment.card_last4 and payment.card_brand:
                 # New card details provided
-                membership = create_membership(db, data.member_id, data.plan_id)
+                membership = create_membership(db, data.member_id, data.plan_id, start_date=data.start_date, billing_day=data.billing_day)
 
                 if payment.save_card:
                     # Tokenize and save the card
@@ -150,7 +150,9 @@ def create_membership_endpoint(
                     if payment.enable_autopay and plan.plan_type == PlanType.monthly:
                         new_card.auto_charge_enabled = True
                         new_card.auto_charge_plan_id = plan.id
-                        new_card.next_charge_date = _get_first_of_next_month()
+                        bd = data.billing_day if data.billing_day and 1 <= data.billing_day <= 28 else None
+                        new_card.billing_day = bd
+                        new_card.next_charge_date = _get_next_billing_date(billing_day=bd)
                         message = f"Membership created, card saved, and autopay enabled"
                     else:
                         message = f"Membership created and card saved"

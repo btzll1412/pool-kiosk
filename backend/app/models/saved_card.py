@@ -20,6 +20,7 @@ class SavedCard(Base):
     auto_charge_plan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("plans.id"))
     auto_charge_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     next_charge_date: Mapped[date | None] = mapped_column(Date)
+    billing_day: Mapped[int | None] = mapped_column(default=None)  # Day of month for auto-charge (1-28, null=1st)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     member: Mapped["Member"] = relationship("Member", back_populates="saved_cards")

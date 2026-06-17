@@ -26,7 +26,7 @@ def _get_local_today(db: Session) -> date:
     return datetime.now(local_tz).date()
 
 
-def create_membership(db: Session, member_id: uuid.UUID, plan_id: uuid.UUID) -> Membership:
+def create_membership(db: Session, member_id: uuid.UUID, plan_id: uuid.UUID, start_date: date = None, billing_day: int = None) -> Membership:
     plan = db.query(Plan).filter(Plan.id == plan_id).first()
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
@@ -67,24 +67,25 @@ def create_membership(db: Session, member_id: uuid.UUID, plan_id: uuid.UUID) -> 
         membership.swims_total = plan.swim_count
         membership.swims_used = 0
     elif plan.plan_type == PlanType.monthly:
-        membership.valid_from = today
-        # Calculate valid_until based on months, not days
+        effective_start = start_date or today
+        membership.valid_from = effective_start
         duration_months = plan.duration_months or 1
-        # Set valid_until to the 1st of the month after duration_months
-        # E.g., if today is Jan 15 and duration is 1 month, valid until Feb 1
-        year = today.year
-        month = today.month + duration_months
+
+        # Calculate valid_until based on start date + duration months
+        # Use billing_day to align expiry (default: same day of month as start)
+        anchor_day = billing_day or effective_start.day
+        # Clamp to 28 to avoid issues with short months
+        anchor_day = min(anchor_day, 28)
+
+        year = effective_start.year
+        month = effective_start.month + duration_months
         while month > 12:
             month -= 12
             year += 1
-        membership.valid_until = date(year, month, 1)
-        # Next billing date is always the 1st of next month
-        next_month = today.month + 1
-        next_year = today.year
-        if next_month > 12:
-            next_month = 1
-            next_year += 1
-        membership.next_billing_date = date(next_year, next_month, 1)
+        membership.valid_until = date(year, month, anchor_day)
+
+        # Next billing date = expiry date (so charge and renewal are in sync)
+        membership.next_billing_date = membership.valid_until
     elif plan.plan_type == PlanType.single:
         membership.swims_total = 1
         membership.swims_used = 0

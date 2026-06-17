@@ -22,6 +22,8 @@ class PaymentInfo(BaseModel):
 class MembershipCreate(BaseModel):
     member_id: uuid.UUID
     plan_id: uuid.UUID
+    start_date: date | None = None  # Custom start date (default: today)
+    billing_day: int | None = None  # Custom billing day of month (1-28, default: 1st)
     payment: PaymentInfo | None = None  # Optional payment processing
 
 
