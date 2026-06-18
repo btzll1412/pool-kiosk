@@ -935,4 +935,58 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-06-16 (Kiosk & Admin Fixes + Features)
+## Custom Membership Start Date & Billing Day (2026-06-17)
+
+### Custom Start Date
+- Admin can set a custom start date when adding a monthly membership (e.g. backdate to 5/25)
+- `valid_from` and `valid_until` calculate from the start date, not today
+- Example: 3-month plan starting 5/25 → valid_from=5/25, valid_until=8/25
+
+### Per-User Billing Day Override
+- New `billing_day` field on SavedCard (1-28) controls when auto-charge runs
+- Auto-suggested from the membership start date when entered
+- Membership expiry aligns with billing day so charge and renewal are in sync
+- Default behavior unchanged: if no billing day set, charges on the 1st
+
+### Backend Changes
+- `MembershipCreate` schema: added `start_date` and `billing_day` fields with Pydantic validator
+- `create_membership()`: accepts `start_date` and `billing_day`, calculates dates accordingly
+- `enable_auto_charge()`: accepts and stores `billing_day` on SavedCard
+- `charge_saved_card_now()`: passes `start_date` and `billing_day` through
+- `_get_next_billing_date()`: new helper for billing day-aware date calculation
+- Migration `m3n4o5p6q7r8`: adds `billing_day` column to `saved_cards` table
+
+### Frontend Changes
+- Add Membership modal: "Start Date" (MM/DD/YYYY) and "Billing Day" dropdown for monthly plans
+- Auto-suggests billing day from start date
+- `enableCardAutoCharge()` API: passes `billing_day` parameter
+
+---
+
+## System Audit Fixes (2026-06-18)
+
+### Critical Fixes
+1. **Billing day crash on short months** — Creating a date like Feb 30 would crash. Fixed by clamping to the actual last day of the target month using `calendar.monthrange()` in all date construction paths.
+2. **Orphaned membership after charge failure** — If card charge succeeded but membership creation failed, member was charged with no plan. Fixed by wrapping charge + membership in try/catch with rollback. On failure, restores `next_charge_date` so it retries next run.
+3. **Double-charge race condition** — Two simultaneous auto-charge runs could charge the same card twice. Fixed by advancing `next_charge_date` BEFORE charging (optimistic lock). If charge fails, restores the original date.
+4. **Billing day validation** — Added Pydantic `field_validator` on `MembershipCreate.billing_day` to clamp to 1-28 at API entry point.
+
+### High Fixes
+5. **Swim pass auto-recharge silent failure** — If auto-recharge failed during check-in, no error was shown. Added try/catch with warning log so failures are tracked.
+6. **Multiple active monthly memberships** — Nothing prevented buying 3 monthly plans at once. Now auto-deactivates the existing monthly membership before creating a new one.
+7. **Unfreeze gives free days** — Unfreezing early kept the extended `valid_until`. Now subtracts unused freeze days from the expiry date.
+8. **Saved card deletion orphans auto-charge** — Deleting a card with auto-charge enabled left orphaned references. Now disables auto-charge before deletion.
+9. **Plan deactivation breaks auto-charge** — Deactivating a plan left auto-charge cards referencing it. Now disables auto-charge on all cards using the deactivated plan.
+10. **Credit deduction not in transaction** — Auto-charge credit deduction could be lost on failure. Now wrapped in try/catch with full rollback.
+
+### Files Modified
+- `backend/app/services/auto_charge_service.py` — Double-charge prevention, try/catch for membership creation, monthrange safety
+- `backend/app/services/membership_service.py` — Multiple monthly prevention, unfreeze day adjustment, monthrange safety
+- `backend/app/services/checkin_service.py` — Auto-recharge try/catch
+- `backend/app/schemas/membership.py` — billing_day validator
+- `backend/app/routers/members.py` — Auto-charge cleanup on card deletion
+- `backend/app/routers/plans.py` — Auto-charge cleanup on plan deactivation
+
+---
+
+## Last Updated: 2026-06-18 (System Audit Fixes)
