@@ -18,7 +18,7 @@ export default function PaymentScreen({ member, goTo, context, settings }) {
   useEffect(() => {
     // Fetch plans based on member's senior status
     const isSenior = member?.is_senior || false;
-    getPlans(isSenior)
+    getPlans(isSenior, member?.member_id)
       .then((data) => {
         setPlans(data);
         if (data.length === 1) setSelectedPlan(data[0]);

@@ -27,6 +27,7 @@ import SignUpScreen from "./screens/SignUpScreen";
 import EditProfileScreen from "./screens/EditProfileScreen";
 import TerminalPaymentScreen from "./screens/TerminalPaymentScreen";
 import ViewPlansScreen from "./screens/ViewPlansScreen";
+import AddMoneyScreen from "./screens/AddMoneyScreen";
 
 const SCREENS = {
   idle: IdleScreen,
@@ -51,6 +52,7 @@ const SCREENS = {
   editProfile: EditProfileScreen,
   terminal: TerminalPaymentScreen,
   viewPlans: ViewPlansScreen,
+  addMoney: AddMoneyScreen,
 };
 
 // Refresh settings every 30 seconds when on idle screen
@@ -176,8 +178,8 @@ export default function KioskApp() {
         const data = await scanCard(rfid_uid);
         setMember(data);
 
-        // Auto check-in for monthly pass members
-        if (data.active_membership?.plan_type === "monthly" && !data.is_frozen) {
+        // Auto check-in for monthly pass and unlimited members
+        if ((data.is_unlimited || data.active_membership?.plan_type === "monthly") && !data.is_frozen) {
           try {
             await checkin(data.member_id, 0);
             goTo("status", {

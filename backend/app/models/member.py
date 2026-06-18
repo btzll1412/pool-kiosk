@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -23,6 +23,7 @@ class Member(Base):
     gender: Mapped[str | None] = mapped_column(String(10), nullable=True)  # "male", "female", or null
     credit_balance: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
     notes: Mapped[str | None] = mapped_column(Text)
+    is_unlimited: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -33,3 +34,4 @@ class Member(Base):
     transactions: Mapped[list["Transaction"]] = relationship("Transaction", back_populates="member")
     saved_cards: Mapped[list["SavedCard"]] = relationship("SavedCard", back_populates="member", lazy="selectin")
     pin_lockout: Mapped["PinLockout | None"] = relationship("PinLockout", back_populates="member", uselist=False)
+    price_overrides: Mapped[list["MemberPriceOverride"]] = relationship("MemberPriceOverride", lazy="selectin")

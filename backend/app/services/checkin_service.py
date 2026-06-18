@@ -37,6 +37,20 @@ def perform_checkin(
         logger.warning("Check-in failed — member not found or inactive: member=%s", member_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found or inactive")
 
+    # Unlimited members always check in without needing a membership
+    if member.is_unlimited:
+        checkin = Checkin(
+            member_id=member_id,
+            checkin_type=CheckinType.membership,
+            guest_count=guest_count,
+            notes="Unlimited member",
+        )
+        db.add(checkin)
+        db.commit()
+        db.refresh(checkin)
+        logger.info("Check-in completed (unlimited): member=%s, guests=%d, checkin=%s", member_id, guest_count, checkin.id)
+        return checkin
+
     membership = _get_active_membership(db, member_id)
     auto_recharged = False
 
@@ -47,7 +61,6 @@ def perform_checkin(
         if membership.plan_type == PlanType.swim_pass:
             remaining = (membership.swims_total or 0) - membership.swims_used
             if remaining == 0:
-                # Attempt auto-recharge for next time
                 try:
                     success, message = auto_recharge_swim_pass(db, member_id)
                     if success:

@@ -99,8 +99,16 @@ def process_due_charges(db: Session) -> dict:
             results["failed"] += 1
             continue
 
+        # Skip unlimited members — they don't get auto-charged
+        if member.is_unlimited:
+            logger.info("Auto-charge skipped: member %s is unlimited", card.member_id)
+            continue
+
         customer_name = f"{member.first_name} {member.last_name}"
-        plan_price = plan.price
+
+        # Use member's custom price if set, otherwise plan price
+        from app.services.pricing_service import get_member_price
+        plan_price = get_member_price(db, card.member_id, plan.id)
         credit_used = Decimal("0.00")
         card_charge_amount = plan_price
 

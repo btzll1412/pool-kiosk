@@ -47,6 +47,10 @@ import {
   unlockMemberPin,
   enableCardAutoCharge,
   disableCardAutoCharge,
+  toggleUnlimited,
+  getPriceOverrides,
+  setPriceOverride,
+  deletePriceOverride,
 } from "../../../api/members";
 import {
   adjustMembershipSwims,
@@ -120,6 +124,12 @@ export default function MemberDetail() {
   const [startDate, setStartDate] = useState(""); // MM/DD/YYYY format
   const [billingDay, setBillingDay] = useState(""); // 1-28 or empty for default
 
+  // Unlimited & Custom Pricing
+  const [priceOverrides, setPriceOverrides] = useState([]);
+  const [showPriceOverride, setShowPriceOverride] = useState(false);
+  const [overridePlanId, setOverridePlanId] = useState("");
+  const [overridePrice, setOverridePrice] = useState("");
+
   // Add Card on File
   const [showAddCard, setShowAddCard] = useState(false);
   const [addCardMethod, setAddCardMethod] = useState("swipe"); // "swipe", "manual", "hosted"
@@ -182,12 +192,14 @@ export default function MemberDetail() {
       getMemberMemberships(id),
       getMemberPinStatus(id),
       getTransactions({ member_id: id, per_page: 50 }),
+      getPriceOverrides(id),
     ])
-      .then(([m, c, h, sc, ms, ps, tx]) => {
+      .then(([m, c, h, sc, ms, ps, tx, po]) => {
         setMember(m);
         setCards(c);
         setHistory(h);
         setSavedCards(sc);
+        setPriceOverrides(po || []);
         setMemberships(ms);
         setPinStatus(ps);
         setTransactions(tx.items || []);
@@ -474,9 +486,15 @@ export default function MemberDetail() {
     return formatted.slice(0, 23);
   }
 
+  const getMemberPlanPrice = (plan) => {
+    if (!plan) return 0;
+    const override = priceOverrides.find(o => o.plan_id === plan.id);
+    return override ? Number(override.custom_price) : Number(plan.price);
+  };
+
   const getProrateAmount = (plan) => {
     if (!plan) return "0";
-    const price = Number(plan.price);
+    const price = getMemberPlanPrice(plan);
     const today = new Date();
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
     const daysRemaining = daysInMonth - today.getDate() + 1;
@@ -487,7 +505,7 @@ export default function MemberDetail() {
     if (!plan) return "0";
     if (chargeAmountMode === "prorate") return getProrateAmount(plan);
     if (chargeAmountMode === "custom") return customChargeAmount || "0";
-    return String(plan.price);
+    return String(getMemberPlanPrice(plan));
   };
 
   const resetMembershipForm = () => {
@@ -806,8 +824,121 @@ export default function MemberDetail() {
               </InfoRow>
             )}
             {member.notes && <InfoRow label="Notes">{member.notes}</InfoRow>}
+            <InfoRow label="Unlimited">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={async () => {
+                    try {
+                      await toggleUnlimited(id, !member.is_unlimited);
+                      toast.success(member.is_unlimited ? "Unlimited disabled" : "Unlimited enabled");
+                      load();
+                    } catch (err) {
+                      toast.error(err.response?.data?.detail || "Failed to toggle unlimited");
+                    }
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${member.is_unlimited ? "bg-purple-600" : "bg-gray-300"}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${member.is_unlimited ? "translate-x-6" : "translate-x-1"}`} />
+                </button>
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  {member.is_unlimited ? "Always checks in, no plan needed" : "Off"}
+                </span>
+              </div>
+            </InfoRow>
           </dl>
         </Card>
+
+        {/* Custom Pricing */}
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <CardHeader title="Custom Pricing" description={`${priceOverrides.length} override${priceOverrides.length !== 1 ? "s" : ""}`} />
+            <Button variant="secondary" size="sm" icon={Plus} onClick={() => setShowPriceOverride(true)}>
+              Add
+            </Button>
+          </div>
+          {priceOverrides.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">No custom prices. Member pays regular plan prices.</p>
+          ) : (
+            <div className="space-y-2">
+              {priceOverrides.map((o) => (
+                <div key={o.id} className="flex items-center justify-between rounded-lg border border-gray-100 dark:border-gray-700 p-3">
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{o.plan_name}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Regular: ${Number(o.regular_price).toFixed(2)} → Custom: <span className="font-bold text-brand-600">${Number(o.custom_price).toFixed(2)}</span>
+                    </p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await deletePriceOverride(id, o.id);
+                        toast.success("Custom price removed");
+                        load();
+                      } catch (err) {
+                        toast.error("Failed to remove");
+                      }
+                    }}
+                    className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Add Price Override Modal */}
+        {showPriceOverride && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="mx-4 w-full max-w-sm rounded-2xl bg-white dark:bg-gray-800 p-6 shadow-xl">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Set Custom Price</h3>
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Plan</label>
+                  <select
+                    value={overridePlanId}
+                    onChange={(e) => setOverridePlanId(e.target.value)}
+                    className="block w-full rounded-lg border-0 px-3 py-2.5 text-sm shadow-sm ring-1 ring-gray-300 dark:ring-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  >
+                    <option value="">Select plan...</option>
+                    {plans.filter(p => p.is_active).map(p => (
+                      <option key={p.id} value={p.id}>{p.name} (${Number(p.price).toFixed(2)})</option>
+                    ))}
+                  </select>
+                </div>
+                <Input
+                  label="Custom Price ($)"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={overridePrice}
+                  onChange={(e) => setOverridePrice(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="mt-6 flex gap-3">
+                <Button variant="secondary" className="flex-1" onClick={() => { setShowPriceOverride(false); setOverridePlanId(""); setOverridePrice(""); }}>
+                  Cancel
+                </Button>
+                <Button className="flex-1" disabled={!overridePlanId || !overridePrice} onClick={async () => {
+                  try {
+                    await setPriceOverride(id, overridePlanId, parseFloat(overridePrice));
+                    toast.success("Custom price set");
+                    setShowPriceOverride(false);
+                    setOverridePlanId("");
+                    setOverridePrice("");
+                    load();
+                  } catch (err) {
+                    toast.error(err.response?.data?.detail || "Failed to set price");
+                  }
+                }}>
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* RFID Cards */}
         <Card>
@@ -1296,13 +1427,18 @@ export default function MemberDetail() {
               <option value="">Choose a plan...</option>
               {plans
                 .filter((p) => p.is_active)
-                .map((plan) => (
-                  <option key={plan.id} value={plan.id}>
-                    {plan.name} - ${Number(plan.price).toFixed(2)}
-                    {plan.plan_type === "swim_pass" && ` (${plan.swim_count} swims)`}
-                    {plan.plan_type === "monthly" && ` (${plan.duration_days} days)`}
-                  </option>
-                ))}
+                .map((plan) => {
+                  const override = priceOverrides.find(o => o.plan_id === plan.id);
+                  const displayPrice = override ? Number(override.custom_price) : Number(plan.price);
+                  return (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.name} - ${displayPrice.toFixed(2)}
+                      {override ? " (custom)" : ""}
+                      {plan.plan_type === "swim_pass" ? ` (${plan.swim_count} swims)` : ""}
+                      {plan.plan_type === "monthly" ? ` (${plan.duration_months || plan.duration_days} mo)` : ""}
+                    </option>
+                  );
+                })}
             </select>
           </div>
 
@@ -1385,7 +1521,7 @@ export default function MemberDetail() {
                       className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
                     />
                     <span className="text-sm text-gray-700 dark:text-gray-300">
-                      Full price — ${Number(plans.find(p => p.id === selectedPlanId)?.price || 0).toFixed(2)}
+                      Full price — ${getMemberPlanPrice(plans.find(p => p.id === selectedPlanId)).toFixed(2)}
                     </span>
                   </label>
                   <label className="flex items-center gap-2">
