@@ -48,10 +48,15 @@ def perform_checkin(
             remaining = (membership.swims_total or 0) - membership.swims_used
             if remaining == 0:
                 # Attempt auto-recharge for next time
-                success, message = auto_recharge_swim_pass(db, member_id)
-                if success:
-                    auto_recharged = True
-                    logger.info("Auto-recharge triggered after swim pass depletion: member=%s, message=%s", member_id, message)
+                try:
+                    success, message = auto_recharge_swim_pass(db, member_id)
+                    if success:
+                        auto_recharged = True
+                        logger.info("Auto-recharge triggered after swim pass depletion: member=%s, message=%s", member_id, message)
+                    else:
+                        logger.warning("Auto-recharge failed after swim pass depletion: member=%s, message=%s", member_id, message)
+                except Exception as e:
+                    logger.error("Auto-recharge error after swim pass depletion: member=%s, error=%s", member_id, e)
     else:
         logger.warning("Check-in failed — no active membership: member=%s", member_id)
         raise HTTPException(

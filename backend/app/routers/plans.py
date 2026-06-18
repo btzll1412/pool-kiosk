@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.member import Member
 from app.models.membership import Membership
 from app.models.plan import Plan
+from app.models.saved_card import SavedCard
 from app.models.user import User
 from app.schemas.plan import PlanCreate, PlanResponse, PlanUpdate
 from app.services.activity_service import log_activity
@@ -95,6 +96,19 @@ def deactivate_plan(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
     plan.is_active = False
+
+    # Disable auto-charge on all saved cards referencing this plan
+    affected_cards = db.query(SavedCard).filter(
+        SavedCard.auto_charge_plan_id == plan_id,
+        SavedCard.auto_charge_enabled.is_(True),
+    ).all()
+    for card in affected_cards:
+        card.auto_charge_enabled = False
+        card.auto_charge_plan_id = None
+        card.next_charge_date = None
+    if affected_cards:
+        logger.info("Disabled auto-charge on %d cards when deactivating plan %s", len(affected_cards), plan.name)
+
     db.commit()
     db.refresh(plan)
     log_activity(db, user_id=current_user.id, action="plan.deactivate", entity_type="plan", entity_id=plan.id)

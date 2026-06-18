@@ -450,6 +450,12 @@ def delete_member_saved_card(
     card = db.query(SavedCard).filter(SavedCard.id == card_id, SavedCard.member_id == member_id).first()
     if not card:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved card not found")
+    # Disable auto-charge before deleting to prevent orphaned references
+    if card.auto_charge_enabled:
+        card.auto_charge_enabled = False
+        card.auto_charge_plan_id = None
+        card.next_charge_date = None
+        logger.info("Auto-charge disabled before card deletion: card=%s, member=%s", card_id, member_id)
     db.delete(card)
     db.commit()
     return {"message": "Saved card removed"}

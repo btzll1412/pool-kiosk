@@ -35,6 +35,8 @@ def _get_next_billing_date(from_date: date = None, billing_day: int = None) -> d
     If billing_day is None or 1, falls back to 1st of next month.
     billing_day is clamped to 1-28 to avoid month-length issues.
     """
+    from calendar import monthrange
+
     if from_date is None:
         from_date = date.today()
 
@@ -45,13 +47,14 @@ def _get_next_billing_date(from_date: date = None, billing_day: int = None) -> d
 
     # If we haven't passed the billing day this month, use this month
     if from_date.day < billing_day:
-        return date(from_date.year, from_date.month, billing_day)
+        last_day = monthrange(from_date.year, from_date.month)[1]
+        return date(from_date.year, from_date.month, min(billing_day, last_day))
 
     # Otherwise, use next month
-    if from_date.month == 12:
-        return date(from_date.year + 1, 1, billing_day)
-    else:
-        return date(from_date.year, from_date.month + 1, billing_day)
+    next_year = from_date.year + 1 if from_date.month == 12 else from_date.year
+    next_month = 1 if from_date.month == 12 else from_date.month + 1
+    last_day = monthrange(next_year, next_month)[1]
+    return date(next_year, next_month, min(billing_day, last_day))
 
 
 def process_due_charges(db: Session) -> dict:
@@ -101,14 +104,17 @@ def process_due_charges(db: Session) -> dict:
         credit_used = Decimal("0.00")
         card_charge_amount = plan_price
 
+        # Prevent double-charge: move next_charge_date forward BEFORE charging
+        original_charge_date = card.next_charge_date
+        card.next_charge_date = _get_next_billing_date(today, card.billing_day)
+        db.commit()
+
         # Check if member has account credit to apply
         if member.credit_balance and member.credit_balance > 0:
             if member.credit_balance >= plan_price:
-                # Credit covers entire plan - no card charge needed
                 credit_used = plan_price
                 card_charge_amount = Decimal("0.00")
             else:
-                # Partial credit - charge remainder to card
                 credit_used = member.credit_balance
                 card_charge_amount = plan_price - credit_used
 
@@ -124,6 +130,9 @@ def process_due_charges(db: Session) -> dict:
             )
 
             if not charge_result.success:
+                # Charge failed — restore original charge date so it retries next run
+                card.next_charge_date = original_charge_date
+                db.commit()
                 logger.warning("Auto-charge failed for card %s: %s", card.id, charge_result.message)
                 notify_auto_charge_failed(
                     db, member_name=f"{member.first_name} {member.last_name}",
@@ -134,39 +143,48 @@ def process_due_charges(db: Session) -> dict:
                 results["failed"] += 1
                 continue
 
-        membership = create_membership(db, card.member_id, plan.id, billing_day=card.billing_day)
+        # Create membership and record transactions — wrapped in try/catch
+        try:
+            membership = create_membership(db, card.member_id, plan.id, billing_day=card.billing_day)
 
-        # Deduct credit if used
-        if credit_used > 0:
-            member.credit_balance -= credit_used
-            credit_tx = Transaction(
-                member_id=card.member_id,
-                transaction_type=TransactionType.credit_use,
-                payment_method=PaymentMethod.credit,
-                amount=credit_used,
-                plan_id=plan.id,
-                membership_id=membership.id,
-                notes=f"Auto-charge: credit applied for {plan.name}",
-            )
-            db.add(credit_tx)
+            # Deduct credit if used
+            if credit_used > 0:
+                member.credit_balance -= credit_used
+                credit_tx = Transaction(
+                    member_id=card.member_id,
+                    transaction_type=TransactionType.credit_use,
+                    payment_method=PaymentMethod.credit,
+                    amount=credit_used,
+                    plan_id=plan.id,
+                    membership_id=membership.id,
+                    notes=f"Auto-charge: credit applied for {plan.name}",
+                )
+                db.add(credit_tx)
 
-        # Record card payment transaction if charged
-        if card_charge_amount > 0 and charge_result:
-            tx = Transaction(
-                member_id=card.member_id,
-                transaction_type=TransactionType.payment,
-                payment_method=PaymentMethod.card,
-                amount=card_charge_amount,
-                plan_id=plan.id,
-                membership_id=membership.id,
-                saved_card_id=card.id,
-                reference_id=charge_result.reference_id,
-                notes=f"Auto-charge" + (f" (${credit_used} credit also applied)" if credit_used > 0 else ""),
-            )
-            db.add(tx)
+            # Record card payment transaction if charged
+            if card_charge_amount > 0 and charge_result:
+                tx = Transaction(
+                    member_id=card.member_id,
+                    transaction_type=TransactionType.payment,
+                    payment_method=PaymentMethod.card,
+                    amount=card_charge_amount,
+                    plan_id=plan.id,
+                    membership_id=membership.id,
+                    saved_card_id=card.id,
+                    reference_id=charge_result.reference_id,
+                    notes=f"Auto-charge" + (f" (${credit_used} credit also applied)" if credit_used > 0 else ""),
+                )
+                db.add(tx)
 
-        card.next_charge_date = _get_next_billing_date(today, card.billing_day)
-        db.commit()
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error("Auto-charge: membership creation failed after successful charge for card %s: %s", card.id, e)
+            # Restore charge date so it retries
+            card.next_charge_date = original_charge_date
+            db.commit()
+            results["failed"] += 1
+            continue
 
         # Log success with credit info
         if credit_used > 0 and card_charge_amount > 0:
