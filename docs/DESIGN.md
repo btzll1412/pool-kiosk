@@ -58,7 +58,8 @@ pool-management/
 │   │   │   ├── transaction.py
 │   │   │   ├── credit.py
 │   │   │   ├── user.py              # Admin/staff users
-│   │   │   └── pool_schedule.py     # PoolSchedule, ScheduleOverride
+│   │   │   ├── pool_schedule.py     # PoolSchedule, ScheduleOverride
+│   │   │   └── member_price_override.py  # Per-member custom pricing
 │   │   │
 │   │   ├── schemas/                 # Pydantic request/response schemas
 │   │   │   ├── __init__.py
@@ -97,6 +98,7 @@ pool-management/
 │   │   │   ├── email_service.py        # SMTP email sending + templates
 │   │   │   ├── sip_service.py          # FusionPBX SIP call origination
 │   │   │   ├── nfc_reader_service.py   # NFC WebSocket client management
+│   │   │   ├── pricing_service.py      # Per-member custom pricing lookups
 │   │   │   └── report_service.py
 │   │   │
 │   │   └── payments/                # Modular payment adapters
@@ -142,7 +144,8 @@ pool-management/
 │       │   │   ├── FamilyScreen.jsx     # Add family members
 │       │   │   ├── ChangeScreen.jsx     # Needs change notification
 │       │   │   ├── SearchScreen.jsx     # Search by name/phone
-│       │   │   └── StatusScreen.jsx     # Timed status display
+│       │   │   ├── StatusScreen.jsx     # Timed status display
+│       │   │   └── AddMoneyScreen.jsx  # Unlimited member top-up
 │       │   └── components/
 │       │       ├── RFIDListener.jsx     # Captures RFID keyboard input
 │       │       ├── KioskInput.jsx       # Input with virtual keyboard/numpad, Next button
@@ -460,6 +463,10 @@ pool-management/
 - `POST /api/members/{id}/unlock-pin` — Unlock member's PIN (admin)
 - `GET /api/members/export/csv` — Export all members as CSV
 - `POST /api/members/import/csv` — Import members from CSV file
+- `POST /api/members/{id}/unlimited` — Toggle unlimited membership (admin)
+- `GET /api/members/{id}/price-overrides` — List custom price overrides
+- `POST /api/members/{id}/price-overrides` — Set custom price for a plan
+- `DELETE /api/members/{id}/price-overrides/{override_id}` — Remove custom price
 
 ### Plans (admin auth)
 

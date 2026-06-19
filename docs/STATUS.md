@@ -989,4 +989,59 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-06-18 (System Audit Fixes)
+## Per-Member Custom Pricing & Unlimited Memberships (2026-06-18)
+
+### Per-Member Custom Pricing
+- New `member_price_overrides` table maps member + plan → custom price
+- Admin can set/delete custom prices from member detail page ("Custom Pricing" card)
+- All payment flows use member-aware pricing:
+  - Kiosk plans endpoint accepts `member_id`, returns custom prices
+  - Cash, card, split, credit payments all resolve custom price
+  - Auto-charge uses custom price via `pricing_service.get_member_price()`
+  - Admin Add Membership dropdown shows custom price with "(custom)" label
+  - Pro-rate and charge amount calculations use custom price
+- Regular price shown as reference: "Regular: $25.00 → Custom: $15.00"
+
+### Unlimited Membership
+- New `is_unlimited` flag on Member model
+- Admin toggle on member detail page (purple switch in Member Info)
+- Unlimited members:
+  - Always check in without needing a membership plan
+  - Auto-checkin on card scan (same as monthly members)
+  - Kiosk shows only "Check In" + "Add Money" buttons
+  - No plans, no pricing, no credit balance visible
+  - Cannot be cancelled by insufficient funds (admin-only control)
+- Add Money flow:
+  - Enter amount → adds to credit balance
+  - Shows "$XX.XX was added to your account, thank you!" → auto-returns to idle
+  - Transaction recorded for admin visibility
+- Auto-charge skips unlimited members
+
+### New Files
+- `backend/app/models/member_price_override.py` — MemberPriceOverride model
+- `backend/app/services/pricing_service.py` — get_member_price(), get_member_price_overrides()
+- `frontend/src/kiosk/screens/AddMoneyScreen.jsx` — Kiosk add money screen for unlimited members
+- Migration `n4o5p6q7r8s9`: adds `is_unlimited` to members, creates `member_price_overrides` table
+
+### Backend Changes
+- `backend/app/models/member.py` — Added `is_unlimited` field and `price_overrides` relationship
+- `backend/app/models/__init__.py` — Registered MemberPriceOverride model
+- `backend/app/schemas/kiosk.py` — Added `is_unlimited` to MemberStatus, new AddCreditKioskRequest
+- `backend/app/schemas/member.py` — Added `is_unlimited` to MemberResponse
+- `backend/app/routers/kiosk.py` — Plans endpoint accepts member_id for custom prices, new /add-credit endpoint, all payment endpoints use member-aware pricing
+- `backend/app/routers/members.py` — New endpoints: toggle unlimited, CRUD price overrides
+- `backend/app/services/auto_charge_service.py` — Uses custom pricing, skips unlimited members
+- `backend/app/services/checkin_service.py` — Unlimited members always check in
+
+### Frontend Changes
+- `frontend/src/kiosk/KioskApp.jsx` — Registered AddMoneyScreen, auto-checkin for unlimited
+- `frontend/src/kiosk/screens/MemberScreen.jsx` — Unlimited-specific UI (Check In + Add Money only)
+- `frontend/src/kiosk/components/MemberCard.jsx` — hideBalance prop, unlimited status display
+- `frontend/src/kiosk/screens/PaymentScreen.jsx` — Passes member_id when fetching plans
+- `frontend/src/admin/pages/Members/MemberDetail.jsx` — Unlimited toggle, custom pricing card with add/delete, charge amounts use custom price
+- `frontend/src/api/kiosk.js` — getPlans accepts memberId, new addCredit()
+- `frontend/src/api/members.js` — toggleUnlimited(), getPriceOverrides(), setPriceOverride(), deletePriceOverride()
+
+---
+
+## Last Updated: 2026-06-19 (Custom Pricing & Unlimited Memberships)
