@@ -13,6 +13,7 @@ from app.models.activity_log import ActivityLog
 from app.models.pin_lockout import PinLockout
 from app.models.pool_schedule import PoolSchedule, ScheduleOverride, ScheduleType
 from app.models.pending_terminal_payment import PendingTerminalPayment
+from app.models.member_price_override import MemberPriceOverride
 
 __all__ = [
     "Member",
@@ -32,4 +33,5 @@ __all__ = [
     "ScheduleOverride",
     "ScheduleType",
     "PendingTerminalPayment",
+    "MemberPriceOverride",
 ]

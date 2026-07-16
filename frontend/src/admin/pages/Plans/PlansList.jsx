@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Edit, Plus, Trash2, Users, X } from "lucide-react";
+import { Edit, Plus, Power, RefreshCw, Trash2, Users, X } from "lucide-react";
 import toast from "react-hot-toast";
-import { createPlan, deactivatePlan, getPlans, getPlanSubscribers, updatePlan } from "../../../api/plans";
+import { createPlan, deactivatePlan, getPlans, getPlanSubscribers, permanentlyDeletePlan, reactivatePlan, updatePlan } from "../../../api/plans";
 import Badge from "../../../shared/Badge";
 import Button from "../../../shared/Button";
 import Card from "../../../shared/Card";
@@ -17,6 +17,7 @@ export default function PlansList() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [permanentDeleteTarget, setPermanentDeleteTarget] = useState(null);
   const [subscribersModal, setSubscribersModal] = useState(null);
   const [subscribersLoading, setSubscribersLoading] = useState(false);
 
@@ -40,6 +41,27 @@ export default function PlansList() {
       load();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to deactivate plan");
+    }
+  };
+
+  const handleReactivate = async (plan) => {
+    try {
+      await reactivatePlan(plan.id);
+      toast.success(`"${plan.name}" reactivated`);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to reactivate plan");
+    }
+  };
+
+  const handlePermanentDelete = async () => {
+    try {
+      await permanentlyDeletePlan(permanentDeleteTarget.id);
+      toast.success(`"${permanentDeleteTarget.name}" permanently deleted`);
+      setPermanentDeleteTarget(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to delete plan");
     }
   };
 
@@ -177,9 +199,21 @@ export default function PlansList() {
               </div>
 
               {!plan.is_active && (
-                <Badge color="red" className="mt-3">
-                  Inactive
-                </Badge>
+                <div className="mt-3 flex items-center gap-2">
+                  <Badge color="red">Inactive</Badge>
+                  <button
+                    onClick={() => handleReactivate(plan)}
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-green-200 hover:bg-green-50 transition-colors"
+                  >
+                    <RefreshCw className="h-3 w-3" /> Reactivate
+                  </button>
+                  <button
+                    onClick={() => setPermanentDeleteTarget(plan)}
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-red-600 ring-1 ring-red-200 hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 className="h-3 w-3" /> Delete
+                  </button>
+                </div>
               )}
             </Card>
           ))}
@@ -204,6 +238,16 @@ export default function PlansList() {
         title="Deactivate Plan"
         message={`Are you sure you want to deactivate "${deleteTarget?.name}"? It will no longer appear on the kiosk.`}
         confirmLabel="Deactivate"
+      />
+
+      <ConfirmDialog
+        open={!!permanentDeleteTarget}
+        onClose={() => setPermanentDeleteTarget(null)}
+        onConfirm={handlePermanentDelete}
+        title="Permanently Delete Plan"
+        message={`Are you sure you want to permanently delete "${permanentDeleteTarget?.name}"? This cannot be undone. Plans with existing members cannot be deleted.`}
+        confirmLabel="Delete Forever"
+        variant="danger"
       />
 
       {/* Subscribers Modal */}

@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.models.plan import PlanType
 
@@ -11,6 +11,7 @@ class PaymentInfo(BaseModel):
     """Payment information for membership creation."""
     payment_method: str  # "cash" or "card"
     amount_tendered: Decimal | None = None  # For cash payments
+    charge_amount: Decimal | None = None  # Override amount to charge (prorate/custom)
     saved_card_id: uuid.UUID | None = None  # Use existing saved card
     card_last4: str | None = None  # For new card tokenization
     card_brand: str | None = None  # For new card tokenization
@@ -21,7 +22,16 @@ class PaymentInfo(BaseModel):
 class MembershipCreate(BaseModel):
     member_id: uuid.UUID
     plan_id: uuid.UUID
+    start_date: date | None = None  # Custom start date (default: today)
+    billing_day: int | None = None  # Custom billing day of month (1-28, default: 1st)
     payment: PaymentInfo | None = None  # Optional payment processing
+
+    @field_validator("billing_day")
+    @classmethod
+    def clamp_billing_day(cls, v):
+        if v is not None:
+            return max(1, min(v, 28))
+        return v
 
 
 class MembershipUpdate(BaseModel):

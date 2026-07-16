@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Calendar, Save, User } from "lucide-react";
+import { ArrowLeft, Save, User } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
 import KioskInput from "../components/KioskInput";
@@ -10,7 +10,14 @@ export default function EditProfileScreen({ member, setMember, goTo, context }) 
   const [lastName, setLastName] = useState(member?.last_name || "");
   const [phone, setPhone] = useState(member?.phone || "");
   const [email, setEmail] = useState(member?.email || "");
-  const [dateOfBirth, setDateOfBirth] = useState(member?.date_of_birth || "");
+  const [dateOfBirth, setDateOfBirth] = useState(() => {
+    const dob = member?.date_of_birth || "";
+    if (dob && dob.includes("-")) {
+      const [y, m, d] = dob.split("-");
+      return `${m}/${d}/${y}`;
+    }
+    return dob;
+  });
   const [isSenior, setIsSenior] = useState(member?.is_senior || false);
   const [seniorAgeThreshold, setSeniorAgeThreshold] = useState(65);
   const [loading, setLoading] = useState(false);
@@ -23,19 +30,27 @@ export default function EditProfileScreen({ member, setMember, goTo, context }) 
     }).catch(() => {});
   }, []);
 
-  function calculateAge(dob) {
+  function dobToIso(dob) {
     if (!dob) return null;
+    const digits = dob.replace(/\D/g, "");
+    if (digits.length !== 8) return null;
+    return `${digits.slice(4, 8)}-${digits.slice(0, 2)}-${digits.slice(2, 4)}`;
+  }
+
+  function calculateAge(iso) {
+    if (!iso) return null;
     const today = new Date();
-    const birthDate = new Date(dob);
+    const birthDate = new Date(iso);
+    if (isNaN(birthDate)) return null;
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--;
     }
-    return age;
+    return age >= 0 ? age : null;
   }
 
-  const age = calculateAge(dateOfBirth);
+  const age = calculateAge(dobToIso(dateOfBirth));
   const qualifiesForSenior = age !== null && age >= seniorAgeThreshold;
 
   if (!member) return null;
@@ -59,7 +74,7 @@ export default function EditProfileScreen({ member, setMember, goTo, context }) 
         last_name: lastName.trim(),
         phone: phone.trim(),
         email: email.trim() || null,
-        date_of_birth: dateOfBirth || null,
+        date_of_birth: dobToIso(dateOfBirth) || null,
         is_senior: isSenior,
       });
       setMember(updated);
@@ -134,29 +149,28 @@ export default function EditProfileScreen({ member, setMember, goTo, context }) 
             />
 
             {/* Date of Birth */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Date of Birth (optional)
-              </label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                  type="date"
-                  value={dateOfBirth}
-                  onChange={(e) => {
-                    setDateOfBirth(e.target.value);
-                    const newAge = calculateAge(e.target.value);
-                    if (newAge !== null && newAge >= seniorAgeThreshold) {
-                      setIsSenior(true);
-                    }
-                  }}
-                  className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                />
-              </div>
-              {age !== null && (
-                <p className="mt-1 text-sm text-gray-500">Age: {age} years old</p>
-              )}
-            </div>
+            <KioskInput
+              label={`Date of Birth (optional)${age !== null ? ` — Age: ${age}` : ""}`}
+              numeric
+              value={dateOfBirth}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/\D/g, "");
+                let formatted = raw;
+                if (raw.length > 2) formatted = raw.slice(0, 2) + "/" + raw.slice(2);
+                if (raw.length > 4) formatted = raw.slice(0, 2) + "/" + raw.slice(2, 4) + "/" + raw.slice(4, 8);
+                setDateOfBirth(formatted);
+                if (raw.length === 8) {
+                  const iso = `${raw.slice(4, 8)}-${raw.slice(0, 2)}-${raw.slice(2, 4)}`;
+                  const newAge = calculateAge(iso);
+                  if (newAge !== null && newAge >= seniorAgeThreshold) {
+                    setIsSenior(true);
+                  }
+                }
+              }}
+              placeholder="MM/DD/YYYY"
+              maxLength={10}
+              inputId="dob"
+            />
 
             {/* Senior Citizen Checkbox */}
             {qualifiesForSenior && (

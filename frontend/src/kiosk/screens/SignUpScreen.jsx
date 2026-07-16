@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, Calendar, CheckCircle, CreditCard, UserPlus, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle, CreditCard, UserPlus, X } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
 import KioskInput from "../components/KioskInput";
@@ -32,20 +32,29 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
     getPlans().then(setPlans).catch(() => {});
   }, []);
 
-  // Calculate age from DOB
-  function calculateAge(dob) {
+  // Parse MM/DD/YYYY to ISO date string
+  function dobToIso(dob) {
     if (!dob) return null;
+    const digits = dob.replace(/\D/g, "");
+    if (digits.length !== 8) return null;
+    return `${digits.slice(4, 8)}-${digits.slice(0, 2)}-${digits.slice(2, 4)}`;
+  }
+
+  // Calculate age from ISO date string
+  function calculateAge(iso) {
+    if (!iso) return null;
     const today = new Date();
-    const birthDate = new Date(dob);
+    const birthDate = new Date(iso);
+    if (isNaN(birthDate)) return null;
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--;
     }
-    return age;
+    return age >= 0 ? age : null;
   }
 
-  const age = calculateAge(dateOfBirth);
+  const age = calculateAge(dobToIso(dateOfBirth));
   const qualifiesForSenior = age !== null && age >= seniorAgeThreshold;
 
   async function handleCardScan(uid) {
@@ -93,7 +102,7 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
         email: email.trim() || null,
         pin,
         rfid_uid: cardUid || null,
-        date_of_birth: dateOfBirth || null,
+        date_of_birth: dobToIso(dateOfBirth) || null,
         is_senior: isSenior,
       });
       setMember(data);
@@ -184,29 +193,29 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
 
             <div className="grid grid-cols-3 gap-3">
               {/* Date of Birth - Optional */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Date of Birth (optional)
-                </label>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                  <input
-                    type="date"
-                    value={dateOfBirth}
-                    onChange={(e) => {
-                      setDateOfBirth(e.target.value);
-                      const newAge = calculateAge(e.target.value);
-                      if (newAge !== null && newAge >= seniorAgeThreshold) {
-                        setIsSenior(true);
-                      }
-                    }}
-                    className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                  />
-                </div>
-                {age !== null && (
-                  <p className="mt-1 text-xs text-gray-500">Age: {age}</p>
-                )}
-              </div>
+              <KioskInput
+                label={`Date of Birth (optional)${age !== null ? ` — Age: ${age}` : ""}`}
+                numeric
+                value={dateOfBirth}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\D/g, "");
+                  let formatted = raw;
+                  if (raw.length > 2) formatted = raw.slice(0, 2) + "/" + raw.slice(2);
+                  if (raw.length > 4) formatted = raw.slice(0, 2) + "/" + raw.slice(2, 4) + "/" + raw.slice(4, 8);
+                  setDateOfBirth(formatted);
+                  // Parse for age calculation: MM/DD/YYYY → YYYY-MM-DD
+                  if (raw.length === 8) {
+                    const iso = `${raw.slice(4, 8)}-${raw.slice(0, 2)}-${raw.slice(2, 4)}`;
+                    const newAge = calculateAge(iso);
+                    if (newAge !== null && newAge >= seniorAgeThreshold) {
+                      setIsSenior(true);
+                    }
+                  }
+                }}
+                placeholder="MM/DD/YYYY"
+                maxLength={10}
+                inputId="dob"
+              />
               <KioskInput
                 label="4-Digit PIN *"
                 numeric

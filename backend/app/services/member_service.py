@@ -52,7 +52,7 @@ def list_members(
         joined_before_dt = datetime.combine(joined_before, datetime.max.time())
         query = query.filter(Member.created_at <= joined_before_dt)
     total = query.count()
-    items = query.order_by(Member.last_name, Member.first_name).offset((page - 1) * per_page).limit(per_page).all()
+    items = query.order_by(func.lower(Member.last_name), func.lower(Member.first_name)).offset((page - 1) * per_page).limit(per_page).all()
     return items, total
 
 

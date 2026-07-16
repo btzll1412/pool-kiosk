@@ -60,6 +60,7 @@ from app.schemas.kiosk import (
     TerminalPaymentInitResponse,
     TerminalPaymentStatusResponse,
     TerminalInfoResponse,
+    AddCreditKioskRequest,
 )
 from app.services.auto_charge_service import (
     charge_saved_card_now,
@@ -71,6 +72,7 @@ from app.services.membership_service import create_membership, freeze_membership
 from app.services.notification_service import notify_checkin, send_change_notification
 from app.services.payment_service import get_payment_adapter, process_card_payment, process_cash_payment
 from app.services.auth_service import hash_pin
+from app.services.member_service import assign_card
 from app.services.pin_service import verify_member_pin
 from app.services.rate_limit import limiter
 from app.services.settings_service import get_setting
@@ -193,6 +195,14 @@ def kiosk_signup(data: KioskSignupRequest, request: Request, db: Session = Depen
     db.commit()
     db.refresh(member)
     logger.info("Kiosk signup: member=%s, name=%s %s", member.id, member.first_name, member.last_name)
+
+    # Assign NFC card if one was scanned during signup
+    if data.rfid_uid:
+        try:
+            assign_card(db, member.id, data.rfid_uid)
+        except HTTPException:
+            logger.warning("Kiosk signup: card assignment failed for rfid=%s, member=%s", data.rfid_uid, member.id)
+
     return _build_member_status(db, member)
 
 
@@ -413,42 +423,53 @@ def calculate_prorated_price(plan_price: Decimal, duration_months: int = 1, loca
 
 
 
-def get_plan_effective_price(plan, local_today: date | None = None) -> Decimal:
-    """Get the effective price for a plan (prorated for monthly plans)."""
+def get_plan_effective_price(plan, local_today: date | None = None, member_price: "Decimal | None" = None) -> Decimal:
+    """Get the effective price for a plan. Uses member_price override if provided."""
+    price = member_price if member_price is not None else plan.price
     if plan.plan_type.value == "monthly":
-        prorated = calculate_prorated_price(plan.price, plan.duration_months or 1, local_today)
+        prorated = calculate_prorated_price(price, plan.duration_months or 1, local_today)
         return Decimal(prorated["prorated_price"])
-    return plan.price
+    return price
 
 @router.get("/plans")
 @limiter.limit("30/minute")
-def get_kiosk_plans(request: Request, db: Session = Depends(get_db), is_senior: bool = None):
+def get_kiosk_plans(request: Request, db: Session = Depends(get_db), is_senior: bool = None, member_id: str = None):
+    from app.services.pricing_service import get_member_price_overrides
+
     local_today = _get_local_today(db)
 
     query = db.query(Plan).filter(Plan.is_active.is_(True))
 
-    # Filter by senior status:
-    # - Seniors can see ALL plans (regular + senior-only)
-    # - Non-seniors can only see regular plans (hide senior-only discounts)
+    # Filter by senior status
     if is_senior is False:
         query = query.filter(Plan.is_senior_plan == False)
-    # If is_senior is True or None, show all plans
 
     plans = query.order_by(Plan.display_order, Plan.name).all()
-    return [
-        {
+
+    # Get member-specific price overrides if member_id provided
+    overrides = {}
+    if member_id:
+        try:
+            overrides = get_member_price_overrides(db, uuid.UUID(member_id))
+        except (ValueError, AttributeError):
+            pass
+
+    result = []
+    for p in plans:
+        price = overrides.get(str(p.id), p.price)
+        result.append({
             "id": str(p.id),
             "name": p.name,
             "plan_type": p.plan_type.value,
-            "price": str(p.price),
+            "price": str(price),
+            "regular_price": str(p.price) if str(p.id) in overrides else None,
             "swim_count": p.swim_count,
             "duration_days": p.duration_days,
             "duration_months": p.duration_months,
             "is_senior_plan": p.is_senior_plan,
-            "prorated": calculate_prorated_price(p.price, p.duration_months or 1, local_today) if p.plan_type.value == "monthly" else None,
-        }
-        for p in plans
-    ]
+            "prorated": calculate_prorated_price(price, p.duration_months or 1, local_today) if p.plan_type.value == "monthly" else None,
+        })
+    return result
 
 
 @router.get("/settings")
@@ -489,6 +510,8 @@ def get_kiosk_settings(request: Request, db: Session = Depends(get_db)):
         "kiosk_bg_image_mode": get_setting(db, "kiosk_bg_image_mode", "cover"),
         "staff_exit_pin": get_setting(db, "staff_exit_pin", "0000"),
         "senior_age_threshold": get_setting(db, "senior_age_threshold", "65"),
+        "kiosk_ui_scale": get_setting(db, "kiosk_ui_scale", "normal"),
+        "kiosk_reload_interval_seconds": get_setting(db, "kiosk_reload_interval_seconds", "30"),
     }
 
 
@@ -504,9 +527,11 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
 
+    from app.services.pricing_service import get_member_price
     local_today = _get_local_today(db)
     credit_used = Decimal("0.00")
-    base_price = get_plan_effective_price(plan, local_today)
+    member_custom_price = get_member_price(db, data.member_id, data.plan_id)
+    base_price = get_plan_effective_price(plan, local_today, member_price=member_custom_price)
     effective_price = base_price
 
     # Apply account credit if requested
@@ -637,9 +662,11 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
 
+    from app.services.pricing_service import get_member_price
     local_today = _get_local_today(db)
     credit_used = Decimal("0.00")
-    base_price = get_plan_effective_price(plan, local_today)
+    member_custom_price = get_member_price(db, data.member_id, data.plan_id)
+    base_price = get_plan_effective_price(plan, local_today, member_price=member_custom_price)
     effective_price = base_price
 
     # Apply account credit if requested
@@ -794,9 +821,11 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
             detail="CVV must be 3-4 digits"
         )
 
+    from app.services.pricing_service import get_member_price
     local_today = _get_local_today(db)
     credit_used = Decimal("0.00")
-    base_price = get_plan_effective_price(plan, local_today)
+    member_custom_price = get_member_price(db, data.member_id, data.plan_id)
+    base_price = get_plan_effective_price(plan, local_today, member_price=member_custom_price)
     effective_price = base_price
 
     # Apply account credit if requested
@@ -1051,6 +1080,33 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
     )
 
 
+@router.post("/add-credit")
+@limiter.limit("10/minute")
+def add_credit_to_account(data: AddCreditKioskRequest, request: Request, db: Session = Depends(get_db)):
+    """Add money to a member's credit balance (used by unlimited members)."""
+    verify_member_pin(db, data.member_id, data.pin)
+
+    member = db.query(Member).filter(Member.id == data.member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    if data.amount <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount must be greater than zero")
+
+    member.credit_balance += data.amount
+    tx = Transaction(
+        member_id=data.member_id,
+        transaction_type=TransactionType.credit_add,
+        payment_method=PaymentMethod.cash,
+        amount=data.amount,
+        notes="Account top-up via kiosk",
+    )
+    db.add(tx)
+    db.commit()
+    logger.info("Credit added via kiosk: member=%s, amount=$%s", data.member_id, data.amount)
+    return {"message": f"${data.amount} added to account", "amount": str(data.amount)}
+
+
 @router.post("/pay/credit", response_model=PaymentResponse)
 @limiter.limit("20/minute")
 def pay_credit(data: CreditPaymentRequest, request: Request, db: Session = Depends(get_db)):
@@ -1068,8 +1124,10 @@ def pay_credit(data: CreditPaymentRequest, request: Request, db: Session = Depen
     if member.credit_balance <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No credit balance available")
 
-    credit_to_use = min(member.credit_balance, plan.price)
-    remaining = plan.price - credit_to_use
+    from app.services.pricing_service import get_member_price
+    effective_plan_price = get_member_price(db, data.member_id, data.plan_id)
+    credit_to_use = min(member.credit_balance, effective_plan_price)
+    remaining = effective_plan_price - credit_to_use
 
     if remaining > 0:
         # Partial credit - return the remaining amount needed
@@ -1292,7 +1350,7 @@ def tokenize_card_from_full_details(data: TokenizeFullCardRequest, request: Requ
         )
 
     try:
-        token, last4, card_brand = adapter.generate_card_token(data.card_number, data.exp_date, str(data.member_id))
+        token, last4, card_brand = adapter.generate_card_token(data.card_number, data.exp_date, str(data.member_id), cvv=data.cvv or "")
     except RuntimeError as e:
         logger.error("Failed to tokenize card: member=%s, error=%s", data.member_id, e)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
@@ -1756,6 +1814,7 @@ def _build_member_status(db: Session, member: Member) -> MemberStatus:
         has_pin=member.pin_hash is not None,
         date_of_birth=member.date_of_birth,
         is_senior=member.is_senior,
+        is_unlimited=member.is_unlimited,
         active_membership=active_info,
         is_frozen=is_frozen,
         frozen_until=frozen_until,

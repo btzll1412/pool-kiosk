@@ -26,6 +26,8 @@ import CreditPartialScreen from "./screens/CreditPartialScreen";
 import SignUpScreen from "./screens/SignUpScreen";
 import EditProfileScreen from "./screens/EditProfileScreen";
 import TerminalPaymentScreen from "./screens/TerminalPaymentScreen";
+import ViewPlansScreen from "./screens/ViewPlansScreen";
+import AddMoneyScreen from "./screens/AddMoneyScreen";
 
 const SCREENS = {
   idle: IdleScreen,
@@ -49,10 +51,24 @@ const SCREENS = {
   signup: SignUpScreen,
   editProfile: EditProfileScreen,
   terminal: TerminalPaymentScreen,
+  viewPlans: ViewPlansScreen,
+  addMoney: AddMoneyScreen,
 };
 
 // Refresh settings every 30 seconds when on idle screen
 const SETTINGS_REFRESH_INTERVAL = 30000;
+// Check for new version every 30 seconds
+const VERSION_CHECK_INTERVAL = 30000;
+
+// Get current bundle version from the page
+function getCurrentBundleHash() {
+  const scripts = document.querySelectorAll('script[src*="assets/index-"]');
+  for (const script of scripts) {
+    const match = script.src.match(/index-([A-Za-z0-9]+)\.js/);
+    if (match) return match[1];
+  }
+  return null;
+}
 
 export default function KioskApp() {
   const [screen, setScreen] = useState("idle");
@@ -60,6 +76,8 @@ export default function KioskApp() {
   const [context, setContext] = useState({});
   const [settings, setSettings] = useState({});
   const refreshIntervalRef = useRef(null);
+  const versionCheckRef = useRef(null);
+  const currentVersionRef = useRef(getCurrentBundleHash());
 
   // Fetch settings function
   const fetchSettings = useCallback(() => {
@@ -97,6 +115,51 @@ export default function KioskApp() {
     }
   }, [screen, fetchSettings]);
 
+  // Check for new version and reload only when code changes (on idle screen only)
+  useEffect(() => {
+    if (screen === "idle") {
+      // Check if auto-reload is disabled
+      const reloadSeconds = Number(settings.kiosk_reload_interval_seconds);
+      if (settings.kiosk_reload_interval_seconds === "0" || settings.kiosk_reload_interval_seconds === 0) {
+        return;
+      }
+
+      const checkInterval = (reloadSeconds || 30) * 1000;
+
+      versionCheckRef.current = setInterval(async () => {
+        try {
+          // Fetch the index.html to check for new bundle
+          const response = await fetch("/kiosk?_=" + Date.now(), { cache: "no-store" });
+          const html = await response.text();
+
+          // Extract bundle hash from fetched HTML
+          const match = html.match(/index-([A-Za-z0-9]+)\.js/);
+          const newVersion = match ? match[1] : null;
+
+          // Only reload if version actually changed
+          if (newVersion && currentVersionRef.current && newVersion !== currentVersionRef.current) {
+            window.location.reload();
+          }
+        } catch {
+          // Ignore fetch errors
+        }
+      }, checkInterval);
+
+      return () => {
+        if (versionCheckRef.current) {
+          clearInterval(versionCheckRef.current);
+          versionCheckRef.current = null;
+        }
+      };
+    } else {
+      // Clear interval when not on idle screen
+      if (versionCheckRef.current) {
+        clearInterval(versionCheckRef.current);
+        versionCheckRef.current = null;
+      }
+    }
+  }, [screen, settings.kiosk_reload_interval_seconds]);
+
   const goTo = useCallback((nextScreen, ctx = {}) => {
     setContext((prev) => ({ ...prev, ...ctx }));
     setScreen(nextScreen);
@@ -115,8 +178,8 @@ export default function KioskApp() {
         const data = await scanCard(rfid_uid);
         setMember(data);
 
-        // Auto check-in for monthly pass members
-        if (data.active_membership?.plan_type === "monthly" && !data.is_frozen) {
+        // Auto check-in for monthly pass and unlimited members
+        if ((data.is_unlimited || data.active_membership?.plan_type === "monthly") && !data.is_frozen) {
           try {
             await checkin(data.member_id, 0);
             goTo("status", {

@@ -50,6 +50,7 @@ class MemberResponse(BaseModel):
     credit_balance: Decimal
     notes: str | None
     is_active: bool
+    is_unlimited: bool = False
     date_of_birth: date | None
     is_senior: bool
     created_at: datetime

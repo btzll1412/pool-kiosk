@@ -29,6 +29,34 @@ def _get_first_of_next_month(from_date: date = None) -> date:
         return date(from_date.year, from_date.month + 1, 1)
 
 
+def _get_next_billing_date(from_date: date = None, billing_day: int = None) -> date:
+    """Calculate the next billing date based on a custom billing day.
+
+    If billing_day is None or 1, falls back to 1st of next month.
+    billing_day is clamped to 1-28 to avoid month-length issues.
+    """
+    from calendar import monthrange
+
+    if from_date is None:
+        from_date = date.today()
+
+    if not billing_day or billing_day <= 1:
+        return _get_first_of_next_month(from_date)
+
+    billing_day = min(billing_day, 28)
+
+    # If we haven't passed the billing day this month, use this month
+    if from_date.day < billing_day:
+        last_day = monthrange(from_date.year, from_date.month)[1]
+        return date(from_date.year, from_date.month, min(billing_day, last_day))
+
+    # Otherwise, use next month
+    next_year = from_date.year + 1 if from_date.month == 12 else from_date.year
+    next_month = 1 if from_date.month == 12 else from_date.month + 1
+    last_day = monthrange(next_year, next_month)[1]
+    return date(next_year, next_month, min(billing_day, last_day))
+
+
 def process_due_charges(db: Session) -> dict:
     """Find all saved cards with auto-charge due today or earlier and charge them."""
     today = date.today()
@@ -71,19 +99,30 @@ def process_due_charges(db: Session) -> dict:
             results["failed"] += 1
             continue
 
+        # Skip unlimited members — they don't get auto-charged
+        if member.is_unlimited:
+            logger.info("Auto-charge skipped: member %s is unlimited", card.member_id)
+            continue
+
         customer_name = f"{member.first_name} {member.last_name}"
-        plan_price = plan.price
+
+        # Use member's custom price if set, otherwise plan price
+        from app.services.pricing_service import get_member_price
+        plan_price = get_member_price(db, card.member_id, plan.id)
         credit_used = Decimal("0.00")
         card_charge_amount = plan_price
+
+        # Prevent double-charge: move next_charge_date forward BEFORE charging
+        original_charge_date = card.next_charge_date
+        card.next_charge_date = _get_next_billing_date(today, card.billing_day)
+        db.commit()
 
         # Check if member has account credit to apply
         if member.credit_balance and member.credit_balance > 0:
             if member.credit_balance >= plan_price:
-                # Credit covers entire plan - no card charge needed
                 credit_used = plan_price
                 card_charge_amount = Decimal("0.00")
             else:
-                # Partial credit - charge remainder to card
                 credit_used = member.credit_balance
                 card_charge_amount = plan_price - credit_used
 
@@ -99,6 +138,9 @@ def process_due_charges(db: Session) -> dict:
             )
 
             if not charge_result.success:
+                # Charge failed — restore original charge date so it retries next run
+                card.next_charge_date = original_charge_date
+                db.commit()
                 logger.warning("Auto-charge failed for card %s: %s", card.id, charge_result.message)
                 notify_auto_charge_failed(
                     db, member_name=f"{member.first_name} {member.last_name}",
@@ -109,39 +151,48 @@ def process_due_charges(db: Session) -> dict:
                 results["failed"] += 1
                 continue
 
-        membership = create_membership(db, card.member_id, plan.id)
+        # Create membership and record transactions — wrapped in try/catch
+        try:
+            membership = create_membership(db, card.member_id, plan.id, billing_day=card.billing_day)
 
-        # Deduct credit if used
-        if credit_used > 0:
-            member.credit_balance -= credit_used
-            credit_tx = Transaction(
-                member_id=card.member_id,
-                transaction_type=TransactionType.credit_use,
-                payment_method=PaymentMethod.credit,
-                amount=credit_used,
-                plan_id=plan.id,
-                membership_id=membership.id,
-                notes=f"Auto-charge: credit applied for {plan.name}",
-            )
-            db.add(credit_tx)
+            # Deduct credit if used
+            if credit_used > 0:
+                member.credit_balance -= credit_used
+                credit_tx = Transaction(
+                    member_id=card.member_id,
+                    transaction_type=TransactionType.credit_use,
+                    payment_method=PaymentMethod.credit,
+                    amount=credit_used,
+                    plan_id=plan.id,
+                    membership_id=membership.id,
+                    notes=f"Auto-charge: credit applied for {plan.name}",
+                )
+                db.add(credit_tx)
 
-        # Record card payment transaction if charged
-        if card_charge_amount > 0 and charge_result:
-            tx = Transaction(
-                member_id=card.member_id,
-                transaction_type=TransactionType.payment,
-                payment_method=PaymentMethod.card,
-                amount=card_charge_amount,
-                plan_id=plan.id,
-                membership_id=membership.id,
-                saved_card_id=card.id,
-                reference_id=charge_result.reference_id,
-                notes=f"Auto-charge" + (f" (${credit_used} credit also applied)" if credit_used > 0 else ""),
-            )
-            db.add(tx)
+            # Record card payment transaction if charged
+            if card_charge_amount > 0 and charge_result:
+                tx = Transaction(
+                    member_id=card.member_id,
+                    transaction_type=TransactionType.payment,
+                    payment_method=PaymentMethod.card,
+                    amount=card_charge_amount,
+                    plan_id=plan.id,
+                    membership_id=membership.id,
+                    saved_card_id=card.id,
+                    reference_id=charge_result.reference_id,
+                    notes=f"Auto-charge" + (f" (${credit_used} credit also applied)" if credit_used > 0 else ""),
+                )
+                db.add(tx)
 
-        card.next_charge_date = _get_first_of_next_month(today)
-        db.commit()
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error("Auto-charge: membership creation failed after successful charge for card %s: %s", card.id, e)
+            # Restore charge date so it retries
+            card.next_charge_date = original_charge_date
+            db.commit()
+            results["failed"] += 1
+            continue
 
         # Log success with credit info
         if credit_used > 0 and card_charge_amount > 0:
@@ -179,7 +230,8 @@ def process_due_charges(db: Session) -> dict:
 
 
 def enable_auto_charge(
-    db: Session, saved_card_id: uuid.UUID, plan_id: uuid.UUID, member_id: uuid.UUID
+    db: Session, saved_card_id: uuid.UUID, plan_id: uuid.UUID, member_id: uuid.UUID,
+    billing_day: int = None,
 ) -> SavedCard:
     """Enable auto-charge on a saved card for a monthly or swim pass plan."""
     card = db.query(SavedCard).filter(
@@ -206,9 +258,10 @@ def enable_auto_charge(
 
     card.auto_charge_enabled = True
     card.auto_charge_plan_id = plan.id
-    # Monthly plans charge on 1st of month; swim pass plans charge when depleted (no date needed)
+    card.billing_day = billing_day if billing_day and 1 <= billing_day <= 28 else None
+    # Monthly plans charge on billing day; swim pass plans charge when depleted (no date needed)
     if plan.plan_type == PlanType.monthly:
-        card.next_charge_date = _get_first_of_next_month()
+        card.next_charge_date = _get_next_billing_date(billing_day=card.billing_day)
     else:
         card.next_charge_date = None  # Swim pass auto-recharge triggers on depletion
 
@@ -323,7 +376,8 @@ def auto_recharge_swim_pass(db: Session, member_id: uuid.UUID) -> tuple[bool, st
 
 
 def charge_saved_card_now(
-    db: Session, saved_card_id: uuid.UUID, plan_id: uuid.UUID, member_id: uuid.UUID
+    db: Session, saved_card_id: uuid.UUID, plan_id: uuid.UUID, member_id: uuid.UUID,
+    amount_override: "Decimal | None" = None, start_date: "date | None" = None, billing_day: int = None,
 ) -> Transaction:
     """Charge a saved card on-demand for a kiosk payment."""
     card = db.query(SavedCard).filter(
@@ -336,13 +390,15 @@ def charge_saved_card_now(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
+    charge_amount = amount_override if amount_override is not None else plan.price
+
     member = db.query(Member).filter(Member.id == member_id).first()
     customer_name = f"{member.first_name} {member.last_name}" if member else None
 
     adapter = get_payment_adapter(db)
     charge_result = adapter.charge_saved_card(
         token=card.processor_token,
-        amount=plan.price,
+        amount=charge_amount,
         member_id=str(member_id),
         description=f"Purchase: {plan.name}",
         customer_name=customer_name,
@@ -354,13 +410,15 @@ def charge_saved_card_now(
             detail=charge_result.message or "Card charge failed",
         )
 
-    membership = create_membership(db, member_id, plan_id)
+    # Use explicitly passed billing_day, or fall back to card's billing_day
+    effective_billing_day = billing_day or (card.billing_day if hasattr(card, 'billing_day') else None)
+    membership = create_membership(db, member_id, plan_id, start_date=start_date, billing_day=effective_billing_day)
 
     tx = Transaction(
         member_id=member_id,
         transaction_type=TransactionType.payment,
         payment_method=PaymentMethod.card,
-        amount=plan.price,
+        amount=charge_amount,
         plan_id=plan.id,
         membership_id=membership.id,
         saved_card_id=card.id,

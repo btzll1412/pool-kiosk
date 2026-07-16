@@ -257,6 +257,78 @@ class UsaepayPaymentAdapter(BasePaymentAdapter):
             logger.exception("USAePay tokenization failed: member=%s", member_id)
             raise RuntimeError(f"USAePay tokenization failed: {exc}")
 
+    def generate_card_token(self, card_number: str, exp_date: str, member_id: str, cvv: str = "") -> tuple[str, str, str]:
+        """
+        Tokenize a card from full card details (number + expiry).
+        Returns (token, last4, card_brand).
+        """
+        # Format expiry: input is MMYY, USAePay expects MMYY
+        exp = exp_date.replace("/", "")
+        last4 = card_number[-4:]
+
+        # Detect brand
+        if card_number.startswith("4"):
+            brand = "Visa"
+        elif card_number.startswith("5"):
+            brand = "Mastercard"
+        elif card_number.startswith("34") or card_number.startswith("37"):
+            brand = "Amex"
+        elif card_number.startswith("6"):
+            brand = "Discover"
+        else:
+            brand = "Card"
+
+        try:
+            # Use USAePay customer API to store card without any charge
+            data = {
+                "company": f"Member {member_id}",
+                "description": f"Pool kiosk member {member_id}",
+                "payment_methods": [
+                    {
+                        "method_type": "cc",
+                        "pay_type": "cc",
+                        "number": card_number,
+                        "expiration": exp,
+                        "cvc": cvv or "",
+                    }
+                ],
+            }
+            url = f"{self.base_url}/customers"
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(url, json=data, headers=self._get_headers())
+                response.raise_for_status()
+                result = response.json()
+
+            # Extract the saved card token from customer record
+            customer_key = result.get("key", "")
+            payment_methods = result.get("payment_methods", [])
+
+            if payment_methods:
+                pm = payment_methods[0]
+                token = pm.get("key", customer_key)
+                resp_brand = pm.get("card_type", brand)
+            elif customer_key:
+                token = customer_key
+                resp_brand = brand
+            else:
+                raise RuntimeError("No token returned from USAePay")
+
+            logger.info("USAePay card stored via customer API: member=%s, last4=%s, customer=%s", member_id, last4, customer_key)
+            return token, last4, resp_brand
+
+        except httpx.HTTPStatusError as exc:
+            error_msg = "Unknown error"
+            try:
+                error_data = exc.response.json()
+                error_msg = error_data.get("error", str(exc))
+            except Exception:
+                error_msg = str(exc)
+            logger.exception("USAePay full card tokenization failed: member=%s", member_id)
+            raise RuntimeError(f"Card save failed: {error_msg}")
+        except httpx.RequestError as exc:
+            logger.exception("USAePay full card tokenization failed: member=%s", member_id)
+            raise RuntimeError(f"USAePay connection failed: {exc}")
+
     def charge_saved_card(
         self, token: str, amount: Decimal, member_id: str, description: str, customer_name: str | None = None
     ) -> SavedCardChargeResult:

@@ -24,6 +24,7 @@ export default function SavedCardsScreen({ member, goTo, context }) {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   useEffect(() => {
     loadCards();
@@ -51,10 +52,12 @@ export default function SavedCardsScreen({ member, goTo, context }) {
     }
   }
 
-  async function handleDelete(cardId) {
+  async function handleDelete() {
+    if (!deleteTarget) return;
     try {
-      await deleteSavedCard(cardId, member.member_id, pin);
+      await deleteSavedCard(deleteTarget.id, member.member_id, pin);
       toast.success("Card removed");
+      setDeleteTarget(null);
       loadCards();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to remove card");
@@ -220,7 +223,7 @@ export default function SavedCardsScreen({ member, goTo, context }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDelete(card.id)}
+                      onClick={() => setDeleteTarget(card)}
                       className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-red-600 ring-1 ring-red-200 hover:bg-red-50 active:bg-red-100"
                     >
                       <Trash2 className="h-3.5 w-3.5" /> Remove
@@ -246,6 +249,43 @@ export default function SavedCardsScreen({ member, goTo, context }) {
           </KioskButton>
         </div>
       </div>
+
+      {/* Delete Confirmation Popup */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
+              <Trash2 className="h-7 w-7 text-red-600" />
+            </div>
+            <h3 className="mt-4 text-center text-xl font-bold text-gray-900">
+              Remove Card?
+            </h3>
+            <p className="mt-2 text-center text-gray-500">
+              Are you sure you want to remove{" "}
+              <span className="font-medium text-gray-700">
+                {deleteTarget.friendly_name || `${deleteTarget.card_brand} ending ${deleteTarget.card_last4}`}
+              </span>
+              ? This cannot be undone.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 rounded-xl bg-gray-100 py-3 text-lg font-semibold text-gray-700 transition-all hover:bg-gray-200 active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="flex-1 rounded-xl bg-red-600 py-3 text-lg font-semibold text-white transition-all hover:bg-red-700 active:scale-95"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

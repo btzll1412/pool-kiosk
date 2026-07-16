@@ -7,13 +7,16 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.activity_log import ActivityLog
+from app.models.card import Card
 from app.models.checkin import Checkin
+from app.models.pin_lockout import PinLockout
 from app.models.member import Member
 from app.models.membership import Membership
 from app.models.membership_freeze import MembershipFreeze
@@ -47,6 +50,7 @@ from app.services.member_service import (
     update_member,
 )
 from app.services.pin_service import get_pin_lockout_status, unlock_member_pin
+from app.services.activity_service import log_activity
 
 router = APIRouter()
 
@@ -247,10 +251,16 @@ def permanently_delete_member(
     # 6. SavedCard references Member
     db.query(SavedCard).filter(SavedCard.member_id == member_id).delete()
 
-    # 7. ActivityLog may reference member as entity_id
+    # 7. Card references Member
+    db.query(Card).filter(Card.member_id == member_id).delete()
+
+    # 8. PinLockout references Member
+    db.query(PinLockout).filter(PinLockout.member_id == member_id).delete()
+
+    # 9. ActivityLog may reference member as entity_id
     db.query(ActivityLog).filter(ActivityLog.entity_id == member_id).delete()
 
-    # 8. Delete the member
+    # 10. Delete the member
     db.delete(member)
     db.commit()
 
@@ -382,6 +392,7 @@ def get_member_saved_cards(
             "auto_charge_enabled": c.auto_charge_enabled,
             "auto_charge_plan_name": plan_name,
             "next_charge_date": str(c.next_charge_date) if c.next_charge_date else None,
+            "billing_day": c.billing_day,
             "created_at": c.created_at.isoformat(),
         })
     return result
@@ -440,6 +451,12 @@ def delete_member_saved_card(
     card = db.query(SavedCard).filter(SavedCard.id == card_id, SavedCard.member_id == member_id).first()
     if not card:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved card not found")
+    # Disable auto-charge before deleting to prevent orphaned references
+    if card.auto_charge_enabled:
+        card.auto_charge_enabled = False
+        card.auto_charge_plan_id = None
+        card.next_charge_date = None
+        logger.info("Auto-charge disabled before card deletion: card=%s, member=%s", card_id, member_id)
     db.delete(card)
     db.commit()
     return {"message": "Saved card removed"}
@@ -450,12 +467,13 @@ def enable_card_auto_charge(
     member_id: uuid.UUID,
     card_id: uuid.UUID,
     plan_id: uuid.UUID,
+    billing_day: int | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Enable auto-charge on a saved card for a specific monthly plan (admin action)."""
     from app.services.auto_charge_service import enable_auto_charge
-    card = enable_auto_charge(db, card_id, plan_id, member_id)
+    card = enable_auto_charge(db, card_id, plan_id, member_id, billing_day=billing_day)
     plan = db.query(Plan).filter(Plan.id == card.auto_charge_plan_id).first()
     logger.info("Admin enabled auto-charge: member=%s, card=%s, plan=%s, by=%s",
                member_id, card_id, plan_id, current_user.id)
@@ -465,6 +483,7 @@ def enable_card_auto_charge(
         "auto_charge_plan_id": str(card.auto_charge_plan_id) if card.auto_charge_plan_id else None,
         "auto_charge_plan_name": plan.name if plan else None,
         "next_charge_date": str(card.next_charge_date) if card.next_charge_date else None,
+        "billing_day": card.billing_day,
     }
 
 
@@ -821,7 +840,7 @@ def export_members_csv(
     current_user: User = Depends(get_current_user),
 ):
     """Export all members as CSV."""
-    members = db.query(Member).order_by(Member.last_name, Member.first_name).all()
+    members = db.query(Member).order_by(func.lower(Member.last_name), func.lower(Member.first_name)).all()
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -915,3 +934,108 @@ async def import_members_csv(
         "skipped": skipped,
         "errors": errors[:10],  # Only return first 10 errors
     }
+
+
+# ==================== UNLIMITED & CUSTOM PRICING ====================
+
+@router.post("/{member_id}/unlimited")
+def toggle_unlimited(
+    member_id: uuid.UUID,
+    enabled: bool = True,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Toggle unlimited membership status for a member (admin only)."""
+    member = db.query(Member).filter(Member.id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    member.is_unlimited = enabled
+    db.commit()
+    log_activity(db, user_id=current_user.id, action="member.unlimited_toggle", entity_type="member",
+                 entity_id=member_id, after={"is_unlimited": enabled})
+    logger.info("Member unlimited toggled: member=%s, enabled=%s, by=%s", member_id, enabled, current_user.id)
+    return {"is_unlimited": member.is_unlimited, "message": f"Unlimited {'enabled' if enabled else 'disabled'}"}
+
+
+@router.get("/{member_id}/price-overrides")
+def get_price_overrides(
+    member_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all custom price overrides for a member."""
+    from app.models.member_price_override import MemberPriceOverride
+    overrides = db.query(MemberPriceOverride).filter(MemberPriceOverride.member_id == member_id).all()
+    result = []
+    for o in overrides:
+        plan = db.query(Plan).filter(Plan.id == o.plan_id).first()
+        result.append({
+            "id": str(o.id),
+            "plan_id": str(o.plan_id),
+            "plan_name": plan.name if plan else "Unknown",
+            "regular_price": str(plan.price) if plan else "0.00",
+            "custom_price": str(o.custom_price),
+        })
+    return result
+
+
+@router.post("/{member_id}/price-overrides")
+def set_price_override(
+    member_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    custom_price: float,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Set a custom price for a member on a specific plan."""
+    from app.models.member_price_override import MemberPriceOverride
+    from decimal import Decimal
+
+    member = db.query(Member).filter(Member.id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    # Upsert — update if exists, create if not
+    override = db.query(MemberPriceOverride).filter(
+        MemberPriceOverride.member_id == member_id,
+        MemberPriceOverride.plan_id == plan_id,
+    ).first()
+    if override:
+        override.custom_price = Decimal(str(custom_price))
+    else:
+        override = MemberPriceOverride(
+            member_id=member_id,
+            plan_id=plan_id,
+            custom_price=Decimal(str(custom_price)),
+        )
+        db.add(override)
+    db.commit()
+    log_activity(db, user_id=current_user.id, action="member.price_override", entity_type="member",
+                 entity_id=member_id, after={"plan_id": str(plan_id), "custom_price": str(custom_price)})
+    logger.info("Price override set: member=%s, plan=%s, price=$%s, by=%s", member_id, plan_id, custom_price, current_user.id)
+    return {"message": f"Custom price ${custom_price:.2f} set for {plan.name}"}
+
+
+@router.delete("/{member_id}/price-overrides/{override_id}")
+def delete_price_override(
+    member_id: uuid.UUID,
+    override_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove a custom price override for a member."""
+    from app.models.member_price_override import MemberPriceOverride
+
+    override = db.query(MemberPriceOverride).filter(
+        MemberPriceOverride.id == override_id,
+        MemberPriceOverride.member_id == member_id,
+    ).first()
+    if not override:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Price override not found")
+    db.delete(override)
+    db.commit()
+    logger.info("Price override removed: member=%s, override=%s, by=%s", member_id, override_id, current_user.id)
+    return {"message": "Custom price removed"}

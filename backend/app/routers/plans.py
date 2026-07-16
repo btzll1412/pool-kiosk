@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.member import Member
 from app.models.membership import Membership
 from app.models.plan import Plan
+from app.models.saved_card import SavedCard
 from app.models.user import User
 from app.schemas.plan import PlanCreate, PlanResponse, PlanUpdate
 from app.services.activity_service import log_activity
@@ -95,10 +96,65 @@ def deactivate_plan(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
     plan.is_active = False
+
+    # Disable auto-charge on all saved cards referencing this plan
+    affected_cards = db.query(SavedCard).filter(
+        SavedCard.auto_charge_plan_id == plan_id,
+        SavedCard.auto_charge_enabled.is_(True),
+    ).all()
+    for card in affected_cards:
+        card.auto_charge_enabled = False
+        card.auto_charge_plan_id = None
+        card.next_charge_date = None
+    if affected_cards:
+        logger.info("Disabled auto-charge on %d cards when deactivating plan %s", len(affected_cards), plan.name)
+
     db.commit()
     db.refresh(plan)
     log_activity(db, user_id=current_user.id, action="plan.deactivate", entity_type="plan", entity_id=plan.id)
     return plan
+
+
+@router.post("/{plan_id}/reactivate", response_model=PlanResponse)
+def reactivate_plan(
+    plan_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+    plan.is_active = True
+    db.commit()
+    db.refresh(plan)
+    log_activity(db, user_id=current_user.id, action="plan.reactivate", entity_type="plan", entity_id=plan.id)
+    return plan
+
+
+@router.delete("/{plan_id}/permanent")
+def permanently_delete_plan(
+    plan_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    # Check if any memberships use this plan
+    member_count = db.query(Membership).filter(Membership.plan_id == plan_id).count()
+    if member_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete: {member_count} membership(s) are using this plan. Deactivate it instead."
+        )
+
+    log_activity(db, user_id=current_user.id, action="plan.delete", entity_type="plan", entity_id=plan.id,
+                 before={"name": plan.name, "price": str(plan.price)})
+    db.delete(plan)
+    db.commit()
+    logger.info("Plan permanently deleted: id=%s, name=%s, by_user=%s", plan_id, plan.name, current_user.id)
+    return {"message": f"Plan '{plan.name}' permanently deleted"}
 
 
 @router.get("/{plan_id}/subscribers")

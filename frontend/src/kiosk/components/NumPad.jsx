@@ -5,7 +5,7 @@ const signalActivity = () => {
   window.dispatchEvent(new CustomEvent("kiosk-activity"));
 };
 
-export default function NumPad({ value, onChange, onClose, maxLength, showDecimal = false }) {
+export default function NumPad({ value, onChange, onClose, onNext, maxLength, showDecimal = false }) {
   const isModal = Boolean(onClose);
 
   const handlePress = (digit) => {
@@ -112,13 +112,24 @@ export default function NumPad({ value, onChange, onClose, maxLength, showDecima
 
         {numPadContent}
 
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-3 w-full rounded-xl bg-brand-600 py-4 text-lg font-semibold text-white transition-all hover:bg-brand-700 active:scale-[0.98]"
-        >
-          Done
-        </button>
+        <div className="mt-3 flex gap-2">
+          {onNext && (
+            <button
+              type="button"
+              onClick={() => { signalActivity(); onNext(); }}
+              className="flex-1 rounded-xl bg-brand-600 py-4 text-lg font-semibold text-white transition-all hover:bg-brand-700 active:scale-[0.98]"
+            >
+              Next ▶
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-xl bg-gray-300 py-4 text-lg font-semibold text-gray-700 transition-all hover:bg-gray-400 active:scale-[0.98]"
+          >
+            Done
+          </button>
+        </div>
       </div>
     </div>
   );

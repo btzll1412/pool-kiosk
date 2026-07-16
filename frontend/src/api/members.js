@@ -89,10 +89,26 @@ export const chargeCard = (memberId, cardNumber, expDate, cvv, amount, descripti
     params: { card_number: cardNumber, exp_date: expDate, cvv, amount, description, save_card: saveCard }
   }).then((r) => r.data);
 
-export const enableCardAutoCharge = (memberId, cardId, planId) =>
+export const enableCardAutoCharge = (memberId, cardId, planId, billingDay) =>
   client.post(`/members/${memberId}/saved-cards/${cardId}/auto-charge`, null, {
-    params: { plan_id: planId }
+    params: { plan_id: planId, ...(billingDay ? { billing_day: billingDay } : {}) }
   }).then((r) => r.data);
 
 export const disableCardAutoCharge = (memberId, cardId) =>
   client.delete(`/members/${memberId}/saved-cards/${cardId}/auto-charge`).then((r) => r.data);
+
+// Unlimited membership
+export const toggleUnlimited = (memberId, enabled) =>
+  client.post(`/members/${memberId}/unlimited`, null, { params: { enabled } }).then((r) => r.data);
+
+// Custom pricing
+export const getPriceOverrides = (memberId) =>
+  client.get(`/members/${memberId}/price-overrides`).then((r) => r.data);
+
+export const setPriceOverride = (memberId, planId, customPrice) =>
+  client.post(`/members/${memberId}/price-overrides`, null, {
+    params: { plan_id: planId, custom_price: customPrice }
+  }).then((r) => r.data);
+
+export const deletePriceOverride = (memberId, overrideId) =>
+  client.delete(`/members/${memberId}/price-overrides/${overrideId}`).then((r) => r.data);

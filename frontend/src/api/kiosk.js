@@ -30,10 +30,13 @@ export async function checkin(member_id, guest_count = 0) {
   return data;
 }
 
-export async function getPlans(isSenior = null) {
+export async function getPlans(isSenior = null, memberId = null) {
   const params = {};
   if (isSenior !== null) {
     params.is_senior = isSenior;
+  }
+  if (memberId) {
+    params.member_id = memberId;
   }
   const { data } = await kiosk.get("/plans", { params });
   return data;
@@ -234,13 +237,23 @@ export async function tokenizeCardFromSwipe(trackData, memberId, pin, friendlyNa
   return data;
 }
 
-export async function tokenizeCardFromFull(cardNumber, expDate, memberId, pin, friendlyName) {
+export async function tokenizeCardFromFull(cardNumber, expDate, memberId, pin, friendlyName, cvv) {
   const { data } = await kiosk.post("/saved-cards/tokenize-full", {
     card_number: cardNumber,
     exp_date: expDate,
+    cvv: cvv || null,
     member_id: memberId,
     pin,
     friendly_name: friendlyName,
+  });
+  return data;
+}
+
+export async function addCredit(memberId, pin, amount) {
+  const { data } = await kiosk.post("/add-credit", {
+    member_id: memberId,
+    pin,
+    amount,
   });
   return data;
 }

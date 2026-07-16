@@ -47,6 +47,10 @@ import {
   unlockMemberPin,
   enableCardAutoCharge,
   disableCardAutoCharge,
+  toggleUnlimited,
+  getPriceOverrides,
+  setPriceOverride,
+  deletePriceOverride,
 } from "../../../api/members";
 import {
   adjustMembershipSwims,
@@ -115,6 +119,16 @@ export default function MemberDetail() {
   const [newCardExpYear, setNewCardExpYear] = useState("");
   const [newCardCvv, setNewCardCvv] = useState("");
   const [cardEntryMode, setCardEntryMode] = useState("record"); // "record" or "charge"
+  const [chargeAmountMode, setChargeAmountMode] = useState("full"); // "full" | "prorate" | "custom"
+  const [customChargeAmount, setCustomChargeAmount] = useState("");
+  const [startDate, setStartDate] = useState(""); // MM/DD/YYYY format
+  const [billingDay, setBillingDay] = useState(""); // 1-28 or empty for default
+
+  // Unlimited & Custom Pricing
+  const [priceOverrides, setPriceOverrides] = useState([]);
+  const [showPriceOverride, setShowPriceOverride] = useState(false);
+  const [overridePlanId, setOverridePlanId] = useState("");
+  const [overridePrice, setOverridePrice] = useState("");
 
   // Add Card on File
   const [showAddCard, setShowAddCard] = useState(false);
@@ -178,12 +192,14 @@ export default function MemberDetail() {
       getMemberMemberships(id),
       getMemberPinStatus(id),
       getTransactions({ member_id: id, per_page: 50 }),
+      getPriceOverrides(id),
     ])
-      .then(([m, c, h, sc, ms, ps, tx]) => {
+      .then(([m, c, h, sc, ms, ps, tx, po]) => {
         setMember(m);
         setCards(c);
         setHistory(h);
         setSavedCards(sc);
+        setPriceOverrides(po || []);
         setMemberships(ms);
         setPinStatus(ps);
         setTransactions(tx.items || []);
@@ -220,7 +236,8 @@ export default function MemberDetail() {
     try {
       await deactivateMember(id);
       toast.success("Member deactivated");
-      navigate("/admin/members");
+      setShowDeactivate(false);
+      load();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to deactivate member");
     }
@@ -338,9 +355,10 @@ export default function MemberDetail() {
     setAddMembershipLoading(true);
     try {
       const selectedPlan = plans.find(p => p.id === selectedPlanId);
+      const effectiveUseExisting = useExistingCard && savedCards.length > 0;
 
       // If charging with full card details, process real charge first
-      if (chargeNow && paymentMethod === "card" && !useExistingCard && cardEntryMode === "charge") {
+      if (chargeNow && paymentMethod === "card" && !effectiveUseExisting && cardEntryMode === "charge") {
         // Validate card details
         const cleanCardNumber = newCardNumber.replace(/\s/g, "");
         if (cleanCardNumber.length < 13 || cleanCardNumber.length > 19) {
@@ -360,7 +378,7 @@ export default function MemberDetail() {
         }
 
         const expDate = `${newCardExpMonth.padStart(2, "0")}${newCardExpYear.slice(-2)}`;
-        const amount = selectedPlan ? selectedPlan.price : "0";
+        const amount = getChargeAmount(selectedPlan);
 
         // Charge the card via admin API
         try {
@@ -383,20 +401,36 @@ export default function MemberDetail() {
 
       const payload = { member_id: id, plan_id: selectedPlanId };
 
+      // Add custom start date if provided (convert MM/DD/YYYY to YYYY-MM-DD)
+      if (startDate) {
+        const sd = startDate.replace(/\D/g, "");
+        if (sd.length === 8) {
+          payload.start_date = `${sd.slice(4, 8)}-${sd.slice(0, 2)}-${sd.slice(2, 4)}`;
+        }
+      }
+      // Add billing day override if set
+      if (billingDay) {
+        const bd = parseInt(billingDay, 10);
+        if (bd >= 1 && bd <= 28) payload.billing_day = bd;
+      }
+
       // Build payment info if charging now (for record-keeping)
+      const chargeAmt = getChargeAmount(selectedPlan);
       if (chargeNow) {
         if (paymentMethod === "cash") {
           payload.payment = {
             payment_method: "cash",
-            amount_tendered: cashAmount ? parseFloat(cashAmount) : null,
+            amount_tendered: cashAmount ? parseFloat(cashAmount) : parseFloat(chargeAmt),
+            charge_amount: parseFloat(chargeAmt),
           };
         } else if (paymentMethod === "card") {
-          if (useExistingCard && selectedSavedCardId) {
+          if (effectiveUseExisting && selectedSavedCardId) {
             payload.payment = {
               payment_method: "card",
               saved_card_id: selectedSavedCardId,
+              charge_amount: parseFloat(chargeAmt),
             };
-          } else if (!useExistingCard && cardEntryMode === "record" && newCardLast4) {
+          } else if (!effectiveUseExisting && cardEntryMode === "record" && newCardLast4) {
             // Record-only mode
             payload.payment = {
               payment_method: "card",
@@ -405,27 +439,34 @@ export default function MemberDetail() {
               save_card: saveNewCard,
               enable_autopay: enableAutopay,
             };
-          } else if (!useExistingCard && cardEntryMode === "charge") {
-            // Already charged above, just record last4
-            const cleanCardNumber = newCardNumber.replace(/\s/g, "");
-            payload.payment = {
-              payment_method: "card",
-              card_last4: cleanCardNumber.slice(-4),
-              card_brand: detectCardBrand(cleanCardNumber),
-              save_card: false, // Already saved during charge if requested
-              enable_autopay: enableAutopay,
-            };
+          } else if (!effectiveUseExisting && cardEntryMode === "charge") {
+            // Already charged and recorded via chargeCard above — don't add payment to avoid duplicate transaction
           }
         }
       }
 
       const result = await createMembership(payload);
-      toast.success(result.message || "Membership added");
+      const msg = result.message || "Membership added";
+      // Show charge success prominently if payment was involved
+      if (chargeNow && paymentMethod === "card") {
+        const effectiveUseExisting2 = useExistingCard && savedCards.length > 0;
+        const chargedAmt = !effectiveUseExisting2 && cardEntryMode === "charge"
+          ? getChargeAmount(plans.find(p => p.id === selectedPlanId))
+          : plans.find(p => p.id === selectedPlanId)?.price;
+        toast.success(`Card charged $${Number(chargedAmt).toFixed(2)} successfully!\n${msg}`, { duration: 5000 });
+      } else {
+        toast.success(msg);
+      }
       setShowAddMembership(false);
       resetMembershipForm();
       load();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Failed to add membership");
+      const detail = err.response?.data?.detail || "";
+      if (err.response?.status === 402) {
+        toast.error(`Payment failed: ${detail || "Card was declined"}. Membership was NOT created.`, { duration: 6000 });
+      } else {
+        toast.error(detail || "Failed to add membership");
+      }
     } finally {
       setAddMembershipLoading(false);
     }
@@ -445,6 +486,28 @@ export default function MemberDetail() {
     return formatted.slice(0, 23);
   }
 
+  const getMemberPlanPrice = (plan) => {
+    if (!plan) return 0;
+    const override = priceOverrides.find(o => o.plan_id === plan.id);
+    return override ? Number(override.custom_price) : Number(plan.price);
+  };
+
+  const getProrateAmount = (plan) => {
+    if (!plan) return "0";
+    const price = getMemberPlanPrice(plan);
+    const today = new Date();
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const daysRemaining = daysInMonth - today.getDate() + 1;
+    return (price * daysRemaining / daysInMonth).toFixed(2);
+  };
+
+  const getChargeAmount = (plan) => {
+    if (!plan) return "0";
+    if (chargeAmountMode === "prorate") return getProrateAmount(plan);
+    if (chargeAmountMode === "custom") return customChargeAmount || "0";
+    return String(getMemberPlanPrice(plan));
+  };
+
   const resetMembershipForm = () => {
     setSelectedPlanId("");
     setChargeNow(false);
@@ -461,6 +524,10 @@ export default function MemberDetail() {
     setNewCardExpYear("");
     setNewCardCvv("");
     setCardEntryMode("record");
+    setChargeAmountMode("full");
+    setCustomChargeAmount("");
+    setStartDate("");
+    setBillingDay("");
   };
 
   const handleAddCard = async () => {
@@ -757,8 +824,121 @@ export default function MemberDetail() {
               </InfoRow>
             )}
             {member.notes && <InfoRow label="Notes">{member.notes}</InfoRow>}
+            <InfoRow label="Unlimited">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={async () => {
+                    try {
+                      await toggleUnlimited(id, !member.is_unlimited);
+                      toast.success(member.is_unlimited ? "Unlimited disabled" : "Unlimited enabled");
+                      load();
+                    } catch (err) {
+                      toast.error(err.response?.data?.detail || "Failed to toggle unlimited");
+                    }
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${member.is_unlimited ? "bg-purple-600" : "bg-gray-300"}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${member.is_unlimited ? "translate-x-6" : "translate-x-1"}`} />
+                </button>
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  {member.is_unlimited ? "Always checks in, no plan needed" : "Off"}
+                </span>
+              </div>
+            </InfoRow>
           </dl>
         </Card>
+
+        {/* Custom Pricing */}
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <CardHeader title="Custom Pricing" description={`${priceOverrides.length} override${priceOverrides.length !== 1 ? "s" : ""}`} />
+            <Button variant="secondary" size="sm" icon={Plus} onClick={() => setShowPriceOverride(true)}>
+              Add
+            </Button>
+          </div>
+          {priceOverrides.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">No custom prices. Member pays regular plan prices.</p>
+          ) : (
+            <div className="space-y-2">
+              {priceOverrides.map((o) => (
+                <div key={o.id} className="flex items-center justify-between rounded-lg border border-gray-100 dark:border-gray-700 p-3">
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{o.plan_name}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Regular: ${Number(o.regular_price).toFixed(2)} → Custom: <span className="font-bold text-brand-600">${Number(o.custom_price).toFixed(2)}</span>
+                    </p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await deletePriceOverride(id, o.id);
+                        toast.success("Custom price removed");
+                        load();
+                      } catch (err) {
+                        toast.error("Failed to remove");
+                      }
+                    }}
+                    className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Add Price Override Modal */}
+        {showPriceOverride && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="mx-4 w-full max-w-sm rounded-2xl bg-white dark:bg-gray-800 p-6 shadow-xl">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Set Custom Price</h3>
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Plan</label>
+                  <select
+                    value={overridePlanId}
+                    onChange={(e) => setOverridePlanId(e.target.value)}
+                    className="block w-full rounded-lg border-0 px-3 py-2.5 text-sm shadow-sm ring-1 ring-gray-300 dark:ring-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  >
+                    <option value="">Select plan...</option>
+                    {plans.filter(p => p.is_active).map(p => (
+                      <option key={p.id} value={p.id}>{p.name} (${Number(p.price).toFixed(2)})</option>
+                    ))}
+                  </select>
+                </div>
+                <Input
+                  label="Custom Price ($)"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={overridePrice}
+                  onChange={(e) => setOverridePrice(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="mt-6 flex gap-3">
+                <Button variant="secondary" className="flex-1" onClick={() => { setShowPriceOverride(false); setOverridePlanId(""); setOverridePrice(""); }}>
+                  Cancel
+                </Button>
+                <Button className="flex-1" disabled={!overridePlanId || !overridePrice} onClick={async () => {
+                  try {
+                    await setPriceOverride(id, overridePlanId, parseFloat(overridePrice));
+                    toast.success("Custom price set");
+                    setShowPriceOverride(false);
+                    setOverridePlanId("");
+                    setOverridePrice("");
+                    load();
+                  } catch (err) {
+                    toast.error(err.response?.data?.detail || "Failed to set price");
+                  }
+                }}>
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* RFID Cards */}
         <Card>
@@ -1247,15 +1427,65 @@ export default function MemberDetail() {
               <option value="">Choose a plan...</option>
               {plans
                 .filter((p) => p.is_active)
-                .map((plan) => (
-                  <option key={plan.id} value={plan.id}>
-                    {plan.name} - ${Number(plan.price).toFixed(2)}
-                    {plan.plan_type === "swim_pass" && ` (${plan.swim_count} swims)`}
-                    {plan.plan_type === "monthly" && ` (${plan.duration_days} days)`}
-                  </option>
-                ))}
+                .map((plan) => {
+                  const override = priceOverrides.find(o => o.plan_id === plan.id);
+                  const displayPrice = override ? Number(override.custom_price) : Number(plan.price);
+                  return (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.name} - ${displayPrice.toFixed(2)}
+                      {override ? " (custom)" : ""}
+                      {plan.plan_type === "swim_pass" ? ` (${plan.swim_count} swims)` : ""}
+                      {plan.plan_type === "monthly" ? ` (${plan.duration_months || plan.duration_days} mo)` : ""}
+                    </option>
+                  );
+                })}
             </select>
           </div>
+
+          {/* Start Date & Billing Day (monthly plans only) */}
+          {selectedPlanId && plans.find(p => p.id === selectedPlanId)?.plan_type === "monthly" && (
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Start Date (optional)"
+                value={startDate}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\D/g, "");
+                  let fmt = raw;
+                  if (raw.length > 2) fmt = raw.slice(0, 2) + "/" + raw.slice(2);
+                  if (raw.length > 4) fmt = raw.slice(0, 2) + "/" + raw.slice(2, 4) + "/" + raw.slice(4, 8);
+                  setStartDate(fmt);
+                  // Auto-suggest billing day from start date
+                  if (raw.length >= 4 && !billingDay) {
+                    const day = parseInt(raw.slice(2, 4), 10);
+                    if (day >= 1 && day <= 28) setBillingDay(String(day));
+                  }
+                }}
+                placeholder="MM/DD/YYYY (default: today)"
+                maxLength={10}
+                helpText="When the membership started. Leave blank for today."
+              />
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Billing Day (optional)
+                </label>
+                <select
+                  value={billingDay}
+                  onChange={(e) => setBillingDay(e.target.value)}
+                  className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                >
+                  <option value="">1st of month (default)</option>
+                  {[...Array(28)].map((_, i) => (
+                    <option key={i + 1} value={String(i + 1)}>
+                      {i + 1}{i === 0 ? "st" : i === 1 ? "nd" : i === 2 ? "rd" : "th"} of each month
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  When auto-charge runs and membership renews.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Charge Now Checkbox */}
           {selectedPlanId && (
@@ -1276,6 +1506,59 @@ export default function MemberDetail() {
           {/* Payment Options */}
           {chargeNow && selectedPlanId && (
             <div className="space-y-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              {/* Charge Amount Options */}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Amount to Charge
+                </label>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="chargeAmountMode"
+                      checked={chargeAmountMode === "full"}
+                      onChange={() => setChargeAmountMode("full")}
+                      className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                      Full price — ${getMemberPlanPrice(plans.find(p => p.id === selectedPlanId)).toFixed(2)}
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="chargeAmountMode"
+                      checked={chargeAmountMode === "prorate"}
+                      onChange={() => setChargeAmountMode("prorate")}
+                      className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                      Pro-rate for rest of month — ${getProrateAmount(plans.find(p => p.id === selectedPlanId))}
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="chargeAmountMode"
+                      checked={chargeAmountMode === "custom"}
+                      onChange={() => setChargeAmountMode("custom")}
+                      className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Custom amount</span>
+                  </label>
+                  {chargeAmountMode === "custom" && (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={customChargeAmount}
+                      onChange={(e) => setCustomChargeAmount(e.target.value)}
+                      placeholder="Enter amount"
+                    />
+                  )}
+                </div>
+              </div>
+
               {/* Payment Method Selection */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -1315,8 +1598,8 @@ export default function MemberDetail() {
                   step="0.01"
                   value={cashAmount}
                   onChange={(e) => setCashAmount(e.target.value)}
-                  placeholder={`Plan price: $${Number(plans.find(p => p.id === selectedPlanId)?.price || 0).toFixed(2)}`}
-                  helpText="Leave blank to use plan price"
+                  placeholder={`Charge amount: $${getChargeAmount(plans.find(p => p.id === selectedPlanId))}`}
+                  helpText="Leave blank to use the charge amount above. Overpayment is added as credit."
                 />
               )}
 
@@ -1554,16 +1837,17 @@ export default function MemberDetail() {
             <Button
               onClick={handleAddMembership}
               loading={addMembershipLoading}
-              disabled={
-                !selectedPlanId ||
-                (chargeNow && paymentMethod === "card" && useExistingCard && !selectedSavedCardId) ||
-                (chargeNow && paymentMethod === "card" && !useExistingCard && cardEntryMode === "record" && newCardLast4.length !== 4) ||
-                (chargeNow && paymentMethod === "card" && !useExistingCard && cardEntryMode === "charge" && (
-                  newCardNumber.replace(/\s/g, "").length < 13 || !newCardExpMonth || !newCardExpYear || newCardCvv.length < 3
-                ))
-              }
+              disabled={(() => {
+                if (!selectedPlanId) return true;
+                if (!chargeNow || paymentMethod !== "card") return false;
+                const effectiveUseExisting = useExistingCard && savedCards.length > 0;
+                if (effectiveUseExisting) return !selectedSavedCardId;
+                if (cardEntryMode === "record") return newCardLast4.length !== 4;
+                if (cardEntryMode === "charge") return newCardNumber.replace(/\s/g, "").length < 13 || !newCardExpMonth || !newCardExpYear || newCardCvv.length < 3;
+                return false;
+              })()}
             >
-              {chargeNow && paymentMethod === "card" && !useExistingCard && cardEntryMode === "charge"
+              {chargeNow && paymentMethod === "card" && !(useExistingCard && savedCards.length > 0) && cardEntryMode === "charge"
                 ? "Add & Charge Card"
                 : chargeNow ? "Add & Charge" : "Add Membership"}
             </Button>

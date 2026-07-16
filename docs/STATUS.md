@@ -842,4 +842,206 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-03-12 (Admin & Auto-Charge Enhancements)
+## Kiosk View Plans & Auto-Reload (2026-03-18)
+
+### View Plans Screen
+- Added "View Plans" button on kiosk idle screen (next to "Search Account" and "Guest Visit")
+- New ViewPlansScreen displays all available plans in read-only grid
+- Shows plan name, type, price, swim count/duration
+- Info message tells users how to purchase (e.g., "use your member account or visit as a guest")
+- Message is admin-configurable via Settings > Kiosk Display > "View Plans Screen"
+
+### Kiosk Auto-Reload (Version-Based)
+- Kiosk automatically detects code changes and reloads when on idle screen
+- Checks every 30 seconds (configurable) if JS bundle has changed
+- Only reloads when new code is deployed — no constant refreshing
+- Settings still auto-refresh every 30 seconds without reload (existing behavior)
+- Configurable via Settings > Kiosk Display > Kiosk Hardware > "Auto-Reload Interval"
+- Set to 0 to disable auto-reload completely
+
+### How It Works
+| Change Type | How Kiosk Picks It Up |
+|-------------|----------------------|
+| Settings changes (admin panel) | Auto-fetched every 30 seconds, no reload needed |
+| Code changes (deploy new version) | Version check detects new bundle hash, triggers reload |
+
+### Admin Settings Added
+- `kiosk_plans_message` — Message shown on View Plans screen (textarea)
+- `kiosk_reload_interval_seconds` — Auto-reload check interval, default 30, set to 0 to disable
+
+### Files Added
+- `frontend/src/kiosk/screens/ViewPlansScreen.jsx` — Read-only plans display screen
+
+### Files Modified
+- `frontend/src/kiosk/KioskApp.jsx` — Added ViewPlansScreen, version-based reload logic
+- `frontend/src/kiosk/screens/IdleScreen.jsx` — Added "View Plans" button with Tag icon
+- `frontend/src/admin/pages/Settings/Settings.jsx` — Added View Plans Screen and Auto-Reload settings
+
+---
+
+## Kiosk & Admin Fixes + Features (2026-06-16)
+
+### Bug Fixes
+
+1. **NFC card not saved during kiosk signup** — `kiosk_signup` endpoint received `rfid_uid` but never created a Card record. Fixed by calling `assign_card()` after member creation.
+2. **Members list not alphabetical** — Sort was case-sensitive (uppercase before lowercase). Fixed with `func.lower()` on last_name, first_name.
+3. **Member deletion failing with cards/PIN lockouts** — Permanent delete cascade was missing `cards` and `pin_lockouts` tables. Added cleanup for both FK references.
+4. **Deactivate member navigated away** — Changed to stay on member detail page and close the confirmation dialog.
+5. **Virtual keyboard blocking kiosk input** — Frontend build on LXC 201 was stale. Rebuilt from source.
+6. **Admin "Add & Charge Card" button always disabled** — `useExistingCard` defaulted to `true` but radio toggle was hidden when no saved cards existed. Fixed with `effectiveUseExisting` logic.
+7. **Duplicate transaction on card charge** — `chargeCard` created a transaction, then `createMembership` created another. Removed duplicate payment payload when card was already charged.
+8. **USAePay "Transaction amount required" error** — $0 auth not supported. Changed to customer API for tokenization (no charge needed).
+
+### New Features
+
+9. **Virtual keyboard Next button** — Large "Next ▶" and "Done" buttons on the side of the on-screen keyboard and numpad. Next tabs to the next input field.
+10. **Manual card entry on kiosk** — "Enter Card Manually" option on Add Card screen with card number, expiry (MM/YY), CVV fields. Uses `tokenize-full` endpoint with USAePay customer API.
+11. **Delete saved card confirmation** — Popup dialog before removing a saved card on kiosk.
+12. **Configurable home screen scale** — New `kiosk_ui_scale` setting (normal/large/xlarge) in Admin > Settings > Kiosk Hardware. Scales all icons, text, and buttons on the idle screen.
+13. **Plan reactivation** — Inactive plans can be reactivated from the Plans page.
+14. **Plan permanent deletion** — Plans with no members can be permanently deleted. Plans with existing memberships are blocked with an error message.
+15. **Pro-rate and custom charge amounts** — When adding a membership with payment, admin can choose: Full price, Pro-rate for rest of month, or Custom amount. Works for all payment methods (cash, saved card, new card).
+16. **Typeable DOB field** — Date of Birth changed from date picker to MM/DD/YYYY text input on kiosk signup, kiosk edit profile, and admin member form. Works with on-screen numpad. Auto-formats and calculates age as you type.
+17. **Members list display format** — Names displayed as "Last, First" to match alphabetical sort order.
+
+### Backend Changes
+- `backend/app/routers/kiosk.py` — NFC card assignment on signup, added `kiosk_ui_scale` and `kiosk_reload_interval_seconds` to settings endpoint
+- `backend/app/routers/members.py` — Card and PinLockout cleanup in permanent delete, `func.lower()` import
+- `backend/app/routers/memberships.py` — `charge_amount` override support for pro-rate/custom pricing
+- `backend/app/routers/plans.py` — Added reactivate and permanent delete endpoints
+- `backend/app/schemas/kiosk.py` — Added `cvv` field to TokenizeFullCardRequest
+- `backend/app/schemas/membership.py` — Added `charge_amount` field to PaymentInfo
+- `backend/app/services/auto_charge_service.py` — `amount_override` parameter on `charge_saved_card_now()`
+- `backend/app/services/member_service.py` — Case-insensitive member sort
+- `backend/app/services/settings_service.py` — Added `kiosk_ui_scale` default
+- `backend/app/payments/usaepay_adapter.py` — `generate_card_token()` via customer API for manual card tokenization
+
+### Frontend Changes
+- `frontend/src/kiosk/components/VirtualKeyboard.jsx` — Next/Done buttons on side panel
+- `frontend/src/kiosk/components/NumPad.jsx` — Next/Done buttons at bottom
+- `frontend/src/kiosk/components/KioskInput.jsx` — `onNext` handler, `data-kiosk-input` attribute for tab navigation
+- `frontend/src/kiosk/screens/SignUpScreen.jsx` — Typeable MM/DD/YYYY DOB with numpad
+- `frontend/src/kiosk/screens/EditProfileScreen.jsx` — Typeable MM/DD/YYYY DOB with numpad
+- `frontend/src/kiosk/screens/AddCardScreen.jsx` — Full manual card entry with card number, expiry, CVV
+- `frontend/src/kiosk/screens/SavedCardsScreen.jsx` — Delete confirmation popup
+- `frontend/src/kiosk/screens/IdleScreen.jsx` — Configurable UI scale (normal/large/xlarge)
+- `frontend/src/admin/pages/Members/MemberDetail.jsx` — Fixed charge flow, pro-rate/custom amounts, effectiveUseExisting, deactivate stays on page
+- `frontend/src/admin/pages/Members/MemberForm.jsx` — Typeable MM/DD/YYYY DOB
+- `frontend/src/admin/pages/Members/MembersList.jsx` — "Last, First" name display
+- `frontend/src/admin/pages/Plans/PlansList.jsx` — Reactivate and permanent delete buttons
+- `frontend/src/admin/pages/Settings/Settings.jsx` — Home Screen Size setting
+- `frontend/src/api/kiosk.js` — `tokenizeCardFromFull` with CVV parameter
+- `frontend/src/api/plans.js` — `reactivatePlan()`, `permanentlyDeletePlan()`
+
+---
+
+## Custom Membership Start Date & Billing Day (2026-06-17)
+
+### Custom Start Date
+- Admin can set a custom start date when adding a monthly membership (e.g. backdate to 5/25)
+- `valid_from` and `valid_until` calculate from the start date, not today
+- Example: 3-month plan starting 5/25 → valid_from=5/25, valid_until=8/25
+
+### Per-User Billing Day Override
+- New `billing_day` field on SavedCard (1-28) controls when auto-charge runs
+- Auto-suggested from the membership start date when entered
+- Membership expiry aligns with billing day so charge and renewal are in sync
+- Default behavior unchanged: if no billing day set, charges on the 1st
+
+### Backend Changes
+- `MembershipCreate` schema: added `start_date` and `billing_day` fields with Pydantic validator
+- `create_membership()`: accepts `start_date` and `billing_day`, calculates dates accordingly
+- `enable_auto_charge()`: accepts and stores `billing_day` on SavedCard
+- `charge_saved_card_now()`: passes `start_date` and `billing_day` through
+- `_get_next_billing_date()`: new helper for billing day-aware date calculation
+- Migration `m3n4o5p6q7r8`: adds `billing_day` column to `saved_cards` table
+
+### Frontend Changes
+- Add Membership modal: "Start Date" (MM/DD/YYYY) and "Billing Day" dropdown for monthly plans
+- Auto-suggests billing day from start date
+- `enableCardAutoCharge()` API: passes `billing_day` parameter
+
+---
+
+## System Audit Fixes (2026-06-18)
+
+### Critical Fixes
+1. **Billing day crash on short months** — Creating a date like Feb 30 would crash. Fixed by clamping to the actual last day of the target month using `calendar.monthrange()` in all date construction paths.
+2. **Orphaned membership after charge failure** — If card charge succeeded but membership creation failed, member was charged with no plan. Fixed by wrapping charge + membership in try/catch with rollback. On failure, restores `next_charge_date` so it retries next run.
+3. **Double-charge race condition** — Two simultaneous auto-charge runs could charge the same card twice. Fixed by advancing `next_charge_date` BEFORE charging (optimistic lock). If charge fails, restores the original date.
+4. **Billing day validation** — Added Pydantic `field_validator` on `MembershipCreate.billing_day` to clamp to 1-28 at API entry point.
+
+### High Fixes
+5. **Swim pass auto-recharge silent failure** — If auto-recharge failed during check-in, no error was shown. Added try/catch with warning log so failures are tracked.
+6. **Multiple active monthly memberships** — Nothing prevented buying 3 monthly plans at once. Now auto-deactivates the existing monthly membership before creating a new one.
+7. **Unfreeze gives free days** — Unfreezing early kept the extended `valid_until`. Now subtracts unused freeze days from the expiry date.
+8. **Saved card deletion orphans auto-charge** — Deleting a card with auto-charge enabled left orphaned references. Now disables auto-charge before deletion.
+9. **Plan deactivation breaks auto-charge** — Deactivating a plan left auto-charge cards referencing it. Now disables auto-charge on all cards using the deactivated plan.
+10. **Credit deduction not in transaction** — Auto-charge credit deduction could be lost on failure. Now wrapped in try/catch with full rollback.
+
+### Files Modified
+- `backend/app/services/auto_charge_service.py` — Double-charge prevention, try/catch for membership creation, monthrange safety
+- `backend/app/services/membership_service.py` — Multiple monthly prevention, unfreeze day adjustment, monthrange safety
+- `backend/app/services/checkin_service.py` — Auto-recharge try/catch
+- `backend/app/schemas/membership.py` — billing_day validator
+- `backend/app/routers/members.py` — Auto-charge cleanup on card deletion
+- `backend/app/routers/plans.py` — Auto-charge cleanup on plan deactivation
+
+---
+
+## Per-Member Custom Pricing & Unlimited Memberships (2026-06-18)
+
+### Per-Member Custom Pricing
+- New `member_price_overrides` table maps member + plan → custom price
+- Admin can set/delete custom prices from member detail page ("Custom Pricing" card)
+- All payment flows use member-aware pricing:
+  - Kiosk plans endpoint accepts `member_id`, returns custom prices
+  - Cash, card, split, credit payments all resolve custom price
+  - Auto-charge uses custom price via `pricing_service.get_member_price()`
+  - Admin Add Membership dropdown shows custom price with "(custom)" label
+  - Pro-rate and charge amount calculations use custom price
+- Regular price shown as reference: "Regular: $25.00 → Custom: $15.00"
+
+### Unlimited Membership
+- New `is_unlimited` flag on Member model
+- Admin toggle on member detail page (purple switch in Member Info)
+- Unlimited members:
+  - Always check in without needing a membership plan
+  - Auto-checkin on card scan (same as monthly members)
+  - Kiosk shows only "Check In" + "Add Money" buttons
+  - No plans, no pricing, no credit balance visible
+  - Cannot be cancelled by insufficient funds (admin-only control)
+- Add Money flow:
+  - Enter amount → adds to credit balance
+  - Shows "$XX.XX was added to your account, thank you!" → auto-returns to idle
+  - Transaction recorded for admin visibility
+- Auto-charge skips unlimited members
+
+### New Files
+- `backend/app/models/member_price_override.py` — MemberPriceOverride model
+- `backend/app/services/pricing_service.py` — get_member_price(), get_member_price_overrides()
+- `frontend/src/kiosk/screens/AddMoneyScreen.jsx` — Kiosk add money screen for unlimited members
+- Migration `n4o5p6q7r8s9`: adds `is_unlimited` to members, creates `member_price_overrides` table
+
+### Backend Changes
+- `backend/app/models/member.py` — Added `is_unlimited` field and `price_overrides` relationship
+- `backend/app/models/__init__.py` — Registered MemberPriceOverride model
+- `backend/app/schemas/kiosk.py` — Added `is_unlimited` to MemberStatus, new AddCreditKioskRequest
+- `backend/app/schemas/member.py` — Added `is_unlimited` to MemberResponse
+- `backend/app/routers/kiosk.py` — Plans endpoint accepts member_id for custom prices, new /add-credit endpoint, all payment endpoints use member-aware pricing
+- `backend/app/routers/members.py` — New endpoints: toggle unlimited, CRUD price overrides
+- `backend/app/services/auto_charge_service.py` — Uses custom pricing, skips unlimited members
+- `backend/app/services/checkin_service.py` — Unlimited members always check in
+
+### Frontend Changes
+- `frontend/src/kiosk/KioskApp.jsx` — Registered AddMoneyScreen, auto-checkin for unlimited
+- `frontend/src/kiosk/screens/MemberScreen.jsx` — Unlimited-specific UI (Check In + Add Money only)
+- `frontend/src/kiosk/components/MemberCard.jsx` — hideBalance prop, unlimited status display
+- `frontend/src/kiosk/screens/PaymentScreen.jsx` — Passes member_id when fetching plans
+- `frontend/src/admin/pages/Members/MemberDetail.jsx` — Unlimited toggle, custom pricing card with add/delete, charge amounts use custom price
+- `frontend/src/api/kiosk.js` — getPlans accepts memberId, new addCredit()
+- `frontend/src/api/members.js` — toggleUnlimited(), getPriceOverrides(), setPriceOverride(), deletePriceOverride()
+
+---
+
+## Last Updated: 2026-06-19 (Custom Pricing & Unlimited Memberships)

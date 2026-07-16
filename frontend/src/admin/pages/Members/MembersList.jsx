@@ -120,12 +120,12 @@ export default function MembersList() {
       render: (row) => (
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
-            {row.first_name?.[0]}
             {row.last_name?.[0]}
+            {row.first_name?.[0]}
           </div>
           <div>
             <p className="font-medium text-gray-900 dark:text-gray-100">
-              {row.first_name} {row.last_name}
+              {row.last_name}, {row.first_name}
             </p>
             {row.email && (
               <p className="text-xs text-gray-500 dark:text-gray-400">{row.email}</p>

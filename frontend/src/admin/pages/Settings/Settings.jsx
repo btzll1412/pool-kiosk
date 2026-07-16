@@ -116,6 +116,14 @@ const settingGroups = [
     ],
   },
   {
+    title: "View Plans Screen",
+    description: "Customize the read-only plans display screen",
+    category: "kiosk",
+    fields: [
+      { key: "kiosk_plans_message", label: "Plans Info Message", type: "textarea", helpText: "Message shown on the View Plans screen telling users how to purchase. Default: To purchase a plan, please use your member account or visit as a guest." },
+    ],
+  },
+  {
     title: "Cash Payment Message",
     description: "Customize the message shown after any cash payment (guest, member, or split)",
     category: "kiosk",
@@ -140,6 +148,15 @@ const settingGroups = [
     category: "kiosk",
     fields: [
       { key: "staff_exit_pin", label: "Staff Exit PIN", type: "password", helpText: "PIN to exit kiosk mode (tap bottom-left corner 5 times to access)" },
+      { key: "kiosk_reload_interval_seconds", label: "Auto-Reload Interval (seconds)", type: "number", helpText: "Full page reload while on idle screen to pick up updates. Default: 30. Set to 0 to disable." },
+      {
+        key: "kiosk_ui_scale", label: "Home Screen Size", type: "select", helpText: "Scale of icons and text on the kiosk home screen",
+        options: [
+          { value: "normal", label: "Normal" },
+          { value: "large", label: "Large" },
+          { value: "xlarge", label: "Extra Large" },
+        ],
+      },
     ],
   },
   {

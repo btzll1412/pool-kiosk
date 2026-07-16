@@ -1,6 +1,6 @@
 import { CreditCard, Snowflake, Waves } from "lucide-react";
 
-export default function MemberCard({ member }) {
+export default function MemberCard({ member, hideBalance = false }) {
   const initials = `${member.first_name?.[0] || ""}${member.last_name?.[0] || ""}`.toUpperCase();
   const fullName = `${member.first_name} ${member.last_name}`;
   const membership = member.active_membership;
@@ -9,7 +9,11 @@ export default function MemberCard({ member }) {
   let statusText = "Active";
   let statusDetail = "";
 
-  if (member.is_frozen) {
+  if (member.is_unlimited) {
+    statusColor = "bg-purple-500";
+    statusText = "Unlimited Member";
+    statusDetail = "";
+  } else if (member.is_frozen) {
     statusColor = "bg-blue-500";
     statusText = "Frozen";
     statusDetail = member.frozen_until ? `Until ${member.frozen_until}` : "Until further notice";
@@ -45,7 +49,7 @@ export default function MemberCard({ member }) {
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-3">
-        {membership && (
+        {membership && !member.is_unlimited && (
           <div className="flex items-center gap-3 rounded-xl bg-brand-50 px-4 py-3">
             <Waves className="h-5 w-5 text-brand-600" />
             <div>
@@ -54,15 +58,17 @@ export default function MemberCard({ member }) {
             </div>
           </div>
         )}
-        <div className="flex items-center gap-3 rounded-xl bg-emerald-50 px-4 py-3">
-          <CreditCard className="h-5 w-5 text-emerald-600" />
-          <div>
-            <p className="text-xs text-emerald-600">Credit Balance</p>
-            <p className="text-sm font-semibold text-emerald-900">
-              ${Number(member.credit_balance || 0).toFixed(2)}
-            </p>
+        {!hideBalance && (
+          <div className="flex items-center gap-3 rounded-xl bg-emerald-50 px-4 py-3">
+            <CreditCard className="h-5 w-5 text-emerald-600" />
+            <div>
+              <p className="text-xs text-emerald-600">Credit Balance</p>
+              <p className="text-sm font-semibold text-emerald-900">
+                ${Number(member.credit_balance || 0).toFixed(2)}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
         {member.is_frozen && (
           <div className="flex items-center gap-3 rounded-xl bg-blue-50 px-4 py-3">
             <Snowflake className="h-5 w-5 text-blue-600" />
