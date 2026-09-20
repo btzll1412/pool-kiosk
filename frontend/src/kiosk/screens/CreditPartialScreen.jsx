@@ -1,8 +1,11 @@
 import { ArrowLeft, Banknote, CreditCard, Wallet } from "lucide-react";
+import { describeBilling, getPurchasePrice } from "../utils/billing";
 
 export default function CreditPartialScreen({ goTo, context, settings }) {
   const plan = context.plan;
   const pin = context.pin;
+  const billing = context.billing;
+  const billingSummary = describeBilling(plan, billing, settings.currency);
   const creditUsed = Number(context.creditUsed || 0);
   const remainingDue = Number(context.remainingDue || 0);
 
@@ -14,6 +17,7 @@ export default function CreditPartialScreen({ goTo, context, settings }) {
   function goPayMethod(method) {
     goTo(method, {
       plan,
+      billing,
       pin,
       useCredit: true,
       creditAmount: creditUsed,
@@ -47,8 +51,11 @@ export default function CreditPartialScreen({ goTo, context, settings }) {
               <div>
                 <p className="text-lg font-bold text-gray-900">{plan.name}</p>
                 <p className="text-sm text-gray-500">
-                  Total: {settings.currency}{Number(plan.price).toFixed(2)}
+                  Total: {settings.currency}{getPurchasePrice(plan, billing).toFixed(2)}
                 </p>
+                {billingSummary && (
+                  <p className="text-sm font-medium text-blue-600">{billingSummary}</p>
+                )}
               </div>
             </div>
 

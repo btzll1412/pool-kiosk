@@ -4,18 +4,18 @@ import toast from "react-hot-toast";
 import NumPad from "../components/NumPad";
 import KioskButton from "../components/KioskButton";
 import { payCash } from "../../api/kiosk";
+import { describeBilling, getBillingParams, getPurchasePrice } from "../utils/billing";
 
 export default function CashScreen({ member, goTo, goIdle, context, settings }) {
   const plan = context.plan;
   const pin = context.pin;
   const useCredit = context.useCredit || false;
   const creditAmount = Number(context.creditAmount || 0);
-  // Use pro-rated price for monthly plans, otherwise full price
-  const fullPrice = Number(plan?.price || 0);
-  const proratedPrice = plan?.prorated ? Number(plan.prorated.prorated_price) : fullPrice;
-  const originalPrice = proratedPrice;
+  // Monthly-type plans use the billing option the member chose, otherwise the plan price
+  const billing = context.billing;
+  const originalPrice = getPurchasePrice(plan, billing);
   const price = useCredit ? Number(context.adjustedPrice || originalPrice) : originalPrice;
-  const isProrated = plan?.prorated && proratedPrice < fullPrice;
+  const billingSummary = describeBilling(plan, billing, settings.currency);
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -36,7 +36,7 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
     setLoading(true);
     try {
       // Always add overpayment to credit (wantsChange = false)
-      const data = await payCash(member.member_id, plan.id, amountNum, pin, false, useCredit);
+      const data = await payCash(member.member_id, plan.id, amountNum, pin, false, useCredit, getBillingParams(plan, billing));
 
       const amountStr = `${settings.currency}${amountNum.toFixed(2)}`;
       let message = (settings.cash_success_message || "Place {amount} in the cash box.").replace("{amount}", amountStr);
@@ -83,23 +83,14 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
         <div className="w-full max-w-sm">
           <div className="mb-6 rounded-2xl bg-white p-5 text-center shadow-sm ring-1 ring-gray-100">
             <p className="text-sm text-gray-500">{plan.name}</p>
-            {isProrated && (
-              <>
-                <p className="mt-1 text-lg text-gray-400 line-through">
-                  {settings.currency}{fullPrice.toFixed(2)}/mo
-                </p>
-                <p className="text-sm text-blue-600 font-medium">
-                  Pro-rated for {plan.prorated.days_remaining} days
-                </p>
-              </>
+            {billingSummary && (
+              <p className="mt-1 text-sm font-medium text-blue-600">{billingSummary}</p>
             )}
             {useCredit && creditAmount > 0 ? (
               <>
-                {!isProrated && (
-                  <p className="mt-1 text-lg text-gray-400 line-through">
-                    {settings.currency}{originalPrice.toFixed(2)}
-                  </p>
-                )}
+                <p className="mt-1 text-lg text-gray-400 line-through">
+                  {settings.currency}{originalPrice.toFixed(2)}
+                </p>
                 <p className="text-sm text-emerald-600 font-medium">
                   -{settings.currency}{creditAmount.toFixed(2)} credit applied
                 </p>

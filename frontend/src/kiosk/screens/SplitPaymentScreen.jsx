@@ -4,15 +4,15 @@ import toast from "react-hot-toast";
 import NumPad from "../components/NumPad";
 import KioskButton from "../components/KioskButton";
 import { getSavedCards, paySplit } from "../../api/kiosk";
+import { describeBilling, getBillingParams, getPurchasePrice } from "../utils/billing";
 
 export default function SplitPaymentScreen({ member, goTo, context, settings }) {
   const plan = context.plan;
   const pin = context.pin;
-  // Use pro-rated price for monthly plans, otherwise full price
-  const fullPrice = Number(plan?.price || 0);
-  const proratedPrice = plan?.prorated ? Number(plan.prorated.prorated_price) : fullPrice;
-  const price = proratedPrice;
-  const isProrated = plan?.prorated && proratedPrice < fullPrice;
+  // Monthly-type plans use the billing option the member chose, otherwise the plan price
+  const billing = context.billing;
+  const price = getPurchasePrice(plan, billing);
+  const billingSummary = describeBilling(plan, billing, settings.currency);
 
   const [cashAmount, setCashAmount] = useState("");
   const [loading, setLoading] = useState(false);
@@ -50,6 +50,7 @@ export default function SplitPaymentScreen({ member, goTo, context, settings }) 
         cashNum,
         pin,
         selectedCardId,
+        getBillingParams(plan, billing),
       );
       const cashAmountStr = `${settings.currency}${cashNum.toFixed(2)}`;
       const cashMsg = (settings.cash_success_message || "Place {amount} in the cash box.").replace("{amount}", cashAmountStr);
@@ -90,15 +91,8 @@ export default function SplitPaymentScreen({ member, goTo, context, settings }) 
           {/* Price breakdown */}
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
             <p className="text-center text-sm text-gray-500">{plan.name}</p>
-            {isProrated && (
-              <>
-                <p className="mt-1 text-center text-lg text-gray-400 line-through">
-                  {settings.currency}{fullPrice.toFixed(2)}/mo
-                </p>
-                <p className="text-center text-sm text-blue-600 font-medium">
-                  Pro-rated for {plan.prorated.days_remaining} days
-                </p>
-              </>
+            {billingSummary && (
+              <p className="mt-1 text-center text-sm font-medium text-blue-600">{billingSummary}</p>
             )}
             <p className="mt-1 text-center text-3xl font-extrabold text-gray-900">
               {settings.currency}{price.toFixed(2)}

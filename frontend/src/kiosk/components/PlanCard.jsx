@@ -1,4 +1,5 @@
 import { Calendar, Repeat, Waves } from "lucide-react";
+import { needsBillingChoice } from "../utils/billing";
 
 const typeIcons = {
   single: Waves,
@@ -40,16 +41,11 @@ export default function PlanCard({ plan, selected, onSelect }) {
       </p>
       <p className="mt-2 text-3xl font-extrabold">
         ${Number(plan.price).toFixed(2)}
-        {plan.duration_months && <span className="text-base font-medium">/mo</span>}
+        {plan.duration_months && <span className="text-base font-medium">{plan.duration_months > 1 ? ` / ${plan.duration_months} months` : "/mo"}</span>}
       </p>
-      {plan.prorated && (
-        <p className={`text-sm font-semibold ${selected ? "text-green-200" : "text-green-600"}`}>
-          Pay today: ${Number(plan.prorated.prorated_price).toFixed(2)}
-        </p>
-      )}
-      {plan.prorated && (
-        <p className={`text-xs ${selected ? "text-brand-200" : "text-gray-400"}`}>
-          ({plan.prorated.days_remaining} days remaining this month)
+      {needsBillingChoice(plan) && (
+        <p className={`mt-1 text-sm font-medium ${selected ? "text-brand-100" : "text-gray-500"}`}>
+          or pro-rated from ${Number(plan.billing_options.prorate.amount).toFixed(2)}
         </p>
       )}
     </button>

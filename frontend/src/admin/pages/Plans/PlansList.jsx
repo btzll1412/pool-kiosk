@@ -130,13 +130,18 @@ export default function PlansList() {
           {plans.map((plan) => (
             <Card key={plan.id} className={!plan.is_active ? "opacity-60" : ""}>
               <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Badge color={typeColor[plan.plan_type]}>
                     {typeLabel[plan.plan_type]}
                   </Badge>
                   {plan.is_senior_plan && (
                     <Badge color="amber">
                       Senior
+                    </Badge>
+                  )}
+                  {plan.allow_charge_to_account && (
+                    <Badge color="indigo">
+                      Charge to account
                     </Badge>
                   )}
                 </div>
@@ -332,6 +337,7 @@ function PlanForm({ plan, onClose, onSaved }) {
     duration_months: plan?.duration_months || "",
     display_order: plan?.display_order ?? 0,
     is_senior_plan: plan?.is_senior_plan || false,
+    allow_charge_to_account: plan?.allow_charge_to_account || false,
   });
   const [loading, setLoading] = useState(false);
 
@@ -350,6 +356,7 @@ function PlanForm({ plan, onClose, onSaved }) {
         duration_months: form.plan_type === "monthly" ? parseInt(form.duration_months) : null,
         display_order: parseInt(form.display_order) || 0,
         is_senior_plan: form.is_senior_plan,
+        allow_charge_to_account: form.allow_charge_to_account,
       };
 
       if (plan) {
@@ -480,6 +487,24 @@ function PlanForm({ plan, onClose, onSaved }) {
             <label htmlFor="is_senior_plan" className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Senior Citizen Discount Plan
             </label>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              id="allow_charge_to_account"
+              checked={form.allow_charge_to_account}
+              onChange={(e) => setForm((f) => ({ ...f, allow_charge_to_account: e.target.checked }))}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-brand-600 focus:ring-brand-600"
+            />
+            <div>
+              <label htmlFor="allow_charge_to_account" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Allow charge to account
+              </label>
+              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                Members whose account also allows it can buy this plan at the kiosk without paying now — the amount is added to what they owe.
+              </p>
+            </div>
           </div>
 
           <div className="flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">

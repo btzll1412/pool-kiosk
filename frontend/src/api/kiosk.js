@@ -42,7 +42,23 @@ export async function getPlans(isSenior = null, memberId = null) {
   return data;
 }
 
-export async function payCash(member_id, plan_id, amount_tendered, pin, wants_change = false, use_credit = false) {
+// Billing choice for monthly-type plans. The server prices the purchase from these,
+// so they must match what the member was shown.
+function billingFields({ billing_mode = "full", start_date = null } = {}) {
+  return { billing_mode, start_date };
+}
+
+export async function getQuote(member_id, plan_id, billing_mode = "full", start_date = null) {
+  const { data } = await kiosk.post("/quote", {
+    member_id,
+    plan_id,
+    billing_mode,
+    start_date,
+  });
+  return data;
+}
+
+export async function payCash(member_id, plan_id, amount_tendered, pin, wants_change = false, use_credit = false, billing = {}) {
   const { data } = await kiosk.post("/pay/cash", {
     member_id,
     plan_id,
@@ -50,11 +66,12 @@ export async function payCash(member_id, plan_id, amount_tendered, pin, wants_ch
     pin,
     wants_change,
     use_credit,
+    ...billingFields(billing),
   });
   return data;
 }
 
-export async function payCard(member_id, plan_id, pin, { saved_card_id = null, save_card = false, card_last4 = null, card_brand = null, friendly_name = null, use_credit = false } = {}) {
+export async function payCard(member_id, plan_id, pin, { saved_card_id = null, save_card = false, card_last4 = null, card_brand = null, friendly_name = null, use_credit = false, billing_mode = "full", start_date = null } = {}) {
   const { data } = await kiosk.post("/pay/card", {
     member_id,
     plan_id,
@@ -65,26 +82,41 @@ export async function payCard(member_id, plan_id, pin, { saved_card_id = null, s
     card_brand,
     friendly_name,
     use_credit,
+    billing_mode,
+    start_date,
   });
   return data;
 }
 
-export async function paySplit(member_id, plan_id, cash_amount, pin, saved_card_id = null) {
+export async function paySplit(member_id, plan_id, cash_amount, pin, saved_card_id = null, billing = {}) {
   const { data } = await kiosk.post("/pay/split", {
     member_id,
     plan_id,
     cash_amount: String(cash_amount),
     pin,
     saved_card_id,
+    ...billingFields(billing),
   });
   return data;
 }
 
-export async function payCredit(member_id, plan_id, pin) {
+export async function payCredit(member_id, plan_id, pin, billing = {}) {
   const { data } = await kiosk.post("/pay/credit", {
     member_id,
     plan_id,
     pin,
+    ...billingFields(billing),
+  });
+  return data;
+}
+
+export async function payOnAccount(member_id, plan_id, pin, billing_mode = "full", start_date = null) {
+  const { data } = await kiosk.post("/pay/account", {
+    member_id,
+    plan_id,
+    pin,
+    billing_mode,
+    start_date,
   });
   return data;
 }
@@ -260,7 +292,7 @@ export async function addCredit(memberId, pin, amount) {
 
 // ==================== MANUAL CARD ENTRY FUNCTIONS ====================
 
-export async function payCardManual(member_id, plan_id, pin, card_number, exp_date, cvv, save_card = false, use_credit = false) {
+export async function payCardManual(member_id, plan_id, pin, card_number, exp_date, cvv, save_card = false, use_credit = false, billing = {}) {
   const { data } = await kiosk.post("/pay/card/manual", {
     member_id,
     plan_id,
@@ -270,6 +302,7 @@ export async function payCardManual(member_id, plan_id, pin, card_number, exp_da
     pin,
     save_card,
     use_credit,
+    ...billingFields(billing),
   });
   return data;
 }
@@ -281,13 +314,14 @@ export async function getTerminalInfo() {
   return data;
 }
 
-export async function initiateTerminalPayment(member_id, plan_id, pin, save_card = false, use_credit = false) {
+export async function initiateTerminalPayment(member_id, plan_id, pin, save_card = false, use_credit = false, billing = {}) {
   const { data } = await kiosk.post("/terminal/pay", {
     member_id,
     plan_id,
     pin,
     save_card,
     use_credit,
+    ...billingFields(billing),
   });
   return data;
 }

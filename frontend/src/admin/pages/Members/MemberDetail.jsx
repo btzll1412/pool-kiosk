@@ -22,7 +22,7 @@ import {
   Zap,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { useTimezone, formatDate, formatDateTime } from "../../../context/TimezoneContext";
+import { useTimezone, formatDate, formatDateTime, getTodayDate } from "../../../context/TimezoneContext";
 import {
   addMemberSavedCard,
   adjustCredit,
@@ -48,6 +48,7 @@ import {
   enableCardAutoCharge,
   disableCardAutoCharge,
   toggleUnlimited,
+  updateChargeToAccount,
   getPriceOverrides,
   setPriceOverride,
   deletePriceOverride,
@@ -55,6 +56,7 @@ import {
 import {
   adjustMembershipSwims,
   createMembership,
+  getMembershipQuote,
   updateMembership,
 } from "../../../api/memberships";
 import { getPlans } from "../../../api/plans";
@@ -69,6 +71,32 @@ import useNFCReader from "../../../hooks/useNFCReader";
 import useCardReader from "../../../hooks/useCardReader";
 import PageHeader from "../../../shared/PageHeader";
 import { SkeletonLine, SkeletonCard } from "../../../shared/Skeleton";
+
+// "YYYY-MM-DD" -> "MM/DD/YYYY" by splitting the string (no Date parsing, so no timezone shifts)
+const formatIsoDate = (iso) => {
+  if (!iso) return "";
+  const [year, month, day] = String(iso).split("T")[0].split("-");
+  return `${month}/${day}/${year}`;
+};
+
+// Typed "MM/DD/YYYY" -> "YYYY-MM-DD", or null when incomplete/invalid
+const parseDateInput = (value) => {
+  const digits = (value || "").replace(/\D/g, "");
+  if (digits.length !== 8) return null;
+  const month = parseInt(digits.slice(0, 2), 10);
+  const day = parseInt(digits.slice(2, 4), 10);
+  const year = parseInt(digits.slice(4, 8), 10);
+  if (month < 1 || month > 12 || year < 2000) return null;
+  const daysInMonth = new Date(year, month, 0).getDate();
+  if (day < 1 || day > daysInMonth) return null;
+  return `${digits.slice(4, 8)}-${digits.slice(0, 2)}-${digits.slice(2, 4)}`;
+};
+
+// Negative balances (member owes money) render as "-$145.00"
+const formatBalance = (value) => {
+  const amount = Number(value) || 0;
+  return `${amount < 0 ? "-" : ""}$${Math.abs(amount).toFixed(2)}`;
+};
 
 export default function MemberDetail() {
   const { id } = useParams();
@@ -119,10 +147,18 @@ export default function MemberDetail() {
   const [newCardExpYear, setNewCardExpYear] = useState("");
   const [newCardCvv, setNewCardCvv] = useState("");
   const [cardEntryMode, setCardEntryMode] = useState("record"); // "record" or "charge"
-  const [chargeAmountMode, setChargeAmountMode] = useState("full"); // "full" | "prorate" | "custom"
+  const [chargeAmountMode, setChargeAmountMode] = useState("prorate"); // "prorate" | "full" | "custom"
   const [customChargeAmount, setCustomChargeAmount] = useState("");
   const [startDate, setStartDate] = useState(""); // MM/DD/YYYY format
   const [billingDay, setBillingDay] = useState(""); // 1-28 or empty for default
+  const [chargeTiming, setChargeTiming] = useState("now"); // "now" | "start_date"
+  const [membershipQuote, setMembershipQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState("");
+
+  // Charge to account
+  const [chargeLimitInput, setChargeLimitInput] = useState("");
+  const [chargeToAccountSaving, setChargeToAccountSaving] = useState(false);
 
   // Unlimited & Custom Pricing
   const [priceOverrides, setPriceOverrides] = useState([]);
@@ -213,6 +249,96 @@ export default function MemberDetail() {
     load();
     getPlans().then(setPlans).catch(() => {});
   }, [id]);
+
+  useEffect(() => {
+    setChargeLimitInput(
+      member?.charge_to_account_limit != null ? String(Number(member.charge_to_account_limit)) : ""
+    );
+  }, [member?.charge_to_account_limit]);
+
+  // Add Membership: derived billing state
+  const selectedPlan = plans.find((p) => p.id === selectedPlanId);
+  const isMonthlyPlan = selectedPlan?.plan_type === "monthly";
+  const startDateIso = parseDateInput(startDate);
+  const startDateInvalid = !!startDate && !startDateIso;
+  const billingMode = chargeAmountMode === "full" ? "full" : "prorate";
+  const isFutureStart = isMonthlyPlan && !!startDateIso && startDateIso > getTodayDate(timezone);
+  const savedCardSelected =
+    chargeNow && paymentMethod === "card" && useExistingCard && savedCards.length > 0 && !!selectedSavedCardId;
+  const canScheduleCharge = isFutureStart && savedCardSelected && chargeAmountMode !== "custom";
+  const scheduleCharge = canScheduleCharge && chargeTiming === "start_date";
+  // Only trust a quote that matches what is currently selected
+  const activeQuote =
+    isMonthlyPlan && !quoteLoading && membershipQuote?.mode === billingMode ? membershipQuote : null;
+
+  // Monthly plans: price and dates come from the server (debounced)
+  useEffect(() => {
+    if (!showAddMembership || !selectedPlanId || !isMonthlyPlan || startDateInvalid) {
+      setMembershipQuote(null);
+      setQuoteError("");
+      setQuoteLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setQuoteLoading(true);
+    const timer = setTimeout(() => {
+      const params = { member_id: id, plan_id: selectedPlanId, billing_mode: billingMode };
+      if (startDateIso) params.start_date = startDateIso;
+      if (billingMode === "prorate" && billingDay) params.billing_day = parseInt(billingDay, 10);
+      getMembershipQuote(params)
+        .then((data) => {
+          if (cancelled) return;
+          setMembershipQuote(data.quote);
+          setQuoteError("");
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setMembershipQuote(null);
+          setQuoteError(err.response?.data?.detail || "Could not calculate the price");
+        })
+        .finally(() => {
+          if (!cancelled) setQuoteLoading(false);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [showAddMembership, id, selectedPlanId, isMonthlyPlan, startDateIso, startDateInvalid, billingMode, billingDay]);
+
+  const handleToggleChargeToAccount = async () => {
+    setChargeToAccountSaving(true);
+    try {
+      const enabled = !member.charge_to_account_enabled;
+      const limit = member.charge_to_account_limit != null ? Number(member.charge_to_account_limit) : null;
+      await updateChargeToAccount(id, enabled, limit);
+      toast.success(enabled ? "Charge to account enabled" : "Charge to account disabled");
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to update charge to account");
+    } finally {
+      setChargeToAccountSaving(false);
+    }
+  };
+
+  const handleSaveChargeLimit = async () => {
+    const trimmed = chargeLimitInput.trim();
+    const limit = trimmed === "" ? null : parseFloat(trimmed);
+    if (limit !== null && (isNaN(limit) || limit <= 0)) {
+      toast.error("Limit must be greater than $0, or leave it blank for no limit");
+      return;
+    }
+    setChargeToAccountSaving(true);
+    try {
+      await updateChargeToAccount(id, true, limit);
+      toast.success(limit === null ? "Charge limit removed" : `Charge limit set to $${limit.toFixed(2)}`);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to save charge limit");
+    } finally {
+      setChargeToAccountSaving(false);
+    }
+  };
 
   const handleCreditAdjust = async () => {
     setCreditLoading(true);
@@ -355,7 +481,6 @@ export default function MemberDetail() {
     if (!selectedPlanId) return;
     setAddMembershipLoading(true);
     try {
-      const selectedPlan = plans.find(p => p.id === selectedPlanId);
       const effectiveUseExisting = useExistingCard && savedCards.length > 0;
 
       // If charging with full card details, process real charge first
@@ -402,34 +527,42 @@ export default function MemberDetail() {
 
       const payload = { member_id: id, plan_id: selectedPlanId };
 
-      // Add custom start date if provided (convert MM/DD/YYYY to YYYY-MM-DD)
-      if (startDate) {
-        const sd = startDate.replace(/\D/g, "");
-        if (sd.length === 8) {
-          payload.start_date = `${sd.slice(4, 8)}-${sd.slice(0, 2)}-${sd.slice(2, 4)}`;
+      if (isMonthlyPlan) {
+        // Custom start date (typed MM/DD/YYYY, sent as YYYY-MM-DD)
+        if (startDateIso) payload.start_date = startDateIso;
+        // "custom" only overrides the amount — dates follow the pro-rate schedule
+        payload.billing_mode = billingMode;
+        // Billing day override only when the admin picked one ("full" follows the start date)
+        if (billingMode === "prorate" && billingDay) {
+          const bd = parseInt(billingDay, 10);
+          if (bd >= 1 && bd <= 28) payload.billing_day = bd;
         }
       }
-      // Add billing day override if set
-      if (billingDay) {
-        const bd = parseInt(billingDay, 10);
-        if (bd >= 1 && bd <= 28) payload.billing_day = bd;
-      }
 
-      // Build payment info if charging now (for record-keeping)
+      // The server charges the quoted amount; charge_amount is only sent for a custom amount
       const chargeAmt = getChargeAmount(selectedPlan);
-      if (chargeNow) {
+      const customCharge = chargeAmountMode === "custom" ? { charge_amount: parseFloat(chargeAmt) } : {};
+      if (scheduleCharge) {
+        // Nothing is charged now — the saved card is charged on the start date
+        payload.charge_timing = "start_date";
+        payload.payment = {
+          payment_method: "card",
+          saved_card_id: selectedSavedCardId,
+          enable_autopay: enableAutopay,
+        };
+      } else if (chargeNow) {
         if (paymentMethod === "cash") {
           payload.payment = {
             payment_method: "cash",
             amount_tendered: cashAmount ? parseFloat(cashAmount) : parseFloat(chargeAmt),
-            charge_amount: parseFloat(chargeAmt),
+            ...customCharge,
           };
         } else if (paymentMethod === "card") {
           if (effectiveUseExisting && selectedSavedCardId) {
             payload.payment = {
               payment_method: "card",
               saved_card_id: selectedSavedCardId,
-              charge_amount: parseFloat(chargeAmt),
+              ...customCharge,
             };
           } else if (!effectiveUseExisting && cardEntryMode === "record" && newCardLast4) {
             // Record-only mode
@@ -449,12 +582,11 @@ export default function MemberDetail() {
       const result = await createMembership(payload);
       const msg = result.message || "Membership added";
       // Show charge success prominently if payment was involved
-      if (chargeNow && paymentMethod === "card") {
-        const effectiveUseExisting2 = useExistingCard && savedCards.length > 0;
-        const chargedAmt = !effectiveUseExisting2 && cardEntryMode === "charge"
-          ? getChargeAmount(plans.find(p => p.id === selectedPlanId))
-          : plans.find(p => p.id === selectedPlanId)?.price;
-        toast.success(`Card charged $${Number(chargedAmt).toFixed(2)} successfully!\n${msg}`, { duration: 5000 });
+      if (scheduleCharge) {
+        // No membership yet — it is created when the scheduled charge succeeds
+        toast.success(result.message || "Charge scheduled for the start date", { duration: 8000 });
+      } else if (chargeNow && paymentMethod === "card") {
+        toast.success(`Card charged $${Number(chargeAmt).toFixed(2)} successfully!\n${msg}`, { duration: 5000 });
       } else {
         toast.success(msg);
       }
@@ -493,20 +625,12 @@ export default function MemberDetail() {
     return override ? Number(override.custom_price) : Number(plan.price);
   };
 
-  const getProrateAmount = (plan) => {
-    if (!plan) return "0";
-    const price = getMemberPlanPrice(plan);
-    const today = new Date();
-    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-    const daysRemaining = daysInMonth - today.getDate() + 1;
-    return (price * daysRemaining / daysInMonth).toFixed(2);
-  };
-
   const getChargeAmount = (plan) => {
     if (!plan) return "0";
-    if (chargeAmountMode === "prorate") return getProrateAmount(plan);
     if (chargeAmountMode === "custom") return customChargeAmount || "0";
-    return String(getMemberPlanPrice(plan));
+    // Monthly plans are priced by the server quote (pro-rated or full)
+    if (plan.plan_type === "monthly" && activeQuote) return activeQuote.amount;
+    return getMemberPlanPrice(plan).toFixed(2);
   };
 
   const resetMembershipForm = () => {
@@ -525,10 +649,13 @@ export default function MemberDetail() {
     setNewCardExpYear("");
     setNewCardCvv("");
     setCardEntryMode("record");
-    setChargeAmountMode("full");
+    setChargeAmountMode("prorate");
     setCustomChargeAmount("");
     setStartDate("");
     setBillingDay("");
+    setChargeTiming("now");
+    setMembershipQuote(null);
+    setQuoteError("");
   };
 
   const handleAddCard = async () => {
@@ -802,8 +929,17 @@ export default function MemberDetail() {
             <InfoRow label="Phone">{member.phone || "—"}</InfoRow>
             <InfoRow label="Email">{member.email || "—"}</InfoRow>
             <InfoRow label="Credit Balance">
-              <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                ${Number(member.credit_balance).toFixed(2)}
+              <span className="inline-flex items-center gap-2">
+                <span
+                  className={`text-lg font-bold ${
+                    Number(member.credit_balance) < 0
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-gray-900 dark:text-gray-100"
+                  }`}
+                >
+                  {formatBalance(member.credit_balance)}
+                </span>
+                {Number(member.credit_balance) < 0 && <Badge color="red">Owes</Badge>}
               </span>
             </InfoRow>
             <InfoRow label="Joined">
@@ -850,6 +986,49 @@ export default function MemberDetail() {
                 <span className="text-sm text-gray-600 dark:text-gray-400">
                   {member.is_unlimited ? "Always checks in, no plan needed" : "Off"}
                 </span>
+              </div>
+            </InfoRow>
+            <InfoRow label="Charge to account">
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleToggleChargeToAccount}
+                    disabled={chargeToAccountSaving}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-60 ${member.charge_to_account_enabled ? "bg-indigo-600" : "bg-gray-300"}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${member.charge_to_account_enabled ? "translate-x-6" : "translate-x-1"}`} />
+                  </button>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    {member.charge_to_account_enabled
+                      ? `Can buy allowed plans now and pay later${member.charge_to_account_limit != null ? ` (up to $${Number(member.charge_to_account_limit).toFixed(2)})` : " (no limit)"}`
+                      : "Off"}
+                  </span>
+                </div>
+                {member.charge_to_account_enabled && (
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="chargeLimit" className="text-sm text-gray-600 dark:text-gray-400">
+                      Limit ($)
+                    </label>
+                    <input
+                      id="chargeLimit"
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={chargeLimitInput}
+                      onChange={(e) => setChargeLimitInput(e.target.value)}
+                      placeholder="No limit"
+                      className="block w-28 rounded-lg border-0 px-2.5 py-1.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                    />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleSaveChargeLimit}
+                      loading={chargeToAccountSaving}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                )}
               </div>
             </InfoRow>
           </dl>
@@ -1309,6 +1488,25 @@ export default function MemberDetail() {
         size="sm"
       >
         <div className="space-y-4">
+          {Number(member.credit_balance) < 0 && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3">
+              <p className="text-sm text-red-700 dark:text-red-400">
+                Member owes <span className="font-semibold">${Math.abs(Number(member.credit_balance)).toFixed(2)}</span>.
+                Enter a positive amount to record a payment.
+              </p>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="shrink-0"
+                onClick={() => {
+                  setCreditAmount(Math.abs(Number(member.credit_balance)).toFixed(2));
+                  setCreditNotes("Balance payment");
+                }}
+              >
+                Pay off full balance
+              </Button>
+            </div>
+          )}
           <Input
             label="Amount"
             type="number"
@@ -1428,7 +1626,14 @@ export default function MemberDetail() {
             </label>
             <select
               value={selectedPlanId}
-              onChange={(e) => setSelectedPlanId(e.target.value)}
+              onChange={(e) => {
+                const nextPlan = plans.find((p) => p.id === e.target.value);
+                setSelectedPlanId(e.target.value);
+                // Monthly plans default to pro-rating; other plans have nothing to pro-rate
+                if (chargeAmountMode !== "custom") {
+                  setChargeAmountMode(nextPlan?.plan_type === "monthly" ? "prorate" : "full");
+                }
+              }}
               className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="">Choose a plan...</option>
@@ -1450,7 +1655,7 @@ export default function MemberDetail() {
           </div>
 
           {/* Start Date & Billing Day (monthly plans only) */}
-          {selectedPlanId && plans.find(p => p.id === selectedPlanId)?.plan_type === "monthly" && (
+          {selectedPlanId && isMonthlyPlan && (
             <div className="grid grid-cols-2 gap-4">
               <Input
                 label="Start Date (optional)"
@@ -1461,26 +1666,25 @@ export default function MemberDetail() {
                   if (raw.length > 2) fmt = raw.slice(0, 2) + "/" + raw.slice(2);
                   if (raw.length > 4) fmt = raw.slice(0, 2) + "/" + raw.slice(2, 4) + "/" + raw.slice(4, 8);
                   setStartDate(fmt);
-                  // Auto-suggest billing day from start date
-                  if (raw.length >= 4 && !billingDay) {
-                    const day = parseInt(raw.slice(2, 4), 10);
-                    if (day >= 1 && day <= 28) setBillingDay(String(day));
-                  }
                 }}
                 placeholder="MM/DD/YYYY (default: today)"
                 maxLength={10}
-                helpText="When the membership started. Leave blank for today."
+                error={startDateInvalid && startDate.length === 10 ? "Enter a valid date (MM/DD/YYYY)" : undefined}
+                helpText="When the membership starts. Leave blank for today."
               />
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Billing Day (optional)
                 </label>
                 <select
-                  value={billingDay}
+                  value={billingMode === "full" ? "" : billingDay}
                   onChange={(e) => setBillingDay(e.target.value)}
-                  className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                  disabled={billingMode === "full"}
+                  className="disabled:opacity-60 block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
                 >
-                  <option value="">1st of month (default)</option>
+                  <option value="">
+                    {billingMode === "full" ? "Follows the start date" : "1st of month (default)"}
+                  </option>
                   {[...Array(28)].map((_, i) => (
                     <option key={i + 1} value={String(i + 1)}>
                       {i + 1}{i === 0 ? "st" : i === 1 ? "nd" : i === 2 ? "rd" : "th"} of each month
@@ -1491,6 +1695,70 @@ export default function MemberDetail() {
                   When auto-charge runs and membership renews.
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* Billing (monthly plans only) — price and dates are quoted by the server */}
+          {selectedPlanId && isMonthlyPlan && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Billing
+              </label>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-start gap-2">
+                  <input
+                    type="radio"
+                    name="billingMode"
+                    checked={billingMode === "prorate"}
+                    onChange={() => setChargeAmountMode("prorate")}
+                    className="mt-0.5 h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    Pro-rate to billing day
+                    {billingMode === "prorate" && activeQuote && (
+                      <>
+                        {" — "}
+                        <span className="font-semibold">${Number(activeQuote.amount).toFixed(2)} now</span>
+                        {` · covers ${formatIsoDate(activeQuote.start_date)} – ${formatIsoDate(activeQuote.valid_until)}`}
+                        {` · next charge ${formatIsoDate(activeQuote.next_billing_date)} ($${Number(activeQuote.full_price).toFixed(2)})`}
+                      </>
+                    )}
+                  </span>
+                </label>
+                <label className="flex items-start gap-2">
+                  <input
+                    type="radio"
+                    name="billingMode"
+                    checked={billingMode === "full"}
+                    onChange={() => setChargeAmountMode("full")}
+                    className="mt-0.5 h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    Full price
+                    {billingMode === "full" && activeQuote ? (
+                      <>
+                        {" — "}
+                        <span className="font-semibold">${Number(activeQuote.amount).toFixed(2)}</span>
+                        {` · covers ${formatIsoDate(activeQuote.start_date)} – ${formatIsoDate(activeQuote.valid_until)}`}
+                        {` · billing follows the start date (day ${activeQuote.billing_day})`}
+                      </>
+                    ) : (
+                      ` — $${getMemberPlanPrice(selectedPlan).toFixed(2)}`
+                    )}
+                  </span>
+                </label>
+              </div>
+              {quoteLoading && (
+                <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">Calculating price…</p>
+              )}
+              {quoteError && (
+                <p className="mt-1.5 text-xs text-red-600 dark:text-red-400">{quoteError}</p>
+              )}
+              {billingMode === "prorate" && activeQuote && !activeQuote.prorated && (
+                <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  The start date falls on the billing day, so there is nothing to pro-rate.
+                </p>
+              )}
             </div>
           )}
 
@@ -1523,24 +1791,18 @@ export default function MemberDetail() {
                     <input
                       type="radio"
                       name="chargeAmountMode"
-                      checked={chargeAmountMode === "full"}
-                      onChange={() => setChargeAmountMode("full")}
+                      checked={chargeAmountMode !== "custom"}
+                      onChange={() => setChargeAmountMode(isMonthlyPlan ? "prorate" : "full")}
                       className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
                     />
                     <span className="text-sm text-gray-700 dark:text-gray-300">
-                      Full price — ${getMemberPlanPrice(plans.find(p => p.id === selectedPlanId)).toFixed(2)}
-                    </span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name="chargeAmountMode"
-                      checked={chargeAmountMode === "prorate"}
-                      onChange={() => setChargeAmountMode("prorate")}
-                      className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
-                    />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
-                      Pro-rate for rest of month — ${getProrateAmount(plans.find(p => p.id === selectedPlanId))}
+                      {isMonthlyPlan
+                        ? `${billingMode === "prorate" ? "Pro-rated amount" : "Full price"} — ${
+                            chargeAmountMode !== "custom" && activeQuote
+                              ? `$${Number(activeQuote.amount).toFixed(2)}`
+                              : "see Billing above"
+                          }`
+                        : `Full price — $${getMemberPlanPrice(selectedPlan).toFixed(2)}`}
                     </span>
                   </label>
                   <label className="flex items-center gap-2">
@@ -1548,20 +1810,30 @@ export default function MemberDetail() {
                       type="radio"
                       name="chargeAmountMode"
                       checked={chargeAmountMode === "custom"}
-                      onChange={() => setChargeAmountMode("custom")}
+                      onChange={() => {
+                        setChargeAmountMode("custom");
+                        setChargeTiming("now");
+                      }}
                       className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
                     />
                     <span className="text-sm text-gray-700 dark:text-gray-300">Custom amount</span>
                   </label>
                   {chargeAmountMode === "custom" && (
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      value={customChargeAmount}
-                      onChange={(e) => setCustomChargeAmount(e.target.value)}
-                      placeholder="Enter amount"
-                    />
+                    <>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={customChargeAmount}
+                        onChange={(e) => setCustomChargeAmount(e.target.value)}
+                        placeholder="Enter amount"
+                      />
+                      {isMonthlyPlan && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Only the amount changes — membership dates follow the pro-rate schedule.
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -1691,7 +1963,7 @@ export default function MemberDetail() {
                       {cardEntryMode === "charge" && (
                         <div className="space-y-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
                           <p className="text-xs text-amber-700 dark:text-amber-400">
-                            Card will be charged the plan price immediately.
+                            Card will be charged ${Number(getChargeAmount(selectedPlan)).toFixed(2)} immediately.
                           </p>
                           <Input
                             label="Card Number"
@@ -1828,6 +2100,67 @@ export default function MemberDetail() {
                   )}
                 </div>
               )}
+
+              {/* When to charge (future start date) */}
+              {isFutureStart && (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    When to charge
+                  </label>
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="chargeTiming"
+                        checked={!scheduleCharge}
+                        onChange={() => setChargeTiming("now")}
+                        className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Charge now</span>
+                    </label>
+                    <label className={`flex items-center gap-2 ${canScheduleCharge ? "" : "opacity-50"}`}>
+                      <input
+                        type="radio"
+                        name="chargeTiming"
+                        checked={scheduleCharge}
+                        onChange={() => setChargeTiming("start_date")}
+                        disabled={!canScheduleCharge}
+                        className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">
+                        Charge on start date ({formatIsoDate(startDateIso)})
+                      </span>
+                    </label>
+                  </div>
+                  {!savedCardSelected ? (
+                    <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      Requires a saved card on file
+                    </p>
+                  ) : chargeAmountMode === "custom" ? (
+                    <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      Not available with a custom amount — the scheduled charge uses the quoted price.
+                    </p>
+                  ) : (
+                    <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      If the charge fails on that date the membership will not start and you'll be notified.
+                    </p>
+                  )}
+                  {scheduleCharge && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="scheduleAutopay"
+                        checked={enableAutopay}
+                        onChange={(e) => setEnableAutopay(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                      />
+                      <label htmlFor="scheduleAutopay" className="text-sm text-gray-700 dark:text-gray-300">
+                        Enable auto-renewal with this card
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -1846,6 +2179,10 @@ export default function MemberDetail() {
               loading={addMembershipLoading}
               disabled={(() => {
                 if (!selectedPlanId) return true;
+                if (isMonthlyPlan && startDateInvalid) return true;
+                if (chargeNow && chargeAmountMode === "custom" && !(parseFloat(customChargeAmount) > 0)) return true;
+                // Monthly plans are charged the server quote — wait for it
+                if (chargeNow && isMonthlyPlan && chargeAmountMode !== "custom" && !activeQuote) return true;
                 if (!chargeNow || paymentMethod !== "card") return false;
                 const effectiveUseExisting = useExistingCard && savedCards.length > 0;
                 if (effectiveUseExisting) return !selectedSavedCardId;
@@ -1854,7 +2191,9 @@ export default function MemberDetail() {
                 return false;
               })()}
             >
-              {chargeNow && paymentMethod === "card" && !(useExistingCard && savedCards.length > 0) && cardEntryMode === "charge"
+              {scheduleCharge
+                ? "Schedule Charge"
+                : chargeNow && paymentMethod === "card" && !(useExistingCard && savedCards.length > 0) && cardEntryMode === "charge"
                 ? "Add & Charge Card"
                 : chargeNow ? "Add & Charge" : "Add Membership"}
             </Button>

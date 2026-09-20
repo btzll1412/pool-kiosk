@@ -279,3 +279,15 @@ def test_kiosk_saved_card_charges_the_amount_due_not_list_price(client, db, memb
     assert resp.status_code == 200, resp.text
     card_tx = db.query(Transaction).filter(Transaction.payment_method == PaymentMethod.card).one()
     assert card_tx.amount == D("30.00")
+
+
+def test_admin_can_record_partial_payment_toward_owed_balance(client, db, admin_headers, member_with_pin):
+    member_with_pin.credit_balance = D("-145.00")
+    db.commit()
+    url = f"/api/members/{member_with_pin.id}/credit"
+    partial = client.post(url, headers=admin_headers, json={"amount": "50.00", "notes": "Balance payment"})
+    assert partial.status_code == 200, partial.text
+    db.refresh(member_with_pin)
+    assert member_with_pin.credit_balance == D("-95.00")
+    # Deductions still may not push a balance below zero
+    assert client.post(url, headers=admin_headers, json={"amount": "-10.00", "notes": "x"}).status_code == 400

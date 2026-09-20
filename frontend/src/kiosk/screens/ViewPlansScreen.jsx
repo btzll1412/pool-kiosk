@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Calendar, Info, Repeat, Waves } from "lucide-react";
 import { getPlans } from "../../api/kiosk";
+import { needsBillingChoice } from "../utils/billing";
 
 const typeIcons = {
   single: Waves,
@@ -30,8 +31,13 @@ function PlanDisplayCard({ plan, currency }) {
       </p>
       <p className="mt-2 text-3xl font-extrabold text-gray-900">
         {currency}{Number(plan.price).toFixed(2)}
-        {plan.duration_months && <span className="text-base font-medium text-gray-500">/mo</span>}
+        {plan.duration_months && <span className="text-base font-medium text-gray-500">{plan.duration_months > 1 ? ` / ${plan.duration_months} months` : "/mo"}</span>}
       </p>
+      {needsBillingChoice(plan) && (
+        <p className="mt-1 text-sm font-medium text-gray-500">
+          or pro-rated from {currency}{Number(plan.billing_options.prorate.amount).toFixed(2)}
+        </p>
+      )}
       {plan.description && (
         <p className="mt-2 text-sm text-gray-500">{plan.description}</p>
       )}

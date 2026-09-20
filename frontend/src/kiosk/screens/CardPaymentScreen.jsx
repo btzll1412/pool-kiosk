@@ -3,6 +3,7 @@ import { ArrowLeft, CreditCard, Keyboard, Star, CheckSquare, Square, Delete, XCi
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
 import { getSavedCards, payCard, payCardManual, tokenizeCardFromSwipe } from "../../api/kiosk";
+import { describeBilling, getBillingParams, getPurchasePrice } from "../utils/billing";
 
 // Compact number pad
 function NumberPad({ onKey, onBackspace, onClear }) {
@@ -44,11 +45,11 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
   const pin = context.pin;
   const useCredit = context.useCredit || false;
   const creditAmount = Number(context.creditAmount || 0);
-  const fullPrice = Number(plan?.price || 0);
-  const proratedPrice = plan?.prorated ? Number(plan.prorated.prorated_price) : fullPrice;
-  const originalPrice = proratedPrice;
+  // Monthly-type plans use the billing option the member chose, otherwise the plan price
+  const billing = context.billing;
+  const originalPrice = getPurchasePrice(plan, billing);
   const price = useCredit ? Number(context.adjustedPrice || originalPrice) : originalPrice;
-  const isProrated = plan?.prorated && proratedPrice < fullPrice;
+  const billingSummary = describeBilling(plan, billing, settings.currency);
 
   const [loading, setLoading] = useState(false);
   const [savedCards, setSavedCards] = useState([]);
@@ -167,6 +168,7 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
       const payResult = await payCard(member.member_id, plan.id, pin, {
         saved_card_id: tokenResult.id,
         use_credit: useCredit,
+        ...getBillingParams(plan, billing),
       });
       let message = payResult.message || "Card payment processed successfully.";
       if (payResult.credit_used > 0) {
@@ -194,6 +196,7 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
       const data = await payCard(member.member_id, plan.id, pin, {
         saved_card_id: selectedCardId,
         use_credit: useCredit,
+        ...getBillingParams(plan, billing),
       });
       let message = data.message || "Card payment processed successfully.";
       if (data.credit_used > 0) {
@@ -226,7 +229,7 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
     setLoading(true);
     setPaymentError(null);
     try {
-      const data = await payCardManual(member.member_id, plan.id, pin, cleanCardNumber, expDate, manualCvv, saveCard, useCredit);
+      const data = await payCardManual(member.member_id, plan.id, pin, cleanCardNumber, expDate, manualCvv, saveCard, useCredit, getBillingParams(plan, billing));
       let message = data.message || "Card payment processed successfully.";
       if (data.credit_used > 0) {
         message = `${settings.currency}${Number(data.credit_used).toFixed(2)} credit applied. ` + message;
@@ -272,7 +275,7 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
           <div className="rounded-xl bg-white p-4 text-center shadow-sm ring-1 ring-gray-100">
             <p className="text-xs text-gray-500">{plan.name}</p>
             <p className="text-3xl font-extrabold text-gray-900">{settings.currency}{price.toFixed(2)}</p>
-            {isProrated && <p className="text-xs text-blue-600">Pro-rated: {plan.prorated.days_remaining} days</p>}
+            {billingSummary && <p className="text-xs text-blue-600">{billingSummary}</p>}
             {useCredit && creditAmount > 0 && <p className="text-xs text-emerald-600">-{settings.currency}{creditAmount.toFixed(2)} credit</p>}
           </div>
 

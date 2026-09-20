@@ -4,6 +4,8 @@ export default function MemberCard({ member, hideBalance = false }) {
   const initials = `${member.first_name?.[0] || ""}${member.last_name?.[0] || ""}`.toUpperCase();
   const fullName = `${member.first_name} ${member.last_name}`;
   const membership = member.active_membership;
+  const balance = Number(member.credit_balance || 0);
+  const owes = balance < 0;
 
   let statusColor = "bg-emerald-500";
   let statusText = "Active";
@@ -58,12 +60,12 @@ export default function MemberCard({ member, hideBalance = false }) {
           </div>
         )}
         {!hideBalance && (
-          <div className="flex items-center gap-3 rounded-xl bg-emerald-50 px-4 py-3">
-            <CreditCard className="h-5 w-5 text-emerald-600" />
+          <div className={`flex items-center gap-3 rounded-xl px-4 py-3 ${owes ? "bg-red-50" : "bg-emerald-50"}`}>
+            <CreditCard className={`h-5 w-5 ${owes ? "text-red-600" : "text-emerald-600"}`} />
             <div>
-              <p className="text-xs text-emerald-600">Credit Balance</p>
-              <p className="text-sm font-semibold text-emerald-900">
-                ${Number(member.credit_balance || 0).toFixed(2)}
+              <p className={`text-xs ${owes ? "text-red-600" : "text-emerald-600"}`}>Credit Balance</p>
+              <p className={`text-sm font-semibold ${owes ? "text-red-700" : "text-emerald-900"}`}>
+                {owes ? "-" : ""}${Math.abs(balance).toFixed(2)}
               </p>
             </div>
           </div>

@@ -28,12 +28,14 @@ import EditProfileScreen from "./screens/EditProfileScreen";
 import TerminalPaymentScreen from "./screens/TerminalPaymentScreen";
 import ViewPlansScreen from "./screens/ViewPlansScreen";
 import AddMoneyScreen from "./screens/AddMoneyScreen";
+import BillingOptionsScreen from "./screens/BillingOptionsScreen";
 
 const SCREENS = {
   idle: IdleScreen,
   member: MemberScreen,
   checkin: CheckinScreen,
   payment: PaymentScreen,
+  billing: BillingOptionsScreen,
   cash: CashScreen,
   card: CardPaymentScreen,
   split: SplitPaymentScreen,

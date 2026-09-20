@@ -160,8 +160,19 @@ export default function MembersList() {
       key: "credit_balance",
       label: "Credit",
       render: (row) => (
-        <span className={`font-medium ${Number(row.credit_balance) > 0 ? "text-green-600 dark:text-green-400" : ""}`}>
-          ${Number(row.credit_balance).toFixed(2)}
+        <span className="inline-flex items-center gap-2 whitespace-nowrap">
+          <span
+            className={`font-medium ${
+              Number(row.credit_balance) > 0
+                ? "text-green-600 dark:text-green-400"
+                : Number(row.credit_balance) < 0
+                  ? "text-red-600 dark:text-red-400"
+                  : ""
+            }`}
+          >
+            {Number(row.credit_balance) < 0 ? "-" : ""}${Math.abs(Number(row.credit_balance)).toFixed(2)}
+          </span>
+          {Number(row.credit_balance) < 0 && <Badge color="red">Owes</Badge>}
         </span>
       ),
     },

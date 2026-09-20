@@ -7,6 +7,7 @@ import {
   checkTerminalPaymentStatus,
   cancelTerminalPayment,
 } from "../../api/kiosk";
+import { describeBilling, getBillingParams, getPurchasePrice } from "../utils/billing";
 
 const POLL_INTERVAL_MS = 1500;
 const MAX_POLL_ATTEMPTS = 80; // ~2 minutes
@@ -16,10 +17,11 @@ export default function TerminalPaymentScreen({ member, goTo, context, settings 
   const pin = context.pin;
   const useCredit = context.useCredit || false;
   const creditAmount = Number(context.creditAmount || 0);
-  const fullPrice = Number(plan?.price || 0);
-  const proratedPrice = plan?.prorated ? Number(plan.prorated.prorated_price) : fullPrice;
-  const originalPrice = proratedPrice;
+  // Monthly-type plans use the billing option the member chose, otherwise the plan price
+  const billing = context.billing;
+  const originalPrice = getPurchasePrice(plan, billing);
   const price = useCredit ? Number(context.adjustedPrice || originalPrice) : originalPrice;
+  const billingSummary = describeBilling(plan, billing, settings.currency);
 
   const [status, setStatus] = useState("initiating"); // initiating, waiting, processing, success, failed, cancelled
   const [requestKey, setRequestKey] = useState(null);
@@ -84,7 +86,8 @@ export default function TerminalPaymentScreen({ member, goTo, context, settings 
         plan.id,
         pin,
         false, // save_card
-        useCredit
+        useCredit,
+        getBillingParams(plan, billing)
       );
 
       if (result.error) {
@@ -165,6 +168,9 @@ export default function TerminalPaymentScreen({ member, goTo, context, settings 
             <p className="mt-2 text-4xl font-extrabold text-gray-900">
               {settings.currency}{price.toFixed(2)}
             </p>
+            {billingSummary && (
+              <p className="mt-2 text-sm font-medium text-blue-600">{billingSummary}</p>
+            )}
           </div>
 
           {/* Status display */}

@@ -102,6 +102,10 @@ export const disableCardAutoCharge = (memberId, cardId) =>
 export const toggleUnlimited = (memberId, enabled) =>
   client.post(`/members/${memberId}/unlimited`, null, { params: { enabled } }).then((r) => r.data);
 
+// Charge to account (member may buy now and owe the amount)
+export const updateChargeToAccount = (memberId, enabled, limit) =>
+  client.put(`/members/${memberId}/charge-to-account`, { enabled, limit }).then((r) => r.data);
+
 // Custom pricing
 export const getPriceOverrides = (memberId) =>
   client.get(`/members/${memberId}/price-overrides`).then((r) => r.data);

@@ -138,7 +138,9 @@ def adjust_credit(
     member = get_member(db, member_id)
     before_balance = member.credit_balance
     member.credit_balance += data.amount
-    if member.credit_balance < 0:
+    # A member who owes money (charge to account) has a negative balance: payments toward
+    # it are fine even if they don't clear it. Only a deduction may not push below zero.
+    if member.credit_balance < 0 and data.amount < 0:
         logger.warning("Credit adjustment rejected — would go negative: member=%s, current=$%s, adjustment=$%s", member_id, before_balance, data.amount)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Credit balance cannot go negative")
     tx_type = TransactionType.credit_add if data.amount > 0 else TransactionType.manual_adjustment

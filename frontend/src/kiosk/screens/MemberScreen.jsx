@@ -47,9 +47,9 @@ export default function MemberScreen({ member, goTo, goIdle }) {
 
   function handleAddMoney() {
     if (member.has_pin) {
-      goTo("pin", { afterPin: "addMoney" });
+      goTo("pin", { afterPin: "addMoney", returnTo: null });
     } else {
-      goTo("addMoney");
+      goTo("addMoney", { returnTo: null });
     }
   }
 

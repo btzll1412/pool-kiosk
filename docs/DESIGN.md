@@ -1151,6 +1151,7 @@ The system supports PC/SC compatible NFC/RFID card readers for member card scann
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-09-20 | Billing rework: `billing_service` (full vs prorate-to-billing-day, single charge, quarterly per-month), kiosk billing choice + start date, admin quote + charge on start date, future-start memberships, auto-charge renews on `next_billing_date`; charge to account (per-plan + per-member switches, optional limit, negative `credit_balance`), `POST /kiosk/pay/account`, `POST /kiosk/quote`, `GET /memberships/quote`, `PUT /members/{id}/charge-to-account`; card data moved from URLs to request bodies | — |
 | 2026-09-20 | Backup system rebuilt: schema-driven complete backups (gzip), persistent host volume, transactional lossless restore with pre-restore safety backup, download/restore stored backups, schedule honoured + catch-up, `backup_failed` webhook/email, backups on by default | — |
 | 2026-03-09 | Admin enhancements: Time-of-day filtering on check-ins, active plans column in members list, is_membership_usable() helper for consistent plan counting, Dashboard label fix | — |
 | 2026-03-09 | Audit fixes: DB-backed terminal payments, dynamic NFC script URL, date_of_birth column fix, guest count validation, prorated billing guards, NFC documentation, MM/DD/YYYY date format | — |

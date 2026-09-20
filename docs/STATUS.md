@@ -1103,10 +1103,53 @@ committed partial inserts), and the hourly job ignored `backup_schedule`/`backup
 - **Kiosk never shows "Unlimited"** — unlimited members see a normal "Active" card with their plan (if any).
 - Tests: `tests/test_admin_fixes.py` (suite now 64).
 
-### Next (agreed with owner, pending detail questions)
-- Proration rework (admin-only, prorate to billing day, quarterly = per-month), charge now vs. on start date
-- Per-plan "charge to account" with per-member owed balance and optional limit
+(Follow-up work delivered in "Billing Rework + Charge to Account" below.)
 
 ---
 
-## Last Updated: 2026-09-20 (Admin Fixes Batch 1)
+## Billing Rework + Charge to Account (2026-09-20)
+
+Owner-requested changes (notes review batch 2). Single source of truth: `services/billing_service.py`.
+
+### Billing model
+- **Two billing modes** for monthly-type plans (incl. quarterly via `duration_months`):
+  - `full` — full price; period runs N months from the start date; billing day = start date's day (max 28).
+  - `prorate` — align to the billing day (default the 1st, per-member override supported). Partial first
+    month by the day + remaining months in full, **one charge now**. $360 quarterly on 09/15 → $304.00,
+    covers 09/15–11/30, next charge 12/01.
+- `valid_until` is always the last valid day = `next_billing_date - 1`.
+- **Kiosk** (mid-cycle purchase of a monthly-type plan): choose "Start today — full price" or
+  "Choose my start date — pro-rated" (date picker, up to ~2 months ahead, live `POST /kiosk/quote`).
+  All pay endpoints take `billing_mode` + `start_date`; the server computes the amount.
+- **Admin Add Membership**: server-side quote (`GET /memberships/quote`), prorate/full/custom, and for a
+  future start date with a saved card: **charge now or on the start date** (`charge_timing`). Charge on start
+  date schedules a one-time auto-charge (`saved_cards.charge_once`); if it fails the membership does not start
+  and `auto_charge_failed` fires (retries daily).
+- A membership with a **future start date** cannot check in before that date and no longer deactivates the
+  member's current membership.
+
+### Bugs fixed along the way
+- Quarterly plans were prorated as if the whole price covered one month ($192 for 3 months mid-month) and
+  prorated purchases still got a full period from the purchase date.
+- Auto-charge re-billed every month regardless of plan length (quarterly would be charged monthly);
+  it now renews on `membership.next_billing_date`.
+- Kiosk saved-card payments charged list price, ignoring applied credit, proration and custom member prices.
+- Kiosk terminal and split payments ignored custom member prices; admin "record card" logged list price.
+
+### Charge to account
+- `plans.allow_charge_to_account` + `members.charge_to_account_enabled` (both required, both off by default),
+  optional `members.charge_to_account_limit` (null = no limit). Admin: plan modal toggle, member detail switch + limit
+  (`PUT /members/{id}/charge-to-account`).
+- Kiosk "Put It On My Account" → `POST /kiosk/pay/account`: membership created normally, `credit_balance` goes
+  negative (shown as a minus on the same balance line; on the kiosk only inside the member's account).
+  Recorded as a `payment` transaction with method `credit`. Never auto-renews (auto-charge is card-only).
+- Paying it off: kiosk "Add Money / Pay Balance" now available to every member (`/kiosk/add-credit`), or admin
+  credit adjustment. The balance stays until paid — nothing is deducted automatically.
+- Migration `o5p6q7r8s9t0`. Tests: `test_billing.py` (40), `test_billing_flows.py` (16) — suite 120.
+
+### Known follow-ups
+- Kiosk pay-off is the cash honor-system top-up; card top-up at the kiosk is not built yet.
+
+---
+
+## Last Updated: 2026-09-20 (Billing Rework + Charge to Account)

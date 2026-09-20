@@ -1,4 +1,4 @@
-import { ArrowLeft, CreditCard, ShoppingBag, User, Waves } from "lucide-react";
+import { ArrowLeft, CreditCard, DollarSign, ShoppingBag, User, Waves } from "lucide-react";
 import MemberCard from "../components/MemberCard";
 import KioskButton from "../components/KioskButton";
 
@@ -6,6 +6,7 @@ export default function ManageAccountScreen({ member, goTo, context }) {
   if (!member) return null;
 
   const membership = member.active_membership;
+  const owesBalance = Number(member.credit_balance || 0) < 0;
 
   return (
     <div className="flex h-full flex-col bg-gray-50">
@@ -86,6 +87,16 @@ export default function ManageAccountScreen({ member, goTo, context }) {
               className="w-full"
             >
               Purchase Plan
+            </KioskButton>
+
+            <KioskButton
+              variant={owesBalance ? "primary" : "secondary"}
+              size="lg"
+              icon={DollarSign}
+              onClick={() => goTo("addMoney", { pin: context.pin, returnTo: "manage" })}
+              className="w-full"
+            >
+              {owesBalance ? "Pay Balance" : "Add Money"}
             </KioskButton>
           </div>
         </div>
