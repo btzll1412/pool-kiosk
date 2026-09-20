@@ -37,6 +37,8 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - backend_logs:/app/logs
+      # Backups live on the host so they survive container rebuilds
+      - ${BACKUP_DIR:-./backups}:/backups
     depends_on:
       postgres:
         condition: service_healthy

@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Calendar, Check, Clock, Database, Download, Eye, EyeOff, HardDrive, Monitor, Play, RefreshCw, Save, Send, Server, Settings2, CreditCard, Bell, Upload, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { getSettings, updateSettings, testWebhook, testPaymentConnection, testEmail, testSipCall, uploadKioskBackground, revealSetting } from "../../../api/settings";
-import { exportSystem, importSystem, runBackupNow, getBackupStatus, listBackups, testBackupConnection } from "../../../api/backup";
+import { exportSystem, importSystem, runBackupNow, getBackupStatus, listBackups, testBackupConnection, downloadBackup, restoreStoredBackup } from "../../../api/backup";
 import Button from "../../../shared/Button";
 import Card, { CardHeader } from "../../../shared/Card";
+import ConfirmDialog from "../../../shared/ConfirmDialog";
 import PageHeader from "../../../shared/PageHeader";
 import { SkeletonLine } from "../../../shared/Skeleton";
 
@@ -340,6 +341,7 @@ const settingGroups = [
       { key: "webhook_auto_charge_success", label: "Auto-Charge Success", type: "webhook", eventType: "auto_charge_success", helpText: "Fired after a successful recurring charge" },
       { key: "webhook_auto_charge_failed", label: "Auto-Charge Failed", type: "webhook", eventType: "auto_charge_failed", helpText: "Fired when a recurring charge fails" },
       { key: "webhook_daily_summary", label: "Daily Summary", type: "webhook", eventType: "daily_summary", helpText: "Fired daily at 21:00 with the day's stats" },
+      { key: "webhook_backup_failed", label: "Backup Failed", type: "webhook", eventType: "backup_failed", helpText: "Fired when an automatic or manual backup fails" },
       { key: "low_balance_threshold", label: "Low Balance Threshold ($)", type: "number", helpText: "Balance below this triggers the low_balance webhook" },
       { key: "membership_expiry_warning_days", label: "Expiry Warning Days", type: "number", helpText: "Days before expiry to fire membership_expiring webhook" },
     ],
@@ -786,10 +788,47 @@ function AutomaticBackupSection({ settings, onSettingsChange }) {
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [runningBackup, setRunningBackup] = useState(false);
+  const [downloading, setDownloading] = useState(null);
+  const [restoreTarget, setRestoreTarget] = useState(null);
+  const [restoring, setRestoring] = useState(false);
 
   useEffect(() => {
     loadStatus();
   }, []);
+
+  const handleDownload = async (filename) => {
+    setDownloading(filename);
+    try {
+      const blob = await downloadBackup(filename);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error("Download failed");
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!restoreTarget) return;
+    setRestoring(true);
+    try {
+      const result = await restoreStoredBackup(restoreTarget);
+      toast.success(`System restored: ${result.stats.members} members, ${result.stats.transactions} transactions`);
+      setRestoreTarget(null);
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Restore failed");
+    } finally {
+      setRestoring(false);
+    }
+  };
 
   const loadStatus = async () => {
     try {
@@ -841,9 +880,20 @@ function AutomaticBackupSection({ settings, onSettingsChange }) {
     <Card>
       <CardHeader
         title="Automatic Backups"
-        description="Configure scheduled backups to local or remote storage"
+        description="Scheduled backups are always kept on this server, and optionally copied to remote storage"
       />
       <div className="space-y-6">
+        {status?.stale && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950">
+            <div className="flex gap-3">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
+              <p className="text-sm text-red-700 dark:text-red-300">
+                <strong>Backups are overdue.</strong> No successful backup has completed recently — check the
+                status below and run a backup now.
+              </p>
+            </div>
+          </div>
+        )}
         {/* Enable/Disable */}
         <div className="flex items-center justify-between">
           <div>
@@ -928,11 +978,14 @@ function AutomaticBackupSection({ settings, onSettingsChange }) {
         {/* Storage Type */}
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Storage Location
+            Off-Site Copy
           </label>
+          <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+            A remote copy protects your data if this server is lost
+          </p>
           <div className="grid gap-2 sm:grid-cols-3">
             {[
-              { value: "local", label: "Local Path", icon: HardDrive },
+              { value: "local", label: "Local Only", icon: HardDrive },
               { value: "s3", label: "S3 / MinIO", icon: Server },
               { value: "sftp", label: "SFTP Server", icon: Server },
             ].map((opt) => (
@@ -1160,26 +1213,64 @@ function AutomaticBackupSection({ settings, onSettingsChange }) {
             ) : (
               <p className="text-sm text-gray-500 dark:text-gray-400">No backups yet</p>
             )}
+            {status.next_run && (
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                <Calendar className="inline h-3 w-3 mr-1" />
+                Next backup: {new Date(status.next_run).toLocaleString()}
+              </p>
+            )}
           </div>
         )}
 
-        {/* Recent Backups */}
+        {/* Stored Backups */}
         {backups.length > 0 && (
           <div>
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Recent Backups</h4>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {backups.slice(0, 5).map((backup, i) => (
-                <div key={i} className="flex items-center justify-between text-sm rounded-lg bg-gray-50 dark:bg-gray-900 px-3 py-2">
-                  <span className="font-mono text-gray-700 dark:text-gray-300">{backup.filename}</span>
-                  <span className="text-gray-500 dark:text-gray-400">
-                    {(backup.size / 1024).toFixed(1)} KB
-                  </span>
+            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Stored Backups</h4>
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {backups.map((backup) => (
+                <div
+                  key={`${backup.storage}-${backup.filename}`}
+                  className="flex flex-wrap items-center justify-between gap-2 text-sm rounded-lg bg-gray-50 dark:bg-gray-900 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="font-mono text-gray-700 dark:text-gray-300 truncate">{backup.filename}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {new Date(backup.created).toLocaleString()} · {(backup.size / 1024).toFixed(1)} KB ·{" "}
+                      {backup.storage === "local" ? "This server" : backup.storage.toUpperCase()}
+                    </p>
+                  </div>
+                  {backup.storage === "local" && (
+                    <div className="flex gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        icon={Download}
+                        onClick={() => handleDownload(backup.filename)}
+                        loading={downloading === backup.filename}
+                      >
+                        Download
+                      </Button>
+                      <Button variant="secondary" size="sm" icon={Upload} onClick={() => setRestoreTarget(backup.filename)}>
+                        Restore
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={restoreTarget !== null}
+        onClose={() => setRestoreTarget(null)}
+        onConfirm={handleRestore}
+        title="Confirm System Restore"
+        message={`Restore the system from ${restoreTarget}? This replaces all current data. A safety backup of the current data is taken first.`}
+        confirmLabel="Restore System"
+        loading={restoring}
+      />
     </Card>
   );
 }
@@ -1267,8 +1358,8 @@ function BackupRestoreSection() {
               <div>
                 <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Warning</p>
                 <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
-                  Importing a backup will <strong>replace all existing data</strong>. This cannot be undone.
-                  Make sure to export a backup of the current system first.
+                  Importing a backup will <strong>replace all existing data</strong>. A safety backup of the
+                  current data is saved automatically first, and a failed import changes nothing.
                 </p>
               </div>
             </div>
@@ -1277,7 +1368,7 @@ function BackupRestoreSection() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".json"
+            accept=".json,.gz"
             onChange={handleFileSelect}
             className="hidden"
           />

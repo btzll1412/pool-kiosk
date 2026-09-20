@@ -35,6 +35,7 @@ DEFAULT_SETTINGS = {
     "webhook_auto_charge_success": "",
     "webhook_auto_charge_failed": "",
     "webhook_daily_summary": "",
+    "webhook_backup_failed": "",
     # Webhook thresholds
     "low_balance_threshold": "5.00",
     "membership_expiry_warning_days": "7",
@@ -94,7 +95,7 @@ DEFAULT_SETTINGS = {
     "kiosk_bg_image_mode": "cover",
     "kiosk_ui_scale": "normal",
     # Backup settings
-    "backup_enabled": "false",
+    "backup_enabled": "true",
     "backup_schedule": "daily",
     "backup_hour": "2",
     "backup_retention_count": "7",
@@ -116,6 +117,7 @@ DEFAULT_SETTINGS = {
     "backup_sftp_key_path": "",
     # Last backup info
     "backup_last_run": "",
+    "backup_last_success": "",
     "backup_last_status": "",
     "backup_last_location": "",
 }
@@ -131,6 +133,11 @@ SENSITIVE_KEYS = {
     "sip_password", "sip_fusionpbx_api_key",
     "backup_s3_access_key", "backup_s3_secret_key",
     "backup_sftp_password",
+}
+
+# Written by the system only — never overwritten by a settings save
+SYSTEM_MANAGED_KEYS = {
+    "backup_last_run", "backup_last_success", "backup_last_status", "backup_last_location",
 }
 
 
@@ -183,6 +190,8 @@ def get_processor_config(db: Session, processor: str) -> dict[str, str]:
 
 def update_settings(db: Session, updates: dict[str, str]) -> dict[str, str]:
     for key, value in updates.items():
+        if key in SYSTEM_MANAGED_KEYS:
+            continue
         setting = db.query(Setting).filter(Setting.key == key).first()
         if setting:
             setting.value = value

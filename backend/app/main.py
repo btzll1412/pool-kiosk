@@ -193,15 +193,14 @@ def run_daily_summary():
 
 
 def run_scheduled_backup():
-    """Scheduled job to run automatic backups based on settings."""
+    """Hourly tick — runs a backup when one is due per the backup settings."""
+    from app.services.backup_service import run_scheduled_backup_if_due
+
     db: Session = SessionLocal()
     try:
-        backup_enabled = get_setting(db, "backup_enabled", "false").lower() == "true"
-        if not backup_enabled:
+        result = run_scheduled_backup_if_due(db)
+        if result is None:
             return
-
-        from app.services.backup_service import run_backup
-        result = run_backup(db)
         if result["success"]:
             logger.info("Scheduled backup completed: %s", result.get("location"))
         else:
@@ -225,7 +224,7 @@ async def lifespan(app: FastAPI):
         scheduler.add_job(run_auto_charge_job, "cron", hour=6, minute=0, id="auto_charge_daily")
         scheduler.add_job(run_membership_expiry_check, "cron", hour=7, minute=0, id="membership_expiry_check")
         scheduler.add_job(run_daily_summary, "cron", hour=21, minute=0, id="daily_summary")
-        # Run backup check every hour - the job itself checks if it's time based on settings
+        # Hourly tick - the job decides whether a backup is due based on settings
         scheduler.add_job(run_scheduled_backup, "cron", minute=0, id="scheduled_backup")
         scheduler.start()
         logger.info(

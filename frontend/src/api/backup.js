@@ -33,3 +33,15 @@ export async function testBackupConnection() {
   const { data } = await client.post("/backup/test");
   return data;
 }
+
+export async function downloadBackup(filename) {
+  const { data } = await client.get(`/backup/download/${encodeURIComponent(filename)}`, {
+    responseType: "blob",
+  });
+  return data;
+}
+
+export async function restoreStoredBackup(filename) {
+  const { data } = await client.post(`/backup/restore/${encodeURIComponent(filename)}`);
+  return data;
+}

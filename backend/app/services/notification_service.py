@@ -20,6 +20,7 @@ class WebhookEvent(str, Enum):
     auto_charge_success = "auto_charge_success"
     auto_charge_failed = "auto_charge_failed"
     daily_summary = "daily_summary"
+    backup_failed = "backup_failed"
 
 
 WEBHOOK_SETTINGS_MAP: dict[WebhookEvent, str] = {
@@ -31,6 +32,7 @@ WEBHOOK_SETTINGS_MAP: dict[WebhookEvent, str] = {
     WebhookEvent.auto_charge_success: "webhook_auto_charge_success",
     WebhookEvent.auto_charge_failed: "webhook_auto_charge_failed",
     WebhookEvent.daily_summary: "webhook_daily_summary",
+    WebhookEvent.backup_failed: "webhook_backup_failed",
 }
 
 
@@ -85,6 +87,7 @@ def fire_test_webhook(db: Session, event: WebhookEvent) -> bool:
         WebhookEvent.auto_charge_success: {"member_name": "Test Member", "member_id": "00000000-0000-0000-0000-000000000000", "plan_name": "Monthly Pass", "amount": "25.00", "card_last4": "4242"},
         WebhookEvent.auto_charge_failed: {"member_name": "Test Member", "member_id": "00000000-0000-0000-0000-000000000000", "plan_name": "Monthly Pass", "amount": "25.00", "card_last4": "4242", "reason": "Test failure"},
         WebhookEvent.daily_summary: {"pool_name": "Test Pool", "date": str(local_now.date()), "total_checkins_today": 42, "unique_members_today": 30, "revenue_today": "350.00", "active_memberships": 120, "guests_today": 5},
+        WebhookEvent.backup_failed: {"pool_name": "Test Pool", "error": "Test failure"},
     }
     return fire_webhook(db, event, test_data.get(event, {}))
 
@@ -149,6 +152,13 @@ def notify_auto_charge_failed(db: Session, member_name: str, member_id: str, pla
 
 def notify_daily_summary(db: Session, data: dict) -> bool:
     return fire_webhook(db, WebhookEvent.daily_summary, data)
+
+
+def notify_backup_failed(db: Session, error: str) -> bool:
+    return fire_webhook(db, WebhookEvent.backup_failed, {
+        "pool_name": get_setting(db, "pool_name", "Pool"),
+        "error": error,
+    })
 
 
 # --- Backward-compatible wrapper ---

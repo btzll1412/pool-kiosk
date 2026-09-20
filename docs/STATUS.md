@@ -1044,4 +1044,48 @@ All 10 services, 11 routers, and 2 payment adapters now use consistent structure
 
 ---
 
-## Last Updated: 2026-06-19 (Custom Pricing & Unlimited Memberships)
+## Backup System Rebuild (2026-09-20)
+
+Audit of production found the original backup feature unusable: disabled, archives written
+inside the container (lost on rebuild), export hard-coded to an old table/column list (missing
+`member_price_overrides`, `pending_terminal_payments`, schedules in manual export, and every
+column added since Phase 9), restore was lossy **and non-atomic** (deleted all data, then
+committed partial inserts), and the hourly job ignored `backup_schedule`/`backup_hour`.
+
+### What changed
+- **Schema-driven backups** — `create_backup_data()` walks `Base.metadata.sorted_tables`, so
+  every table and column is always included; new models need no backup changes. Format v2.0,
+  gzip-compressed, includes Alembic revision and per-table row counts. Archive is decoded and
+  validated before it is stored.
+- **Persistent storage** — `docker-compose.yml` bind-mounts `${BACKUP_DIR:-./backups}` to
+  `/backups`. A local copy is always kept; S3/SFTP is an additional off-site copy. Atomic writes.
+- **Transactional, lossless restore** — generic type coercion from column types, handles
+  self-referencing FKs (`transactions.related_transaction_id`), restores legacy v1 exports
+  (missing columns fall back to defaults). Any failure rolls back — existing data untouched.
+  A `-pre-restore` safety backup is always taken first. Backup run history survives a restore.
+- **Stored backups UI** — list (local + remote), download, and one-click restore; overdue
+  warning banner; next-run time; import accepts `.json` and `.json.gz`.
+- **Scheduling fixed** — `is_backup_due()` honours hourly/daily/weekly + hour, with catch-up
+  when the last success is overdue. Times use the configured system timezone.
+- **Failure alerts** — new `backup_failed` webhook event (+ Settings field) and email to active
+  admins. `backup_last_*` keys are system-managed and can no longer be clobbered by a settings save.
+- **On by default** — `backup_enabled` defaults to `"true"` for new installs.
+- SFTP listing implemented; S3 listing paginated; filename validation blocks path traversal.
+- Router is thin (logic in `services/backup_service.py`), Pydantic schemas in `schemas/backup.py`,
+  activity log entries for `backup_run` and `system_restore`.
+
+### Files
+- `backend/app/services/backup_service.py` (rewritten), `backend/app/routers/backup.py` (rewritten)
+- `backend/app/schemas/backup.py` (new), `backend/tests/test_backup.py` (new — 21 tests, suite now 59)
+- `backend/app/main.py`, `services/settings_service.py`, `services/notification_service.py`
+- `frontend/src/api/backup.js`, `frontend/src/admin/pages/Settings/Settings.jsx`
+- `docker-compose.yml`, `.env.example`, `.gitignore`
+
+### Still recommended (outside the app)
+- Configure an off-site copy (S3/MinIO or SFTP) in Settings → Backup — local backups do not
+  survive loss of the host.
+- Add a Proxmox vzdump job for the LXC.
+
+---
+
+## Last Updated: 2026-09-20 (Backup System Rebuild)

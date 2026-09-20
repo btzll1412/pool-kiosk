@@ -508,8 +508,25 @@ pool-management/
 
 ### Backup (admin auth)
 
-- `GET /api/backup/export` — Export full system data as JSON
-- `POST /api/backup/import` — Import system data from JSON file (replaces all data)
+Backups are schema-driven (every table/column on `Base.metadata`), stored as gzip JSON
+archives (`pool-backup-YYYYMMDD-HHMMSS[-label].json.gz`). Every backup is written to the local
+backup directory (`/backups`, bind-mounted from the host via `BACKUP_DIR`, default `./backups`)
+and additionally uploaded to S3/SFTP when configured. Restores run in a single transaction
+(failure = rollback, nothing changed) and always take a `-pre-restore` safety backup first.
+
+- `GET /api/backup/export` — Download full system data as JSON
+- `POST /api/backup/import` — Restore from an uploaded `.json` / `.json.gz` backup (replaces all data; accepts legacy v1 exports)
+- `POST /api/backup/run` — Run a backup now
+- `GET /api/backup/status` — Config, last run/success, next run, `stale` health flag
+- `GET /api/backup/list` — Stored backups (local + remote)
+- `GET /api/backup/download/{filename}` — Download a stored local backup
+- `POST /api/backup/restore/{filename}` — Restore from a stored local backup
+- `POST /api/backup/test` — Test backup storage
+
+**Scheduling:** an hourly APScheduler tick calls `run_scheduled_backup_if_due()`, which honours
+`backup_schedule`/`backup_hour` and runs a catch-up backup when the last success is overdue
+(e.g. server was off at the scheduled time). Failures fire the `backup_failed` webhook and email
+all active admins with an email address.
 
 ### Guests (admin auth)
 
@@ -616,11 +633,12 @@ pool-management/
 | staff_exit_pin | "0000" | PIN to exit kiosk mode |
 | senior_age_threshold | "65" | Age to qualify for senior discounts |
 | **Backup** | | |
-| backup_enabled | "false" | Enable automatic backups |
+| backup_enabled | "true" | Enable automatic backups |
 | backup_schedule | "daily" | Backup schedule: hourly, daily, weekly |
 | backup_hour | "2" | Hour to run daily backups (0-23) |
 | backup_retention_count | "7" | Number of backups to keep |
-| backup_remote_type | "local" | Storage: local, s3, sftp |
+| backup_remote_type | "local" | Off-site copy: local (none), s3, sftp — a local copy is always kept |
+| webhook_backup_failed | "" | Webhook fired when a backup fails |
 
 ---
 
@@ -1133,6 +1151,7 @@ The system supports PC/SC compatible NFC/RFID card readers for member card scann
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-09-20 | Backup system rebuilt: schema-driven complete backups (gzip), persistent host volume, transactional lossless restore with pre-restore safety backup, download/restore stored backups, schedule honoured + catch-up, `backup_failed` webhook/email, backups on by default | — |
 | 2026-03-09 | Admin enhancements: Time-of-day filtering on check-ins, active plans column in members list, is_membership_usable() helper for consistent plan counting, Dashboard label fix | — |
 | 2026-03-09 | Audit fixes: DB-backed terminal payments, dynamic NFC script URL, date_of_birth column fix, guest count validation, prorated billing guards, NFC documentation, MM/DD/YYYY date format | — |
 | 2026-02-25 | Added USAePay terminal payment support (Payment Engine Cloud API, Castles MP200), terminal kiosk screen, terminal API endpoints | — |
