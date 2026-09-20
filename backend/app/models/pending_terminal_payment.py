@@ -3,10 +3,10 @@ Pending Terminal Payment model for tracking in-progress terminal payments.
 Replaces in-memory dict to support multi-worker deployments.
 """
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, Numeric, String, ForeignKey
+from sqlalchemy import Boolean, Date, DateTime, Numeric, String, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,6 +22,8 @@ class PendingTerminalPayment(Base):
     plan_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("plans.id"))
     credit_used: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
     save_card: Mapped[bool] = mapped_column(Boolean, default=False)
+    billing_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)  # "full" | "prorate"
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime)  # Auto-cleanup after expiry

@@ -27,5 +27,7 @@ class Plan(Base):
     duration_months: Mapped[int | None] = mapped_column(Integer)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_senior_plan: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Members whose account also allows it may buy this plan "on account" (balance goes negative)
+    allow_charge_to_account: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     display_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

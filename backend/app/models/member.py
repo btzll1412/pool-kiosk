@@ -24,6 +24,9 @@ class Member(Base):
     credit_balance: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
     notes: Mapped[str | None] = mapped_column(Text)
     is_unlimited: Mapped[bool] = mapped_column(Boolean, default=False)
+    charge_to_account_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Most this member may owe; null = no limit
+    charge_to_account_limit: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -13,6 +13,7 @@ from app.models.membership import Membership
 from app.models.membership_freeze import MembershipFreeze
 from app.models.plan import Plan, PlanType
 from app.services.activity_service import log_activity
+from app.services.billing_service import BillingMode, quote_membership
 from app.services.settings_service import get_setting
 
 
@@ -57,23 +58,27 @@ def create_membership(db: Session, member_id: uuid.UUID, plan_id: uuid.UUID, sta
                 )
                 return existing
 
-    # Prevent multiple active monthly memberships
-    if plan.plan_type == PlanType.monthly:
+    effective_start = start_date or today
+
+    # Only one monthly membership runs at a time. A membership that starts in the
+    # future leaves the current one alone — it keeps covering the days until then.
+    if plan.plan_type == PlanType.monthly and effective_start <= today:
         existing_monthly = (
             db.query(Membership)
             .filter(
                 Membership.member_id == member_id,
                 Membership.plan_type == PlanType.monthly,
                 Membership.is_active.is_(True),
+                (Membership.valid_from.is_(None)) | (Membership.valid_from <= today),
             )
-            .first()
+            .all()
         )
-        if existing_monthly:
-            # Deactivate the old monthly membership before creating a new one
-            existing_monthly.is_active = False
-            db.flush()
+        for old in existing_monthly:
+            old.is_active = False
             logger.info("Deactivated existing monthly membership %s before creating new one for member %s",
-                       existing_monthly.id, member_id)
+                        old.id, member_id)
+        if existing_monthly:
+            db.flush()
 
     membership = Membership(
         member_id=member_id,
@@ -85,27 +90,18 @@ def create_membership(db: Session, member_id: uuid.UUID, plan_id: uuid.UUID, sta
         membership.swims_total = plan.swim_count
         membership.swims_used = 0
     elif plan.plan_type == PlanType.monthly:
-        effective_start = start_date or today
-        membership.valid_from = effective_start
-        duration_months = plan.duration_months or 1
-
-        # Calculate valid_until based on start date + duration months
-        # Use billing_day to align expiry (default: same day of month as start)
-        anchor_day = billing_day or effective_start.day
-        # Clamp to 28 to avoid issues with short months
-        anchor_day = min(anchor_day, 28)
-
-        year = effective_start.year
-        month = effective_start.month + duration_months
-        while month > 12:
-            month -= 12
-            year += 1
-        # Safety: clamp to actual last day of target month
-        last_day = monthrange(year, month)[1]
-        membership.valid_until = date(year, month, min(anchor_day, last_day))
-
-        # Next billing date = expiry date (so charge and renewal are in sync)
-        membership.next_billing_date = membership.valid_until
+        # Dates come from the billing service: an explicit billing day aligns the
+        # period to it (prorated period), otherwise billing follows the start date.
+        period = quote_membership(
+            plan.price,
+            plan.duration_months,
+            effective_start,
+            BillingMode.prorate if billing_day else BillingMode.full,
+            billing_day,
+        )
+        membership.valid_from = period.start_date
+        membership.valid_until = period.valid_until
+        membership.next_billing_date = period.next_billing_date
     elif plan.plan_type == PlanType.single:
         membership.swims_total = 1
         membership.swims_used = 0

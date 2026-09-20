@@ -7,6 +7,13 @@ from pydantic import BaseModel
 from app.models.checkin import CheckinType
 from app.models.plan import PlanType
 from app.models.transaction import PaymentMethod
+from app.services.billing_service import BillingMode
+
+
+class BillingChoice(BaseModel):
+    """How a monthly-type plan is billed: full price from the start date, or prorated to the billing day."""
+    billing_mode: BillingMode = BillingMode.full
+    start_date: date | None = None  # default: today
 
 
 class ScanRequest(BaseModel):
@@ -29,6 +36,8 @@ class MemberStatus(BaseModel):
     date_of_birth: date | None = None
     is_senior: bool = False
     is_unlimited: bool = False
+    charge_to_account_enabled: bool = False
+    charge_to_account_limit: Decimal | None = None
     active_membership: "ActiveMembershipInfo | None" = None
     is_frozen: bool = False
     frozen_until: date | None = None
@@ -54,7 +63,7 @@ class KioskCheckinResponse(BaseModel):
     message: str
 
 
-class CashPaymentRequest(BaseModel):
+class CashPaymentRequest(BillingChoice):
     member_id: uuid.UUID
     plan_id: uuid.UUID
     amount_tendered: Decimal
@@ -63,7 +72,7 @@ class CashPaymentRequest(BaseModel):
     use_credit: bool = False
 
 
-class CardPaymentRequest(BaseModel):
+class CardPaymentRequest(BillingChoice):
     member_id: uuid.UUID
     plan_id: uuid.UUID
     saved_card_id: uuid.UUID | None = None
@@ -75,7 +84,7 @@ class CardPaymentRequest(BaseModel):
     use_credit: bool = False
 
 
-class SplitPaymentRequest(BaseModel):
+class SplitPaymentRequest(BillingChoice):
     member_id: uuid.UUID
     plan_id: uuid.UUID
     cash_amount: Decimal
@@ -83,7 +92,7 @@ class SplitPaymentRequest(BaseModel):
     saved_card_id: uuid.UUID | None = None
 
 
-class CreditPaymentRequest(BaseModel):
+class CreditPaymentRequest(BillingChoice):
     member_id: uuid.UUID
     plan_id: uuid.UUID
     pin: str
@@ -268,7 +277,7 @@ class KioskUpdateProfileRequest(BaseModel):
 # ==================== TERMINAL PAYMENT SCHEMAS ====================
 
 
-class TerminalPaymentRequest(BaseModel):
+class TerminalPaymentRequest(BillingChoice):
     """Request to initiate a payment on a physical card terminal."""
     member_id: uuid.UUID
     plan_id: uuid.UUID
@@ -307,7 +316,7 @@ class TerminalInfoResponse(BaseModel):
 # ==================== MANUAL CARD ENTRY SCHEMAS ====================
 
 
-class ManualCardPaymentRequest(BaseModel):
+class ManualCardPaymentRequest(BillingChoice):
     """Request to process a card-not-present payment with manual card entry."""
     member_id: uuid.UUID
     plan_id: uuid.UUID
@@ -327,3 +336,16 @@ class AdminChargeCardRequest(BaseModel):
     amount: Decimal  # Amount to charge
     description: str | None = None  # Optional transaction description
     save_card: bool = False  # Whether to save the card for future use
+
+
+class AccountPaymentRequest(BillingChoice):
+    """Buy a plan "on account" — the price is added to what the member owes."""
+    member_id: uuid.UUID
+    plan_id: uuid.UUID
+    pin: str
+
+
+class KioskQuoteRequest(BillingChoice):
+    member_id: uuid.UUID
+    plan_id: uuid.UUID
+

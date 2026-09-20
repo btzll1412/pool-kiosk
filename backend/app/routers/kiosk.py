@@ -24,6 +24,8 @@ from app.models.transaction import PaymentMethod, Transaction, TransactionType
 from datetime import timedelta
 from datetime import datetime
 from app.schemas.kiosk import (
+    AccountPaymentRequest,
+    KioskQuoteRequest,
     AutoChargeDisableRequest,
     AutoChargeRequest,
     CardPaymentRequest,
@@ -72,6 +74,7 @@ from app.services.membership_service import create_membership, freeze_membership
 from app.services.notification_service import notify_checkin, send_change_notification
 from app.services.payment_service import get_payment_adapter, process_card_payment, process_cash_payment
 from app.services.auth_service import hash_pin
+from app.services.billing_service import DEFAULT_BILLING_DAY, BillingMode, quote_membership, quote_to_dict
 from app.services.member_service import assign_card
 from app.services.pin_service import verify_member_pin
 from app.services.rate_limit import limiter
@@ -391,45 +394,42 @@ def kiosk_checkin(data: KioskCheckinRequest, request: Request, db: Session = Dep
 
 
 
-def calculate_prorated_price(plan_price: Decimal, duration_months: int = 1, local_today: date | None = None) -> dict:
-    """Calculate pro-rated price for remaining days in current month."""
-    today = local_today if local_today is not None else date.today()
-    days_in_month = monthrange(today.year, today.month)[1]
-    days_remaining = days_in_month - today.day + 1  # Include today
-
-    # Guard against invalid duration_months
-    if not duration_months or duration_months <= 0:
-        duration_months = 1
-
-    # Guard against edge cases (should never happen but prevents division by zero)
-    if days_in_month <= 0:
-        return {
-            "prorated_price": str(plan_price),
-            "days_remaining": 0,
-            "days_in_month": 30,
-            "full_price": str(plan_price),
-        }
-
-    # Monthly rate per day
-    daily_rate = plan_price / Decimal(days_in_month)
-    prorated_amount = (daily_rate * Decimal(days_remaining)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-    return {
-        "prorated_price": str(prorated_amount),
-        "days_remaining": days_remaining,
-        "days_in_month": days_in_month,
-        "full_price": str(plan_price),
-    }
+KIOSK_MAX_START_DAYS_AHEAD = 62
 
 
+def resolve_purchase(
+    db: Session,
+    plan: Plan,
+    member_id: uuid.UUID,
+    billing_mode: BillingMode = BillingMode.full,
+    start_date: date | None = None,
+) -> tuple[Decimal, dict]:
+    """Price and membership dates for a kiosk purchase.
 
-def get_plan_effective_price(plan, local_today: date | None = None, member_price: "Decimal | None" = None) -> Decimal:
-    """Get the effective price for a plan. Uses member_price override if provided."""
-    price = member_price if member_price is not None else plan.price
-    if plan.plan_type.value == "monthly":
-        prorated = calculate_prorated_price(price, plan.duration_months or 1, local_today)
-        return Decimal(prorated["prorated_price"])
-    return price
+    Returns (amount_due, create_membership kwargs). Monthly-type plans are either
+    full price starting on the chosen date (billing follows that date), or
+    prorated to the standard billing day. Other plans are always the plan price.
+    """
+    from app.services.pricing_service import get_member_price
+
+    price = get_member_price(db, member_id, plan.id)
+    if plan.plan_type != PlanType.monthly:
+        return price, {}
+
+    today = _get_local_today(db)
+    start = start_date or today
+    if start < today or start > today + timedelta(days=KIOSK_MAX_START_DAYS_AHEAD):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Start date must be between today and two months from now",
+        )
+
+    quote = quote_membership(price, plan.duration_months, start, billing_mode, DEFAULT_BILLING_DAY)
+    kwargs = {"start_date": start}
+    if billing_mode == BillingMode.prorate:
+        kwargs["billing_day"] = DEFAULT_BILLING_DAY
+    return quote.amount, kwargs
+
 
 @router.get("/plans")
 @limiter.limit("30/minute")
@@ -448,9 +448,11 @@ def get_kiosk_plans(request: Request, db: Session = Depends(get_db), is_senior: 
 
     # Get member-specific price overrides if member_id provided
     overrides = {}
+    account_member = None
     if member_id:
         try:
             overrides = get_member_price_overrides(db, uuid.UUID(member_id))
+            account_member = db.query(Member).filter(Member.id == uuid.UUID(member_id)).first()
         except (ValueError, AttributeError):
             pass
 
@@ -467,7 +469,11 @@ def get_kiosk_plans(request: Request, db: Session = Depends(get_db), is_senior: 
             "duration_days": p.duration_days,
             "duration_months": p.duration_months,
             "is_senior_plan": p.is_senior_plan,
-            "prorated": calculate_prorated_price(price, p.duration_months or 1, local_today) if p.plan_type.value == "monthly" else None,
+            "billing_options": {
+                mode.value: quote_to_dict(quote_membership(price, p.duration_months, local_today, mode, DEFAULT_BILLING_DAY))
+                for mode in BillingMode
+            } if p.plan_type == PlanType.monthly else None,
+            "allow_charge_to_account": bool(p.allow_charge_to_account and account_member and account_member.charge_to_account_enabled),
         })
     return result
 
@@ -530,8 +536,7 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
     from app.services.pricing_service import get_member_price
     local_today = _get_local_today(db)
     credit_used = Decimal("0.00")
-    member_custom_price = get_member_price(db, data.member_id, data.plan_id)
-    base_price = get_plan_effective_price(plan, local_today, member_price=member_custom_price)
+    base_price, membership_kwargs = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
     effective_price = base_price
 
     # Apply account credit if requested
@@ -542,7 +547,7 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
 
     # If credit covers entire amount, no cash needed
     if effective_price <= 0:
-        membership = create_membership(db, data.member_id, data.plan_id)
+        membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
         credit_tx = Transaction(
             member_id=data.member_id,
             transaction_type=TransactionType.payment,
@@ -572,7 +577,7 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
         )
 
     # Create membership
-    membership = create_membership(db, data.member_id, data.plan_id)
+    membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
 
     # Handle cash payment for remaining amount
     change_due = Decimal("0.00")
@@ -665,8 +670,7 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
     from app.services.pricing_service import get_member_price
     local_today = _get_local_today(db)
     credit_used = Decimal("0.00")
-    member_custom_price = get_member_price(db, data.member_id, data.plan_id)
-    base_price = get_plan_effective_price(plan, local_today, member_price=member_custom_price)
+    base_price, membership_kwargs = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
     effective_price = base_price
 
     # Apply account credit if requested
@@ -677,7 +681,7 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
 
     # If credit covers entire amount, no card charge needed
     if effective_price <= 0:
-        membership = create_membership(db, data.member_id, data.plan_id)
+        membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
         credit_tx = Transaction(
             member_id=data.member_id,
             transaction_type=TransactionType.payment,
@@ -824,8 +828,7 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
     from app.services.pricing_service import get_member_price
     local_today = _get_local_today(db)
     credit_used = Decimal("0.00")
-    member_custom_price = get_member_price(db, data.member_id, data.plan_id)
-    base_price = get_plan_effective_price(plan, local_today, member_price=member_custom_price)
+    base_price, membership_kwargs = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
     effective_price = base_price
 
     # Apply account credit if requested
@@ -836,7 +839,7 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
 
     # If credit covers entire amount, no card charge needed
     if effective_price <= 0:
-        membership = create_membership(db, data.member_id, data.plan_id)
+        membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
         credit_tx = Transaction(
             member_id=data.member_id,
             transaction_type=TransactionType.payment,
@@ -891,7 +894,7 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
         )
 
     # Create membership
-    membership = create_membership(db, data.member_id, data.plan_id)
+    membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
 
     # Record card payment transaction first
     card_last4 = card_number[-4:]
@@ -994,7 +997,9 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
 
-    if data.cash_amount >= plan.price:
+    plan_price, membership_kwargs = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
+
+    if data.cash_amount >= plan_price:
         tx, change_due, credit_added = process_cash_payment(db, data.member_id, data.plan_id, data.cash_amount)
         return PaymentResponse(
             success=True,
@@ -1010,7 +1015,7 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
             detail="Cash amount must be greater than zero for split payment",
         )
 
-    card_amount = plan.price - data.cash_amount
+    card_amount = plan_price - data.cash_amount
 
     # Charge the card portion
     adapter = get_payment_adapter(db)
@@ -1039,7 +1044,7 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
         card_reference = session.session_id
 
     # Create the membership once
-    membership = create_membership(db, data.member_id, data.plan_id)
+    membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
 
     # Record cash transaction first
     cash_tx = Transaction(
@@ -1124,8 +1129,7 @@ def pay_credit(data: CreditPaymentRequest, request: Request, db: Session = Depen
     if member.credit_balance <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No credit balance available")
 
-    from app.services.pricing_service import get_member_price
-    effective_plan_price = get_member_price(db, data.member_id, data.plan_id)
+    effective_plan_price, membership_kwargs = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
     credit_to_use = min(member.credit_balance, effective_plan_price)
     remaining = effective_plan_price - credit_to_use
 
@@ -1140,7 +1144,7 @@ def pay_credit(data: CreditPaymentRequest, request: Request, db: Session = Depen
 
     # Full credit payment - deduct credit and create membership
     member.credit_balance -= credit_to_use
-    membership = create_membership(db, data.member_id, data.plan_id)
+    membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
 
     # Record credit transaction
     credit_tx = Transaction(
@@ -1163,6 +1167,80 @@ def pay_credit(data: CreditPaymentRequest, request: Request, db: Session = Depen
         membership_id=membership.id,
         credit_used=credit_to_use,
         message=f"Paid ${credit_to_use} with account credit. Enjoy your swim!",
+    )
+
+
+@router.post("/quote")
+@limiter.limit("60/minute")
+def quote_purchase(data: KioskQuoteRequest, request: Request, db: Session = Depends(get_db)):
+    """Price and dates for a monthly-type plan with the chosen billing mode and start date."""
+    plan = db.query(Plan).filter(Plan.id == data.plan_id, Plan.is_active.is_(True)).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    amount, kwargs = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
+    if plan.plan_type != PlanType.monthly:
+        return {"amount": str(amount), "quote": None}
+
+    from app.services.pricing_service import get_member_price
+    quote = quote_membership(
+        get_member_price(db, data.member_id, plan.id), plan.duration_months,
+        kwargs["start_date"], data.billing_mode, DEFAULT_BILLING_DAY,
+    )
+    return {"amount": str(amount), "quote": quote_to_dict(quote)}
+
+
+@router.post("/pay/account", response_model=PaymentResponse)
+@limiter.limit("20/minute")
+def pay_on_account(data: AccountPaymentRequest, request: Request, db: Session = Depends(get_db)):
+    """Buy a plan on account: the member checks in normally and owes the amount."""
+    verify_member_pin(db, data.member_id, data.pin)
+
+    plan = db.query(Plan).filter(Plan.id == data.plan_id, Plan.is_active.is_(True)).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    member = db.query(Member).filter(Member.id == data.member_id).with_for_update().first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    if not (plan.allow_charge_to_account and member.charge_to_account_enabled):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Charging to account is not available for this plan. Please see staff.",
+        )
+
+    amount, membership_kwargs = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
+    new_balance = member.credit_balance - amount
+    limit = member.charge_to_account_limit
+    if limit is not None and new_balance < -limit:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Your account limit has been reached. Please see staff.",
+        )
+
+    member.credit_balance = new_balance
+    membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
+    tx = Transaction(
+        member_id=data.member_id,
+        transaction_type=TransactionType.payment,
+        payment_method=PaymentMethod.credit,
+        amount=amount,
+        plan_id=data.plan_id,
+        membership_id=membership.id,
+        notes=f"Charged to account — balance after: ${new_balance}",
+    )
+    db.add(tx)
+    db.commit()
+    db.refresh(tx)
+
+    logger.info("Kiosk charge to account: member=%s, plan=%s, amount=$%s, balance=$%s",
+                data.member_id, plan.name, amount, new_balance)
+    return PaymentResponse(
+        success=True,
+        transaction_id=tx.id,
+        membership_id=membership.id,
+        message=f"${amount} was added to your account. Enjoy your swim!",
     )
 
 
@@ -1815,6 +1893,8 @@ def _build_member_status(db: Session, member: Member) -> MemberStatus:
         date_of_birth=member.date_of_birth,
         is_senior=member.is_senior,
         is_unlimited=member.is_unlimited,
+        charge_to_account_enabled=member.charge_to_account_enabled,
+        charge_to_account_limit=member.charge_to_account_limit,
         active_membership=active_info,
         is_frozen=is_frozen,
         frozen_until=frozen_until,
@@ -1879,8 +1959,7 @@ def initiate_terminal_payment(
         )
 
     # Calculate effective price (apply credit if requested)
-    local_today = _get_local_today(db)
-    base_price = get_plan_effective_price(plan, local_today)
+    base_price, _ = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
     credit_used = Decimal("0.00")
     effective_price = base_price
 
@@ -1923,6 +2002,8 @@ def initiate_terminal_payment(
         request_key=result.request_key,
         member_id=data.member_id,
         plan_id=data.plan_id,
+        billing_mode=data.billing_mode.value,
+        start_date=data.start_date,
         credit_used=credit_used,
         save_card=data.save_card,
         expires_at=datetime.utcnow() + timedelta(minutes=TERMINAL_PAYMENT_EXPIRY_MINUTES),
@@ -1986,11 +2067,15 @@ def check_terminal_payment_status(
 
                 if member and plan:
                     # Create membership
-                    membership = create_membership(db, pending.member_id, pending.plan_id)
+                    purchase_price, membership_kwargs = resolve_purchase(
+                        db, plan, pending.member_id,
+                        BillingMode(pending.billing_mode or BillingMode.full.value),
+                        max(pending.start_date, _get_local_today(db)) if pending.start_date else None,
+                    )
+                    membership = create_membership(db, pending.member_id, pending.plan_id, **membership_kwargs)
 
                     # Create card payment transaction first
-                    local_today = _get_local_today(db)
-                    effective_price = get_plan_effective_price(plan, local_today) - pending.credit_used
+                    effective_price = purchase_price - pending.credit_used
                     tx = Transaction(
                         member_id=pending.member_id,
                         transaction_type=TransactionType.payment,
