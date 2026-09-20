@@ -47,6 +47,7 @@ def list_plans(
             "display_order": plan.display_order,
             "is_active": plan.is_active,
             "is_senior_plan": plan.is_senior_plan,
+            "allow_charge_to_account": plan.allow_charge_to_account,
             "created_at": plan.created_at.isoformat() if plan.created_at else None,
             "active_subscribers": active_subscribers,
         })

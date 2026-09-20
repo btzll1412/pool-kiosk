@@ -706,7 +706,10 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
     # Process card payment for remaining amount
     if data.saved_card_id:
         # Use saved card - note: charge_saved_card_now handles membership creation
-        tx = charge_saved_card_now(db, data.saved_card_id, data.plan_id, data.member_id)
+        tx = charge_saved_card_now(
+            db, data.saved_card_id, data.plan_id, data.member_id,
+            amount_override=effective_price, **membership_kwargs,
+        )
 
         # If credit was used, record credit transaction (linked to card tx)
         if credit_used > 0:

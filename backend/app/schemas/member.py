@@ -51,6 +51,8 @@ class MemberResponse(BaseModel):
     notes: str | None
     is_active: bool
     is_unlimited: bool = False
+    charge_to_account_enabled: bool = False
+    charge_to_account_limit: Decimal | None = None
     date_of_birth: date | None
     is_senior: bool
     created_at: datetime
@@ -78,6 +80,19 @@ class CreditAdjustRequest(BaseModel):
 
 class PinResetRequest(BaseModel):
     new_pin: str
+
+
+class ChargeToAccountSettings(BaseModel):
+    """Whether a member may buy plans on account, and the most they may owe (null = no limit)."""
+    enabled: bool
+    limit: Decimal | None = None
+
+    @field_validator("limit")
+    @classmethod
+    def _limit(cls, v: Decimal | None) -> Decimal | None:
+        if v is not None and v <= 0:
+            raise ValueError("Limit must be greater than zero (leave empty for no limit)")
+        return v
 
 
 # Card data always travels in the request body — never in the URL, where it

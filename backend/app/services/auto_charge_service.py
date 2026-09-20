@@ -11,6 +11,7 @@ from app.models.member import Member
 from app.models.plan import Plan, PlanType
 from app.models.saved_card import SavedCard
 from app.models.transaction import PaymentMethod, Transaction, TransactionType
+from app.services.billing_service import DEFAULT_BILLING_DAY, BillingMode, quote_membership
 from app.services.membership_service import create_membership
 from app.services.notification_service import notify_auto_charge_failed, notify_auto_charge_success
 from app.services.payment_service import get_payment_adapter
@@ -107,14 +108,22 @@ def process_due_charges(db: Session) -> dict:
         customer_name = f"{member.first_name} {member.last_name}"
 
         # Use member's custom price if set, otherwise plan price
+        # Price and period come from the billing service. On the billing day this is
+        # the full price; a first charge on a mid-cycle start date (or a late retry)
+        # is prorated to the billing day.
         from app.services.pricing_service import get_member_price
-        plan_price = get_member_price(db, card.member_id, plan.id)
+        billing_day = card.billing_day or DEFAULT_BILLING_DAY
+        quote = quote_membership(
+            get_member_price(db, card.member_id, plan.id), plan.duration_months,
+            today, BillingMode.prorate, billing_day,
+        )
+        plan_price = quote.amount
         credit_used = Decimal("0.00")
         card_charge_amount = plan_price
 
         # Prevent double-charge: move next_charge_date forward BEFORE charging
         original_charge_date = card.next_charge_date
-        card.next_charge_date = _get_next_billing_date(today, card.billing_day)
+        card.next_charge_date = quote.next_billing_date
         db.commit()
 
         # Check if member has account credit to apply
@@ -153,7 +162,13 @@ def process_due_charges(db: Session) -> dict:
 
         # Create membership and record transactions — wrapped in try/catch
         try:
-            membership = create_membership(db, card.member_id, plan.id, billing_day=card.billing_day)
+            membership = create_membership(db, card.member_id, plan.id, start_date=today, billing_day=billing_day)
+            if card.charge_once:
+                # Scheduled first charge only — the member did not ask for auto-renewal
+                card.auto_charge_enabled = False
+                card.auto_charge_plan_id = None
+                card.next_charge_date = None
+                card.charge_once = False
 
             # Deduct credit if used
             if credit_used > 0:
@@ -229,6 +244,21 @@ def process_due_charges(db: Session) -> dict:
     return results
 
 
+def _current_monthly_membership(db: Session, member_id: uuid.UUID) -> "Membership | None":
+    from app.models.membership import Membership
+
+    return (
+        db.query(Membership)
+        .filter(
+            Membership.member_id == member_id,
+            Membership.plan_type == PlanType.monthly,
+            Membership.is_active.is_(True),
+        )
+        .order_by(Membership.valid_until.desc())
+        .first()
+    )
+
+
 def enable_auto_charge(
     db: Session, saved_card_id: uuid.UUID, plan_id: uuid.UUID, member_id: uuid.UUID,
     billing_day: int = None,
@@ -258,10 +288,18 @@ def enable_auto_charge(
 
     card.auto_charge_enabled = True
     card.auto_charge_plan_id = plan.id
+    card.charge_once = False
     card.billing_day = billing_day if billing_day and 1 <= billing_day <= 28 else None
     # Monthly plans charge on billing day; swim pass plans charge when depleted (no date needed)
     if plan.plan_type == PlanType.monthly:
-        card.next_charge_date = _get_next_billing_date(billing_day=card.billing_day)
+        current = _current_monthly_membership(db, member_id)
+        if current and current.next_billing_date:
+            # Renew exactly when the paid period ends (a quarterly plan renews quarterly)
+            card.next_charge_date = current.next_billing_date
+            if not card.billing_day:
+                card.billing_day = current.next_billing_date.day
+        else:
+            card.next_charge_date = _get_next_billing_date(billing_day=card.billing_day)
     else:
         card.next_charge_date = None  # Swim pass auto-recharge triggers on depletion
 
@@ -390,7 +428,8 @@ def charge_saved_card_now(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
-    charge_amount = amount_override if amount_override is not None else plan.price
+    from app.services.pricing_service import get_member_price
+    charge_amount = amount_override if amount_override is not None else get_member_price(db, member_id, plan_id)
 
     member = db.query(Member).filter(Member.id == member_id).first()
     customer_name = f"{member.first_name} {member.last_name}" if member else None
@@ -410,9 +449,7 @@ def charge_saved_card_now(
             detail=charge_result.message or "Card charge failed",
         )
 
-    # Use explicitly passed billing_day, or fall back to card's billing_day
-    effective_billing_day = billing_day or (card.billing_day if hasattr(card, 'billing_day') else None)
-    membership = create_membership(db, member_id, plan_id, start_date=start_date, billing_day=effective_billing_day)
+    membership = create_membership(db, member_id, plan_id, start_date=start_date, billing_day=billing_day)
 
     tx = Transaction(
         member_id=member_id,

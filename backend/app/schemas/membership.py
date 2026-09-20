@@ -5,6 +5,7 @@ from decimal import Decimal
 from pydantic import BaseModel, field_validator
 
 from app.models.plan import PlanType
+from app.services.billing_service import BillingMode
 
 
 class PaymentInfo(BaseModel):
@@ -24,6 +25,12 @@ class MembershipCreate(BaseModel):
     plan_id: uuid.UUID
     start_date: date | None = None  # Custom start date (default: today)
     billing_day: int | None = None  # Custom billing day of month (1-28, default: 1st)
+    # "prorate": align to the billing day and charge the partial first month by the day.
+    # "full": full price, billing follows the start date. Default keeps legacy behaviour
+    # (prorate-aligned dates when a billing day is given, otherwise full).
+    billing_mode: BillingMode | None = None
+    # "start_date": don't charge now — charge the saved card when the membership starts
+    charge_timing: str = "now"
     payment: PaymentInfo | None = None  # Optional payment processing
 
     @field_validator("billing_day")
@@ -75,17 +82,22 @@ class UnfreezeRequest(BaseModel):
 
 
 class MembershipCreateWithPaymentResponse(BaseModel):
-    """Response for membership creation with optional payment."""
-    id: uuid.UUID
-    member_id: uuid.UUID
-    plan_id: uuid.UUID
-    plan_type: PlanType
-    swims_total: int | None
-    swims_used: int | None
-    valid_from: date | None
-    valid_until: date | None
-    is_active: bool
-    created_at: datetime
+    """Response for membership creation with optional payment.
+
+    Membership fields are empty when the charge was scheduled for the start date —
+    the membership is only created once that charge succeeds.
+    """
+    id: uuid.UUID | None = None
+    member_id: uuid.UUID | None = None
+    plan_id: uuid.UUID | None = None
+    plan_type: PlanType | None = None
+    swims_total: int | None = None
+    swims_used: int | None = None
+    valid_from: date | None = None
+    valid_until: date | None = None
+    is_active: bool | None = None
+    created_at: datetime | None = None
+    scheduled_charge_date: date | None = None
     plan_name: str | None = None
     transaction_id: uuid.UUID | None = None
     saved_card_id: uuid.UUID | None = None

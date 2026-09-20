@@ -17,6 +17,7 @@ class PlanCreate(BaseModel):
     is_active: bool = True
     display_order: int = 0
     is_senior_plan: bool = False
+    allow_charge_to_account: bool = False
 
 
 class PlanUpdate(BaseModel):
@@ -29,6 +30,7 @@ class PlanUpdate(BaseModel):
     is_active: bool | None = None
     display_order: int | None = None
     is_senior_plan: bool | None = None
+    allow_charge_to_account: bool | None = None
 
 
 class PlanResponse(BaseModel):
@@ -42,6 +44,7 @@ class PlanResponse(BaseModel):
     is_active: bool
     display_order: int
     is_senior_plan: bool
+    allow_charge_to_account: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}

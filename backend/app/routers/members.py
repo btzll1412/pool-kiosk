@@ -33,6 +33,7 @@ from app.schemas.member import (
     AdminCardChargeRequest,
     AdminCardSwipeRequest,
     AdminCardTokenizeRequest,
+    ChargeToAccountSettings,
     CreditAdjustRequest,
     MemberCreate,
     MemberListResponse,
@@ -915,6 +916,36 @@ async def import_members_csv(
         "skipped": skipped,
         "errors": errors[:10],  # Only return first 10 errors
     }
+
+
+# ==================== CHARGE TO ACCOUNT ====================
+
+@router.put("/{member_id}/charge-to-account")
+def update_charge_to_account(
+    member_id: uuid.UUID,
+    data: ChargeToAccountSettings,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Allow a member to buy plans on account (on plans that permit it), with an optional limit."""
+    member = db.query(Member).filter(Member.id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    before = {
+        "enabled": member.charge_to_account_enabled,
+        "limit": str(member.charge_to_account_limit) if member.charge_to_account_limit is not None else None,
+    }
+    member.charge_to_account_enabled = data.enabled
+    member.charge_to_account_limit = data.limit
+    db.commit()
+
+    after = {"enabled": data.enabled, "limit": str(data.limit) if data.limit is not None else None}
+    log_activity(db, user_id=current_user.id, action="member.charge_to_account", entity_type="member",
+                 entity_id=member_id, before=before, after=after)
+    logger.info("Charge-to-account updated: member=%s, enabled=%s, limit=%s, by=%s",
+                member_id, data.enabled, data.limit, current_user.id)
+    return {"charge_to_account_enabled": data.enabled, "charge_to_account_limit": data.limit}
 
 
 # ==================== UNLIMITED & CUSTOM PRICING ====================
