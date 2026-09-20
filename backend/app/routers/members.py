@@ -30,6 +30,9 @@ from app.services.auth_service import hash_pin
 from app.services.payment_service import get_payment_adapter
 from app.schemas.member import (
     ActivePlanInfo,
+    AdminCardChargeRequest,
+    AdminCardSwipeRequest,
+    AdminCardTokenizeRequest,
     CreditAdjustRequest,
     MemberCreate,
     MemberListResponse,
@@ -509,8 +512,7 @@ def disable_card_auto_charge(
 @router.post("/{member_id}/saved-cards/tokenize-swipe", response_model=SavedCardResponse, status_code=201)
 def admin_tokenize_card_from_swipe(
     member_id: uuid.UUID,
-    track_data: str,
-    friendly_name: str | None = None,
+    data: AdminCardSwipeRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -518,6 +520,7 @@ def admin_tokenize_card_from_swipe(
     Admin endpoint to tokenize a card from magnetic stripe track data.
     No PIN required (admin action).
     """
+    track_data, friendly_name = data.track_data, data.friendly_name
     member = db.query(Member).filter(Member.id == member_id).first()
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
@@ -566,16 +569,15 @@ def admin_tokenize_card_from_swipe(
 @router.post("/{member_id}/saved-cards/tokenize-full", response_model=SavedCardResponse, status_code=201)
 def admin_tokenize_card_from_full(
     member_id: uuid.UUID,
-    card_number: str,
-    exp_date: str,
-    friendly_name: str | None = None,
+    data: AdminCardTokenizeRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Admin endpoint to tokenize a card from full card details.
-    Used with hosted payment page callback. No PIN required.
+    Admin endpoint to tokenize a card from full card details (number, expiry, CVV).
+    No PIN required (admin action).
     """
+    friendly_name = data.friendly_name
     member = db.query(Member).filter(Member.id == member_id).first()
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
@@ -589,7 +591,9 @@ def admin_tokenize_card_from_full(
         )
 
     try:
-        token, last4, card_brand = adapter.generate_card_token(card_number, exp_date, str(member_id))
+        token, last4, card_brand = adapter.generate_card_token(
+            data.card_number, data.exp_date, str(member_id), cvv=data.cvv,
+        )
     except RuntimeError as e:
         logger.error("Failed to tokenize card: member=%s, error=%s", member_id, e)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
@@ -621,12 +625,7 @@ def admin_tokenize_card_from_full(
 @router.post("/{member_id}/charge-card")
 def admin_charge_card(
     member_id: uuid.UUID,
-    card_number: str,
-    exp_date: str,
-    cvv: str,
-    amount: str,
-    description: str | None = None,
-    save_card: bool = False,
+    data: AdminCardChargeRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -643,27 +642,9 @@ def admin_charge_card(
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
 
-    # Validate card number format
-    clean_card = card_number.replace(" ", "").replace("-", "")
-    if not clean_card.isdigit() or len(clean_card) < 13 or len(clean_card) > 19:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid card number format"
-        )
-
-    # Validate expiration format (MMYY)
-    if not exp_date.isdigit() or len(exp_date) != 4:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Expiration must be in MMYY format"
-        )
-
-    # Validate CVV format
-    if not cvv.isdigit() or len(cvv) < 3 or len(cvv) > 4:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="CVV must be 3-4 digits"
-        )
+    # Card fields are validated by the request schema
+    clean_card, exp_date, cvv = data.card_number, data.exp_date, data.cvv
+    amount, description, save_card = data.amount, data.description, data.save_card
 
     # Validate amount
     try:

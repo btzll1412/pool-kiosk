@@ -255,3 +255,32 @@ def unfreeze_membership(db: Session, membership_id: uuid.UUID, user_id: uuid.UUI
     log_activity(db, user_id=user_id, action="membership.unfreeze", entity_type="membership", entity_id=membership_id)
     logger.info("Membership unfrozen: membership=%s", membership_id)
     return membership
+
+
+def expire_lapsed_memberships(db: Session, today: date) -> list[Membership]:
+    """Mark monthly memberships past their valid_until date as inactive.
+
+    valid_until is the last valid day, so a membership lapses the day after.
+    Freezes already push valid_until forward, so frozen time is accounted for.
+    Returns the memberships that were expired by this call.
+    """
+    lapsed = (
+        db.query(Membership)
+        .filter(
+            Membership.is_active.is_(True),
+            Membership.plan_type == PlanType.monthly,
+            Membership.valid_until.isnot(None),
+            Membership.valid_until < today,
+        )
+        .all()
+    )
+    for membership in lapsed:
+        membership.is_active = False
+        logger.info(
+            "Membership expired: membership=%s, member=%s, valid_until=%s",
+            membership.id, membership.member_id, membership.valid_until,
+        )
+    if lapsed:
+        db.commit()
+    return lapsed
+

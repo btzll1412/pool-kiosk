@@ -140,6 +140,7 @@ export default function MemberDetail() {
   const [swipeData, setSwipeData] = useState("");
   const [fullCardNumber, setFullCardNumber] = useState("");
   const [fullCardExp, setFullCardExp] = useState("");
+  const [fullCardCvv, setFullCardCvv] = useState("");
 
   // PIN lockout and reset
   const [pinStatus, setPinStatus] = useState(null);
@@ -554,7 +555,12 @@ export default function MemberDetail() {
           setAddCardLoading(false);
           return;
         }
-        await tokenizeCardFromFull(id, fullCardNumber, fullCardExp, addCardName || null);
+        if (fullCardCvv.length < 3) {
+          toast.error("Please enter the card's CVV (3-4 digits)");
+          setAddCardLoading(false);
+          return;
+        }
+        await tokenizeCardFromFull(id, fullCardNumber, fullCardExp, fullCardCvv, addCardName || null);
         toast.success("Card tokenized and saved successfully");
       } else {
         // Manual entry - just record last 4 (no real tokenization)
@@ -588,6 +594,7 @@ export default function MemberDetail() {
     setSwipeData("");
     setFullCardNumber("");
     setFullCardExp("");
+    setFullCardCvv("");
   };
 
   const handleAdjustSwims = async () => {
@@ -2249,7 +2256,7 @@ export default function MemberDetail() {
             <div className="space-y-3">
               <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
                 <p className="text-xs text-amber-700 dark:text-amber-400">
-                  Card data is sent directly to HiTech/Converge for tokenization.
+                  Card data is sent securely to the payment processor for tokenization.
                   The card number is never stored on our servers.
                 </p>
               </div>
@@ -2267,6 +2274,15 @@ export default function MemberDetail() {
                 placeholder="1225"
                 maxLength={4}
                 helpText="Enter as 4 digits: MMYY (e.g., 1225 for Dec 2025)"
+              />
+              <Input
+                label="CVV"
+                type="password"
+                value={fullCardCvv}
+                onChange={(e) => setFullCardCvv(e.target.value.replace(/\D/g, ""))}
+                placeholder="123"
+                maxLength={4}
+                autoComplete="off"
               />
             </div>
           )}
@@ -2324,7 +2340,7 @@ export default function MemberDetail() {
               loading={addCardLoading}
               disabled={
                 (addCardMethod === "swipe" && !swipeData) ||
-                (addCardMethod === "hosted" && (fullCardNumber.length < 13 || fullCardExp.length !== 4)) ||
+                (addCardMethod === "hosted" && (fullCardNumber.length < 13 || fullCardExp.length !== 4 || fullCardCvv.length < 3)) ||
                 (addCardMethod === "manual" && addCardLast4.length !== 4)
               }
             >

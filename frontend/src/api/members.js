@@ -52,13 +52,14 @@ export const addMemberSavedCard = (memberId, data) =>
   client.post(`/members/${memberId}/saved-cards`, data).then((r) => r.data);
 
 export const tokenizeCardFromSwipe = (memberId, trackData, friendlyName) =>
-  client.post(`/members/${memberId}/saved-cards/tokenize-swipe`, null, {
-    params: { track_data: trackData, friendly_name: friendlyName }
+  client.post(`/members/${memberId}/saved-cards/tokenize-swipe`, {
+    track_data: trackData, friendly_name: friendlyName,
   }).then((r) => r.data);
 
-export const tokenizeCardFromFull = (memberId, cardNumber, expDate, friendlyName) =>
-  client.post(`/members/${memberId}/saved-cards/tokenize-full`, null, {
-    params: { card_number: cardNumber, exp_date: expDate, friendly_name: friendlyName }
+// Card data goes in the request body — never in the URL (URLs are logged)
+export const tokenizeCardFromFull = (memberId, cardNumber, expDate, cvv, friendlyName) =>
+  client.post(`/members/${memberId}/saved-cards/tokenize-full`, {
+    card_number: cardNumber, exp_date: expDate, cvv, friendly_name: friendlyName,
   }).then((r) => r.data);
 
 export const getMemberMemberships = (memberId) =>
@@ -85,8 +86,8 @@ export const importMembersCsv = (file) => {
 };
 
 export const chargeCard = (memberId, cardNumber, expDate, cvv, amount, description, saveCard) =>
-  client.post(`/members/${memberId}/charge-card`, null, {
-    params: { card_number: cardNumber, exp_date: expDate, cvv, amount, description, save_card: saveCard }
+  client.post(`/members/${memberId}/charge-card`, {
+    card_number: cardNumber, exp_date: expDate, cvv, amount: String(amount), description, save_card: !!saveCard,
   }).then((r) => r.data);
 
 export const enableCardAutoCharge = (memberId, cardId, planId, billingDay) =>

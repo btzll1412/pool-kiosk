@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, EmailStr
+from pydantic import field_validator, BaseModel, EmailStr
 
 
 class MemberCreate(BaseModel):
@@ -78,3 +78,48 @@ class CreditAdjustRequest(BaseModel):
 
 class PinResetRequest(BaseModel):
     new_pin: str
+
+
+# Card data always travels in the request body — never in the URL, where it
+# would be written to web server access logs.
+
+def _digits(value: str, label: str, min_len: int, max_len: int) -> str:
+    cleaned = value.replace(" ", "").replace("-", "").replace("/", "")
+    if not cleaned.isdigit() or not min_len <= len(cleaned) <= max_len:
+        expected = f"{min_len}" if min_len == max_len else f"{min_len}-{max_len}"
+        raise ValueError(f"{label} must be {expected} digits")
+    return cleaned
+
+
+class AdminCardSwipeRequest(BaseModel):
+    track_data: str
+    friendly_name: str | None = None
+
+
+class AdminCardTokenizeRequest(BaseModel):
+    card_number: str
+    exp_date: str  # MMYY
+    cvv: str
+    friendly_name: str | None = None
+
+    @field_validator("card_number")
+    @classmethod
+    def _card_number(cls, v: str) -> str:
+        return _digits(v, "Card number", 13, 19)
+
+    @field_validator("exp_date")
+    @classmethod
+    def _exp_date(cls, v: str) -> str:
+        return _digits(v, "Expiration date (MMYY)", 4, 4)
+
+    @field_validator("cvv")
+    @classmethod
+    def _cvv(cls, v: str) -> str:
+        return _digits(v, "CVV", 3, 4)
+
+
+class AdminCardChargeRequest(AdminCardTokenizeRequest):
+    amount: str
+    description: str | None = None
+    save_card: bool = False
+

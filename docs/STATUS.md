@@ -1088,4 +1088,25 @@ committed partial inserts), and the hourly job ignored `backup_schedule`/`backup
 
 ---
 
-## Last Updated: 2026-09-20 (Backup System Rebuild)
+## Admin Fixes — Notes Review Batch 1 (2026-09-20)
+
+- **Card data no longer travels in URLs (security).** Admin `charge-card`, `saved-cards/tokenize-full`
+  and `saved-cards/tokenize-swipe` took card number / expiry / CVV / track data as query parameters,
+  which nginx wrote to its access log. They now take validated JSON bodies
+  (`AdminCardChargeRequest`, `AdminCardTokenizeRequest`, `AdminCardSwipeRequest` in `schemas/member.py`).
+- **Admin "Add Payment Card" now requires CVV** and passes it to `generate_card_token()`.
+- **Plan delete** — new `services/plan_service.get_plan_usage()` checks every table referencing a plan
+  (memberships, transactions, guest visits, custom prices, auto-charge cards, pending terminal payments)
+  and returns a clear "used by N … — deactivate instead" message instead of a 500.
+- **Monthly memberships now actually expire** — `membership_service.expire_lapsed_memberships()` runs in
+  the 07:00 job; `valid_until` is the last valid day. Expired webhook/email now fires once, not daily.
+- **Kiosk never shows "Unlimited"** — unlimited members see a normal "Active" card with their plan (if any).
+- Tests: `tests/test_admin_fixes.py` (suite now 64).
+
+### Next (agreed with owner, pending detail questions)
+- Proration rework (admin-only, prorate to billing day, quarterly = per-month), charge now vs. on start date
+- Per-plan "charge to account" with per-member owed balance and optional limit
+
+---
+
+## Last Updated: 2026-09-20 (Admin Fixes Batch 1)

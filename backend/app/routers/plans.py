@@ -15,6 +15,7 @@ from app.models.user import User
 from app.schemas.plan import PlanCreate, PlanResponse, PlanUpdate
 from app.services.activity_service import log_activity
 from app.services.auth_service import get_current_user
+from app.services.plan_service import get_plan_usage
 from app.services.report_service import is_membership_usable
 
 router = APIRouter()
@@ -141,12 +142,13 @@ def permanently_delete_plan(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
-    # Check if any memberships use this plan
-    member_count = db.query(Membership).filter(Membership.plan_id == plan_id).count()
-    if member_count > 0:
+    # A plan with any history cannot be deleted — it would orphan financial records
+    usage = get_plan_usage(db, plan_id)
+    if usage:
+        summary = ", ".join(f"{count} {label}" for label, count in usage.items())
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete: {member_count} membership(s) are using this plan. Deactivate it instead."
+            detail=f"Cannot delete \"{plan.name}\": it is used by {summary}. Deactivate it instead.",
         )
 
     log_activity(db, user_id=current_user.id, action="plan.delete", entity_type="plan", entity_id=plan.id,

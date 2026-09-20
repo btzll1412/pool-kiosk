@@ -10,8 +10,7 @@ export default function MemberCard({ member, hideBalance = false }) {
   let statusDetail = "";
 
   if (member.is_unlimited) {
-    statusColor = "bg-purple-500";
-    statusText = "Unlimited Member";
+    // Unlimited is an admin-only arrangement — the member just sees an active account
     statusDetail = "";
   } else if (member.is_frozen) {
     statusColor = "bg-blue-500";
@@ -49,7 +48,7 @@ export default function MemberCard({ member, hideBalance = false }) {
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-3">
-        {membership && !member.is_unlimited && (
+        {membership && (
           <div className="flex items-center gap-3 rounded-xl bg-brand-50 px-4 py-3">
             <Waves className="h-5 w-5 text-brand-600" />
             <div>
