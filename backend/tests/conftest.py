@@ -21,6 +21,14 @@ from app.models.user import User, UserRole
 from app.services.auth_service import create_access_token, hash_password, hash_pin
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """Rate limits are per-IP and in-memory — reset them so tests can't starve each other."""
+    from app.services.rate_limit import limiter
+    limiter.reset()
+    yield
+
+
 # ---------------------------------------------------------------------------
 # Database fixtures
 # ---------------------------------------------------------------------------
