@@ -15,7 +15,7 @@ from app.models.user import User
 from app.schemas.plan import PlanCreate, PlanResponse, PlanUpdate
 from app.services.activity_service import log_activity
 from app.services.auth_service import get_current_user
-from app.services.plan_service import get_plan_usage
+from app.services.plan_service import count_active_members, delete_plan
 from app.services.report_service import is_membership_usable
 
 router = APIRouter()
@@ -26,7 +26,7 @@ def list_plans(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    plans = db.query(Plan).order_by(Plan.display_order, Plan.name).all()
+    plans = db.query(Plan).filter(Plan.deleted_at.is_(None)).order_by(Plan.display_order, Plan.name).all()
     result = []
     for plan in plans:
         # Count only truly usable memberships (not expired, has remaining swims)
@@ -75,7 +75,7 @@ def update_plan(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    plan = db.query(Plan).filter(Plan.id == plan_id, Plan.deleted_at.is_(None)).first()
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
     before = {"name": plan.name, "price": str(plan.price), "is_active": plan.is_active}
@@ -94,7 +94,7 @@ def deactivate_plan(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    plan = db.query(Plan).filter(Plan.id == plan_id, Plan.deleted_at.is_(None)).first()
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
     plan.is_active = False
@@ -123,7 +123,7 @@ def reactivate_plan(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    plan = db.query(Plan).filter(Plan.id == plan_id, Plan.deleted_at.is_(None)).first()
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
     plan.is_active = True
@@ -139,25 +139,27 @@ def permanently_delete_plan(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    plan = db.query(Plan).filter(Plan.id == plan_id, Plan.deleted_at.is_(None)).first()
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
-    # A plan with any history cannot be deleted — it would orphan financial records
-    usage = get_plan_usage(db, plan_id)
-    if usage:
-        summary = ", ".join(f"{count} {label}" for label, count in usage.items())
+    # Only members actively on the plan block a delete — history never does
+    active_members = count_active_members(db, plan_id)
+    if active_members:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete \"{plan.name}\": it is used by {summary}. Deactivate it instead.",
+            detail=f"Cannot delete \"{plan.name}\": {active_members} member(s) are actively on this plan. "
+                   "Deactivate their memberships first, or deactivate the plan instead.",
         )
 
+    name = plan.name
     log_activity(db, user_id=current_user.id, action="plan.delete", entity_type="plan", entity_id=plan.id,
-                 before={"name": plan.name, "price": str(plan.price)})
-    db.delete(plan)
-    db.commit()
-    logger.info("Plan permanently deleted: id=%s, name=%s, by_user=%s", plan_id, plan.name, current_user.id)
-    return {"message": f"Plan '{plan.name}' permanently deleted"}
+                 before={"name": name, "price": str(plan.price)})
+    archived = delete_plan(db, plan)
+    logger.info("Plan deleted: id=%s, name=%s, archived=%s, by_user=%s", plan_id, name, archived, current_user.id)
+    if archived:
+        return {"message": f"Plan '{name}' deleted. Its past payments, memberships and guest visits are kept."}
+    return {"message": f"Plan '{name}' permanently deleted"}
 
 
 @router.get("/{plan_id}/subscribers")
@@ -167,7 +169,7 @@ def get_plan_subscribers(
     current_user: User = Depends(get_current_user),
 ):
     """Get all active subscribers for a plan."""
-    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    plan = db.query(Plan).filter(Plan.id == plan_id, Plan.deleted_at.is_(None)).first()
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 

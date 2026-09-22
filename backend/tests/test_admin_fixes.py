@@ -10,19 +10,45 @@ from app.models.transaction import PaymentMethod
 from app.services.membership_service import expire_lapsed_memberships
 
 
-def test_delete_plan_blocked_by_guest_visits(client, db, admin_headers, single_swim_plan):
-    db.add(GuestVisit(
-        name="Walk In", payment_method=PaymentMethod.cash,
-        amount_paid=Decimal("2.00"), plan_id=single_swim_plan.id,
-    ))
+def test_delete_plan_with_guest_history_archives_it(client, db, admin_headers, single_swim_plan):
+    """Guest visits are finished the moment they're recorded — they never block a delete."""
+    visit = GuestVisit(
+        name="Walk In", payment_method=PaymentMethod.cash, amount_paid=Decimal("2.00"),
+        plan_id=single_swim_plan.id, plan_name=single_swim_plan.name, plan_price=single_swim_plan.price,
+    )
+    db.add(visit)
     db.commit()
 
     response = client.delete(f"/api/plans/{single_swim_plan.id}/permanent", headers=admin_headers)
+    assert response.status_code == 200, response.text
+    assert "kept" in response.json()["message"]
 
-    assert response.status_code == 400
-    assert "1 guest visit(s)" in response.json()["detail"]
-    assert "Deactivate it instead" in response.json()["detail"]
-    assert db.get(Plan, single_swim_plan.id) is not None
+    # Hidden everywhere, can't come back, but history still points at it
+    db.expire_all()
+    plan = db.get(Plan, single_swim_plan.id)
+    assert plan is not None and plan.deleted_at is not None and plan.is_active is False
+    assert db.get(GuestVisit, visit.id).plan_id == plan.id
+    assert all(p["id"] != str(plan.id) for p in client.get("/api/plans", headers=admin_headers).json())
+    assert all(p["id"] != str(plan.id) for p in client.get("/api/kiosk/plans").json())
+    assert client.post(f"/api/plans/{plan.id}/reactivate", headers=admin_headers).status_code == 404
+
+
+def test_delete_plan_blocked_only_by_active_members(client, db, admin_headers, member_with_pin, monthly_plan):
+    from datetime import date as _date
+    today = _date.today()
+    membership = _monthly(db, member_with_pin, monthly_plan, today + timedelta(days=10))
+
+    blocked = client.delete(f"/api/plans/{monthly_plan.id}/permanent", headers=admin_headers)
+    assert blocked.status_code == 400
+    assert "1 member(s) are actively on this plan" in blocked.json()["detail"]
+
+    # Deactivate that person's membership -> delete goes through, membership history kept
+    membership.is_active = False
+    db.commit()
+    assert client.delete(f"/api/plans/{monthly_plan.id}/permanent", headers=admin_headers).status_code == 200
+    db.expire_all()
+    assert db.get(Membership, membership.id).plan_id == monthly_plan.id
+    assert db.get(Plan, monthly_plan.id).deleted_at is not None
 
 
 def test_delete_unused_plan_succeeds(client, db, admin_headers, single_swim_plan):

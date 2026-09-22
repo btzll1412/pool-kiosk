@@ -250,7 +250,7 @@ export default function PlansList() {
         onClose={() => setPermanentDeleteTarget(null)}
         onConfirm={handlePermanentDelete}
         title="Permanently Delete Plan"
-        message={`Are you sure you want to permanently delete "${permanentDeleteTarget?.name}"? This cannot be undone. Plans with existing members cannot be deleted.`}
+        message={`Are you sure you want to permanently delete "${permanentDeleteTarget?.name}"? The plan will be hidden everywhere and cannot be sold again; past payments, memberships and guest visits stay on record. Plans with members actively on them cannot be deleted.`}
         confirmLabel="Delete Forever"
         variant="danger"
       />

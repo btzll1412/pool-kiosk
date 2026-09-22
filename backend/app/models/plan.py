@@ -30,4 +30,7 @@ class Plan(Base):
     # Members whose account also allows it may buy this plan "on account" (balance goes negative)
     allow_charge_to_account: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     display_order: Mapped[int] = mapped_column(Integer, default=0)
+    # Set when an admin deletes a plan that has history: hidden everywhere, but kept so past
+    # memberships, payments and guest visits still show what was bought.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

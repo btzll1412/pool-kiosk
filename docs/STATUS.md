@@ -1152,4 +1152,15 @@ Owner-requested changes (notes review batch 2). Single source of truth: `service
 
 ---
 
-## Last Updated: 2026-09-20 (Billing Rework + Charge to Account)
+## Plan Delete = Archive (2026-09-22)
+
+Owner rule: only members **actively on a plan** block deleting it (deactivate their memberships and it goes
+through); guest visits, past payments and ended memberships never block, and all history must stay trackable.
+- `plans.deleted_at` (migration `p6q7r8s9t0u1`). `plan_service.delete_plan()` erases a plan nothing ever used;
+  otherwise archives it: hidden from admin list, kiosk and dropdowns, cannot be edited/reactivated, but past
+  memberships / transactions / guest visits keep their `plan_id`. Auto-charges onto it are switched off, custom
+  prices and pending terminal payments for it are removed.
+
+---
+
+## Last Updated: 2026-09-22 (Plan Delete = Archive)
