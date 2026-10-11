@@ -185,6 +185,7 @@ export default function SignUpScreen({ setMember, goTo, goIdle }) {
               />
               <KioskInput
                 label="Email (optional)"
+                type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="john@example.com"

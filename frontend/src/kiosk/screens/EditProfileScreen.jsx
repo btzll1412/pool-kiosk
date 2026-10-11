@@ -162,6 +162,7 @@ export default function EditProfileScreen({ member, setMember, goTo, context }) 
 
             <KioskInput
               label="Email (optional)"
+              type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="john@example.com"

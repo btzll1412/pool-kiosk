@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 from app.database import get_db
+from app.models.activity_log import ActivityLog
 from app.models.user import User
 from app.schemas.report import (
     DashboardResponse,
@@ -100,3 +101,32 @@ def export_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=transactions_{start_date}_{end_date}.csv"},
     )
+
+
+@router.get("/kiosk-errors")
+def kiosk_errors(
+    days: int = Query(7, ge=1, le=90),
+    limit: int = Query(20, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Problems the kiosk reported about itself (crashes, hung requests) in the last N days."""
+    since = date.today() - timedelta(days=days)
+    query = db.query(ActivityLog).filter(
+        ActivityLog.action_type == "kiosk.client_error",
+        ActivityLog.created_at >= since,
+    )
+    items = query.order_by(ActivityLog.created_at.desc()).limit(limit).all()
+    return {
+        "total": query.count(),
+        "items": [
+            {
+                "id": entry.id,
+                "created_at": entry.created_at,
+                "message": entry.note,
+                "screen": (entry.after_value or {}).get("screen"),
+            }
+            for entry in items
+        ],
+    }
+

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 
 // Dispatch custom activity event to reset inactivity timer
@@ -5,8 +6,17 @@ const signalActivity = () => {
   window.dispatchEvent(new CustomEvent("kiosk-activity"));
 };
 
-export default function NumPad({ value, onChange, onClose, onNext, maxLength, showDecimal = false }) {
+export default function NumPad({ value, onChange, onClose, onNext, maxLength, showDecimal = false, autoCloseMs = 0 }) {
   const isModal = Boolean(onClose);
+
+  // A pad nobody touches for a while closes itself so it can never wedge the field
+  const idleTimer = useRef(null);
+  useEffect(() => {
+    if (!isModal || !autoCloseMs) return undefined;
+    clearTimeout(idleTimer.current);
+    idleTimer.current = setTimeout(() => onClose?.(), autoCloseMs);
+    return () => clearTimeout(idleTimer.current);
+  }, [value, isModal, autoCloseMs, onClose]);
 
   const handlePress = (digit) => {
     signalActivity();

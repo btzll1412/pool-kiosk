@@ -24,6 +24,7 @@ import CheckinsList from "./admin/pages/Checkins/CheckinsList";
 import SwipesList from "./admin/pages/Swipes/SwipesList";
 import ScheduleManager from "./admin/pages/Schedules/ScheduleManager";
 import KioskApp from "./kiosk/KioskApp";
+import KioskErrorBoundary from "./kiosk/components/KioskErrorBoundary";
 
 function ProtectedRoute({ children }) {
   const { authed } = useAuth();
@@ -110,7 +111,7 @@ export default function App() {
 
         <SetupCheck>
           <Routes>
-            <Route path="/kiosk" element={<KioskApp />} />
+            <Route path="/kiosk" element={<KioskErrorBoundary><KioskApp /></KioskErrorBoundary>} />
 
             {/* Auth routes */}
             <Route path="/admin/setup" element={<Setup />} />

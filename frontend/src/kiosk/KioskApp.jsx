@@ -4,7 +4,7 @@ import RFIDListener from "./components/RFIDListener";
 import InactivityTimer from "./components/InactivityTimer";
 import ScreenTransition from "./components/ScreenTransition";
 import SecretExitTrigger from "./components/SecretExitTrigger";
-import { getSettings, scanCard, checkin } from "../api/kiosk";
+import { getSettings, scanCard, checkin, reportKioskError } from "../api/kiosk";
 import IdleScreen from "./screens/IdleScreen";
 import MemberScreen from "./screens/MemberScreen";
 import CheckinScreen from "./screens/CheckinScreen";
@@ -90,6 +90,18 @@ export default function KioskApp() {
   useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
+
+  // Report uncaught errors so admins can see why the kiosk misbehaved
+  useEffect(() => {
+    const onError = (event) => reportKioskError(`Uncaught: ${event.message || event.error}`, { screen });
+    const onRejection = (event) => reportKioskError(`Unhandled promise: ${event.reason?.message || event.reason}`, { screen });
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, [screen]);
 
   // Refresh settings periodically when on idle screen
   useEffect(() => {

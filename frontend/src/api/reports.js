@@ -16,3 +16,6 @@ export const exportCsv = (params) =>
   client
     .get("/reports/export", { params, responseType: "blob" })
     .then((r) => r.data);
+
+export const getKioskErrors = (params) =>
+  client.get("/reports/kiosk-errors", { params }).then((r) => r.data);

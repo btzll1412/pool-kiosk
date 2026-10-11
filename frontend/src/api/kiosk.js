@@ -1,9 +1,43 @@
 import axios from "axios";
 
+// Never let the kiosk wait forever on the server: give up after 15s and surface a
+// message every screen already knows how to show (err.response.data.detail).
+const REQUEST_TIMEOUT_MS = 15000;
+const CONNECTION_MESSAGE = "Connection problem — please try again.";
+
 const kiosk = axios.create({
   baseURL: "/api/kiosk",
   headers: { "Content-Type": "application/json" },
+  timeout: REQUEST_TIMEOUT_MS,
 });
+
+kiosk.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (!error.response) {
+      error.isConnectionError = true;
+      error.response = { status: 0, data: { detail: CONNECTION_MESSAGE } };
+      reportKioskError(`Request failed: ${error.config?.method?.toUpperCase()} ${error.config?.url} — ${error.code || error.message}`);
+    }
+    return Promise.reject(error);
+  },
+);
+
+// Report a kiosk-side problem to the server (fire-and-forget, never throws)
+let lastReport = { message: "", time: 0 };
+export function reportKioskError(message, extra = {}) {
+  const now = Date.now();
+  if (message === lastReport.message && now - lastReport.time < 60000) return;
+  lastReport = { message, time: now };
+  axios
+    .post("/api/kiosk/client-error", {
+      message: String(message).slice(0, 1000),
+      screen: extra.screen || null,
+      url: window.location.pathname,
+      user_agent: navigator.userAgent.slice(0, 300),
+    }, { timeout: 5000 })
+    .catch(() => {});
+}
 
 export async function scanCard(rfid_uid) {
   const { data } = await kiosk.post("/scan", { rfid_uid });

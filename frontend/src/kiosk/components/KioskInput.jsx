@@ -130,6 +130,7 @@ export default function KioskInput({
               onNext={handleNext}
               maxLength={maxLength}
               showDecimal={showDecimal}
+              autoCloseMs={60000}
             />
           ) : (
             <VirtualKeyboard
@@ -137,6 +138,7 @@ export default function KioskInput({
               onChange={handleVirtualChange}
               onClose={handleClose}
               onNext={handleNext}
+              layoutType={type === "email" ? "email" : "default"}
             />
           )}
         </>

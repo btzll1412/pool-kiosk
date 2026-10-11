@@ -24,6 +24,13 @@ class KioskPresenceRequest(BaseModel):
     member_id: uuid.UUID
 
 
+class KioskClientErrorRequest(BaseModel):
+    message: str
+    screen: str | None = None
+    url: str | None = None
+    user_agent: str | None = None
+
+
 class SearchRequest(BaseModel):
     query: str
 

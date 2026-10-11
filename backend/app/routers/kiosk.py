@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
 import pytz
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import Response, APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,7 @@ from datetime import timedelta
 from datetime import datetime
 from app.schemas.kiosk import (
     AccountPaymentRequest,
+    KioskClientErrorRequest,
     KioskPresenceRequest,
     KioskQuoteRequest,
     AutoChargeDisableRequest,
@@ -122,6 +123,22 @@ def _record_presence(db: Session, member: Member, member_status: MemberStatus, s
         db, member, has_usable_plan=member_status.active_membership is not None, is_frozen=member_status.is_frozen,
     )
     swipe_service.record_swipe(db, outcome, member=member, card_uid=card_uid, source=source)
+
+
+@router.post("/client-error", status_code=204)
+@limiter.limit("10/minute")
+def kiosk_client_error(data: KioskClientErrorRequest, request: Request, db: Session = Depends(get_db)):
+    """The kiosk reports a problem on its side (crash, hung request) so admins can see it."""
+    message = data.message.strip()[:1000]
+    if not message:
+        return Response(status_code=204)
+    logger.error("Kiosk client error: screen=%s, url=%s, message=%s", data.screen, data.url, message)
+    log_activity(
+        db, None, "kiosk.client_error", "kiosk",
+        after={"screen": data.screen, "url": data.url, "user_agent": (data.user_agent or "")[:300]},
+        note=message,
+    )
+    return Response(status_code=204)
 
 
 @router.post("/presence", response_model=MemberStatus)

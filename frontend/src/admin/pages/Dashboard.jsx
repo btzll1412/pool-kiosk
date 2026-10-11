@@ -9,7 +9,8 @@ import {
   Users,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { getDashboard } from "../../api/reports";
+import { getDashboard, getKioskErrors } from "../../api/reports";
+import { useTimezone, formatDateTime } from "../../context/TimezoneContext";
 import StatCard from "../../shared/StatCard";
 import PageHeader from "../../shared/PageHeader";
 import Card from "../../shared/Card";
@@ -19,12 +20,15 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [kioskErrors, setKioskErrors] = useState({ total: 0, items: [] });
+  const timezone = useTimezone();
 
   useEffect(() => {
     getDashboard()
       .then(setStats)
       .catch((err) => toast.error(err.response?.data?.detail || "Failed to load dashboard"))
       .finally(() => setLoading(false));
+    getKioskErrors({ days: 7, limit: 5 }).then(setKioskErrors).catch(() => {});
   }, []);
 
   if (loading) {
@@ -91,6 +95,27 @@ export default function Dashboard() {
           onClick={() => navigate("/admin/swipes")}
         />
       </div>
+
+      {kioskErrors.total > 0 && (
+        <Card className="mt-8 border-amber-200 dark:border-amber-900">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+              Kiosk Problems (last 7 days)
+            </h3>
+            <span className="text-sm text-amber-600 dark:text-amber-400">{kioskErrors.total} reported</span>
+          </div>
+          <ul className="space-y-2">
+            {kioskErrors.items.map((e) => (
+              <li key={e.id} className="rounded-lg bg-gray-50 dark:bg-gray-900 px-4 py-2.5 text-sm">
+                <p className="text-gray-500 dark:text-gray-400 text-xs">
+                  {formatDateTime(e.created_at, timezone)}{e.screen ? ` · ${e.screen}` : ""}
+                </p>
+                <p className="font-mono text-gray-800 dark:text-gray-200 break-all">{e.message}</p>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <Card>

@@ -97,3 +97,14 @@ def test_dashboard_counts_members_who_came_without_a_plan(client, db, admin_head
     client.post("/api/kiosk/scan", json={"rfid_uid": "CARD123"})  # same person twice = 1
     stats = client.get("/api/reports/dashboard", headers=admin_headers).json()
     assert stats["no_plan_swipes_today"] == 1
+
+
+def test_kiosk_can_report_client_errors_and_admin_can_see_them(client, db, admin_headers, seed_settings):
+    resp = client.post("/api/kiosk/client-error", json={"message": "Render error: boom", "screen": "payment", "url": "/kiosk"})
+    assert resp.status_code == 204
+    assert client.post("/api/kiosk/client-error", json={"message": "   "}).status_code == 204
+
+    body = client.get("/api/reports/kiosk-errors", headers=admin_headers).json()
+    assert body["total"] == 1
+    assert body["items"][0]["message"] == "Render error: boom" and body["items"][0]["screen"] == "payment"
+    assert client.get("/api/reports/kiosk-errors").status_code in (401, 403)

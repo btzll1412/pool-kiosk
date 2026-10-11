@@ -1191,4 +1191,23 @@ members who come without a plan can be found and fixed.
 
 ---
 
-## Last Updated: 2026-10-11 (Swipes Log)
+## Kiosk Reliability: Keyboard, Timeouts, Error Reporting (2026-10-11)
+
+Owner reported the on-screen keyboard occasionally stops responding (rest of screen fine; page refresh
+fixes it) and that the email field had no "." key.
+- **Keyboard** (`VirtualKeyboard.jsx`): uses touch events on touch devices (mouse on others) instead of both
+  — the known cause of `react-simple-keyboard` getting stuck on touch screens; `disableCaretPositioning`; the
+  field is the single source of truth. Main layer now has `@ . - _`; `type="email"` fields get an email layout
+  with `@`, `.`, and a one-tap `.com` key. Keyboard and NumPad close themselves after 60s idle so a wedged
+  one can never block the field. `KioskInput` scrolls the focused field above the keypad.
+- **Request timeout**: every kiosk API call gives up after 15s and surfaces "Connection problem — please try
+  again." through the existing `err.response.data.detail` path (`api/kiosk.js`).
+- **Error reporting**: `KioskErrorBoundary` (apology screen, auto-restart in 6s), window `error` /
+  `unhandledrejection` handlers, and hung-request reports all `POST /kiosk/client-error` (rate-limited,
+  stored as `kiosk.client_error` activity-log entries). Admin: `GET /reports/kiosk-errors`; Dashboard shows a
+  "Kiosk Problems (last 7 days)" card only when there are any.
+- Tests: suite 134.
+
+---
+
+## Last Updated: 2026-10-11 (Kiosk Reliability)
