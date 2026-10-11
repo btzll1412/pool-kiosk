@@ -1163,4 +1163,14 @@ through); guest visits, past payments and ended memberships never block, and all
 
 ---
 
-## Last Updated: 2026-09-22 (Plan Delete = Archive)
+## Kiosk: Members Can Change Their PIN (2026-10-11)
+
+- Manage My Account → Edit Profile → "Change PIN": new PIN + confirm (4 digits, masked). The current PIN
+  was already verified to enter the account; `POST /kiosk/profile` accepts optional `new_pin` (validated
+  against `pin_length`, must differ from the current PIN). Logged as `member.pin_changed` (no user id —
+  done by the member). `KioskInput` now honours `type="password"`.
+- Tests: `TestKioskPinChange` in `test_pin.py` (suite 125).
+
+---
+
+## Last Updated: 2026-10-11 (Kiosk PIN Change)

@@ -74,7 +74,7 @@ export default function KioskInput({
           )}
           <input
             ref={inputRef}
-            type="text"
+            type={type === "password" ? "password" : "text"}
             value={value}
             onChange={handlePhysicalChange}
             onFocus={handleFocus}

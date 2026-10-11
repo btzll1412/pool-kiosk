@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Save, User } from "lucide-react";
+import { ArrowLeft, KeyRound, Save, User } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
 import KioskInput from "../components/KioskInput";
@@ -21,6 +21,9 @@ export default function EditProfileScreen({ member, setMember, goTo, context }) 
   const [isSenior, setIsSenior] = useState(member?.is_senior || false);
   const [seniorAgeThreshold, setSeniorAgeThreshold] = useState(65);
   const [loading, setLoading] = useState(false);
+  const [changePin, setChangePin] = useState(false);
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
 
   useEffect(() => {
     getSettings().then((settings) => {
@@ -64,6 +67,20 @@ export default function EditProfileScreen({ member, setMember, goTo, context }) 
       toast.error("Please enter your phone number");
       return;
     }
+    if (changePin) {
+      if (!/^\d{4}$/.test(newPin)) {
+        toast.error("New PIN must be 4 digits");
+        return;
+      }
+      if (newPin !== confirmPin) {
+        toast.error("PINs do not match");
+        return;
+      }
+      if (newPin === context.pin) {
+        toast.error("New PIN must be different from your current PIN");
+        return;
+      }
+    }
 
     setLoading(true);
     try {
@@ -76,10 +93,12 @@ export default function EditProfileScreen({ member, setMember, goTo, context }) 
         email: email.trim() || null,
         date_of_birth: dobToIso(dateOfBirth) || null,
         is_senior: isSenior,
+        ...(changePin ? { new_pin: newPin } : {}),
       });
       setMember(updated);
-      toast.success("Profile updated successfully");
-      goTo("manage", { pin: context.pin });
+      toast.success(changePin ? "Profile updated — remember your new PIN" : "Profile updated successfully");
+      // Later screens keep using the PIN, so carry the new one forward
+      goTo("manage", { pin: changePin ? newPin : context.pin });
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to update profile");
     } finally {
@@ -189,6 +208,52 @@ export default function EditProfileScreen({ member, setMember, goTo, context }) 
                 </div>
               </label>
             )}
+
+            {/* Change PIN */}
+            <div className="rounded-xl bg-white p-4 ring-1 ring-gray-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setChangePin(!changePin);
+                  setNewPin("");
+                  setConfirmPin("");
+                }}
+                className="flex w-full items-center gap-3 rounded-xl py-2 text-left active:bg-gray-50"
+              >
+                <KeyRound className="h-6 w-6 text-brand-600" />
+                <div className="flex-1">
+                  <p className="font-medium text-gray-900">Change PIN</p>
+                  <p className="text-sm text-gray-500">
+                    {changePin ? "Enter and confirm your new 4-digit PIN" : "Tap to set a new 4-digit PIN"}
+                  </p>
+                </div>
+                <span className="text-sm font-medium text-brand-600">{changePin ? "Cancel" : "Change"}</span>
+              </button>
+              {changePin && (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <KioskInput
+                    label="New PIN"
+                    type="password"
+                    numeric
+                    maxLength={4}
+                    value={newPin}
+                    onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+                    placeholder="****"
+                    className="text-center tracking-widest"
+                  />
+                  <KioskInput
+                    label="Confirm New PIN"
+                    type="password"
+                    numeric
+                    maxLength={4}
+                    value={confirmPin}
+                    onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ""))}
+                    placeholder="****"
+                    className="text-center tracking-widest"
+                  />
+                </div>
+              )}
+            </div>
           </div>
 
           <KioskButton

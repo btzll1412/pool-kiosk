@@ -73,6 +73,7 @@ from app.services.checkin_service import perform_checkin
 from app.services.membership_service import create_membership, freeze_membership, unfreeze_membership
 from app.services.notification_service import notify_checkin, send_change_notification
 from app.services.payment_service import get_payment_adapter, process_card_payment, process_cash_payment
+from app.services.activity_service import log_activity
 from app.services.auth_service import hash_pin
 from app.services.billing_service import DEFAULT_BILLING_DAY, BillingMode, quote_membership, quote_to_dict
 from app.services.member_service import assign_card
@@ -249,9 +250,25 @@ def kiosk_update_profile(data: KioskUpdateProfileRequest, request: Request, db: 
     if data.gender is not None:
         member.gender = data.gender
 
+    pin_changed = False
+    if data.new_pin is not None:
+        pin_length = int(get_setting(db, "pin_length", "4"))
+        if not data.new_pin.isdigit() or len(data.new_pin) != pin_length:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"PIN must be exactly {pin_length} digits",
+            )
+        if data.new_pin == data.pin:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New PIN must be different from your current PIN")
+        member.pin_hash = hash_pin(data.new_pin)
+        pin_changed = True
+
     db.commit()
     db.refresh(member)
-    logger.info("Kiosk profile update: member=%s, name=%s %s", member.id, member.first_name, member.last_name)
+    if pin_changed:
+        # No admin user — the member changed it themselves at the kiosk
+        log_activity(db, None, "member.pin_changed", "member", member.id, note="PIN changed by member at kiosk")
+    logger.info("Kiosk profile update: member=%s, name=%s %s, pin_changed=%s", member.id, member.first_name, member.last_name, pin_changed)
     return _build_member_status(db, member)
 
 

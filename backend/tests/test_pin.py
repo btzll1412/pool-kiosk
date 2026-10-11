@@ -92,3 +92,35 @@ class TestPinVerification:
         })
         assert resp.status_code == 400
         assert "PIN not set" in resp.json()["detail"]
+
+
+class TestKioskPinChange:
+    def _update(self, client, member, **fields):
+        return client.post("/api/kiosk/profile", json={
+            "member_id": str(member.id), "pin": "1234",
+            "first_name": member.first_name, "last_name": member.last_name, "phone": member.phone,
+            **fields,
+        })
+
+    def test_member_can_change_pin(self, client, db, member_with_pin, seed_settings):
+        resp = self._update(client, member_with_pin, new_pin="9876")
+        assert resp.status_code == 200, resp.text
+
+        old = client.post("/api/kiosk/verify-pin", json={"member_id": str(member_with_pin.id), "pin": "1234"})
+        new = client.post("/api/kiosk/verify-pin", json={"member_id": str(member_with_pin.id), "pin": "9876"})
+        assert old.status_code != 200
+        assert new.status_code == 200
+        from app.models.activity_log import ActivityLog
+        assert db.query(ActivityLog).filter(ActivityLog.action_type == "member.pin_changed").count() == 1
+
+    def test_new_pin_must_be_four_digits_and_different(self, client, member_with_pin, seed_settings):
+        assert self._update(client, member_with_pin, new_pin="12").status_code == 400
+        assert self._update(client, member_with_pin, new_pin="abcd").status_code == 400
+        assert self._update(client, member_with_pin, new_pin="1234").status_code == 400
+
+    def test_wrong_current_pin_cannot_change_pin(self, client, member_with_pin, seed_settings):
+        resp = client.post("/api/kiosk/profile", json={
+            "member_id": str(member_with_pin.id), "pin": "0000", "new_pin": "9876",
+        })
+        assert resp.status_code in (401, 403)
+        assert client.post("/api/kiosk/verify-pin", json={"member_id": str(member_with_pin.id), "pin": "1234"}).status_code == 200

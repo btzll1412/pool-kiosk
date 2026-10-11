@@ -272,6 +272,8 @@ class KioskUpdateProfileRequest(BaseModel):
     phone: str | None = None
     email: str | None = None
     gender: str | None = None  # "male", "female", or None
+    # Set a new PIN (the current PIN is verified via `pin` above)
+    new_pin: str | None = None
 
 
 # ==================== TERMINAL PAYMENT SCHEMAS ====================
