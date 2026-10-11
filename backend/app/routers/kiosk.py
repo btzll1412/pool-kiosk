@@ -25,6 +25,7 @@ from datetime import timedelta
 from datetime import datetime
 from app.schemas.kiosk import (
     AccountPaymentRequest,
+    KioskPresenceRequest,
     KioskQuoteRequest,
     AutoChargeDisableRequest,
     AutoChargeRequest,
@@ -80,6 +81,8 @@ from app.services.member_service import assign_card
 from app.services.pin_service import verify_member_pin
 from app.services.rate_limit import limiter
 from app.services.settings_service import get_setting
+from app.services import swipe_service
+from app.models.swipe import SwipeOutcome, SwipeSource
 
 router = APIRouter()
 
@@ -100,13 +103,37 @@ def scan_card(data: ScanRequest, request: Request, db: Session = Depends(get_db)
     card = db.query(Card).filter(Card.rfid_uid == data.rfid_uid, Card.is_active.is_(True)).first()
     if not card:
         logger.info("Card scan — unrecognized: rfid=%s", data.rfid_uid)
+        swipe_service.record_swipe(db, SwipeOutcome.unknown_card, card_uid=data.rfid_uid)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not recognized")
     member = db.query(Member).filter(Member.id == card.member_id, Member.is_active.is_(True)).first()
     if not member:
         logger.warning("Card scan — member inactive: rfid=%s, member=%s", data.rfid_uid, card.member_id)
+        inactive = db.query(Member).filter(Member.id == card.member_id).first()
+        swipe_service.record_swipe(db, SwipeOutcome.inactive_member, member=inactive, card_uid=data.rfid_uid)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found or inactive")
     logger.info("Card scanned: rfid=%s, member=%s %s", data.rfid_uid, member.first_name, member.last_name)
-    return _build_member_status(db, member)
+    member_status = _build_member_status(db, member)
+    _record_presence(db, member, member_status, SwipeSource.card, data.rfid_uid)
+    return member_status
+
+
+def _record_presence(db: Session, member: Member, member_status: MemberStatus, source: SwipeSource, card_uid: str | None = None):
+    outcome = swipe_service.outcome_for_member(
+        db, member, has_usable_plan=member_status.active_membership is not None, is_frozen=member_status.is_frozen,
+    )
+    swipe_service.record_swipe(db, outcome, member=member, card_uid=card_uid, source=source)
+
+
+@router.post("/presence", response_model=MemberStatus)
+@limiter.limit("30/minute")
+def kiosk_presence(data: KioskPresenceRequest, request: Request, db: Session = Depends(get_db)):
+    """A member opened their account from a name search — log it like a card swipe."""
+    member = db.query(Member).filter(Member.id == data.member_id, Member.is_active.is_(True)).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found or inactive")
+    member_status = _build_member_status(db, member)
+    _record_presence(db, member, member_status, SwipeSource.search)
+    return member_status
 
 
 @router.get("/members", response_model=list[MemberStatus])
@@ -357,6 +384,7 @@ def kiosk_checkin(data: KioskCheckinRequest, request: Request, db: Session = Dep
     schedule_type, restriction_message = _get_current_schedule_restrictions(db)
 
     if schedule_type in [ScheduleType.closed, ScheduleType.maintenance]:
+        swipe_service.mark_checkin_failed(db, data.member_id, SwipeOutcome.outside_hours)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=restriction_message or "Pool is currently closed"
@@ -370,6 +398,7 @@ def kiosk_checkin(data: KioskCheckinRequest, request: Request, db: Session = Dep
 
             if schedule_type == ScheduleType.men_only and member_gender not in ["male", "m"]:
                 if member_gender in ["female", "f"]:
+                    swipe_service.mark_checkin_failed(db, data.member_id, SwipeOutcome.outside_hours)
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail=f"Sorry, this is currently Men's Hours. Please come back during Women's Hours or Open Swim times."
@@ -380,6 +409,7 @@ def kiosk_checkin(data: KioskCheckinRequest, request: Request, db: Session = Dep
 
             elif schedule_type == ScheduleType.women_only and member_gender not in ["female", "f"]:
                 if member_gender in ["male", "m"]:
+                    swipe_service.mark_checkin_failed(db, data.member_id, SwipeOutcome.outside_hours)
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail=f"Sorry, this is currently Women's Hours. Please come back during Men's Hours or Open Swim times."
@@ -388,7 +418,13 @@ def kiosk_checkin(data: KioskCheckinRequest, request: Request, db: Session = Dep
                     # Gender not set - allow but warn (or require gender)
                     logger.warning("Check-in during women_only hours without gender set: member=%s", data.member_id)
 
-    checkin = perform_checkin(db, data.member_id, data.guest_count)
+    try:
+        checkin = perform_checkin(db, data.member_id, data.guest_count)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_402_PAYMENT_REQUIRED:
+            swipe_service.mark_checkin_failed(db, data.member_id, SwipeOutcome.no_plan)
+        raise
+    swipe_service.mark_checked_in(db, checkin)
 
     member = db.query(Member).filter(Member.id == data.member_id).first()
     if member:

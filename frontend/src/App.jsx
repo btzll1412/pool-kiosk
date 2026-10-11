@@ -21,6 +21,7 @@ import RevenueReport from "./admin/pages/Reports/RevenueReport";
 import SwimReport from "./admin/pages/Reports/SwimReport";
 import Settings from "./admin/pages/Settings/Settings";
 import CheckinsList from "./admin/pages/Checkins/CheckinsList";
+import SwipesList from "./admin/pages/Swipes/SwipesList";
 import ScheduleManager from "./admin/pages/Schedules/ScheduleManager";
 import KioskApp from "./kiosk/KioskApp";
 
@@ -134,6 +135,7 @@ export default function App() {
               <Route path="transactions" element={<TransactionsList />} />
               <Route path="guests" element={<GuestsList />} />
               <Route path="checkins" element={<CheckinsList />} />
+              <Route path="swipes" element={<SwipesList />} />
               <Route path="reports" element={<RevenueReport />} />
               <Route path="reports/swims" element={<SwimReport />} />
               <Route path="schedules" element={<ScheduleManager />} />

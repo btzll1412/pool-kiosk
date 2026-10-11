@@ -14,6 +14,7 @@ from app.models.pin_lockout import PinLockout
 from app.models.pool_schedule import PoolSchedule, ScheduleOverride, ScheduleType
 from app.models.pending_terminal_payment import PendingTerminalPayment
 from app.models.member_price_override import MemberPriceOverride
+from app.models.swipe import Swipe, SwipeOutcome, SwipeSource
 
 __all__ = [
     "Member",
@@ -28,6 +29,9 @@ __all__ = [
     "MembershipFreeze",
     "SavedCard",
     "ActivityLog",
+    "Swipe",
+    "SwipeOutcome",
+    "SwipeSource",
     "PinLockout",
     "PoolSchedule",
     "ScheduleOverride",

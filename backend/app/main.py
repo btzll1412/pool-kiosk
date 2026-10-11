@@ -82,6 +82,7 @@ from app.routers import (
     reports,
     schedules,
     settings as settings_router,
+    swipes,
     transactions,
 )
 from app.services.auto_charge_service import process_due_charges
@@ -269,6 +270,7 @@ app.include_router(cards.router, prefix="/api/members", tags=["Cards"])
 app.include_router(plans.router, prefix="/api/plans", tags=["Plans"])
 app.include_router(memberships.router, prefix="/api/memberships", tags=["Memberships"])
 app.include_router(checkins.router, prefix="/api/checkins", tags=["Checkins"])
+app.include_router(swipes.router, prefix="/api/swipes", tags=["Swipes"])
 app.include_router(payments.router, prefix="/api/payments", tags=["Payments"])
 app.include_router(transactions.router, prefix="/api/transactions", tags=["Transactions"])
 app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])

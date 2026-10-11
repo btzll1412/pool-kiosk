@@ -15,6 +15,11 @@ export async function getAllMembers() {
   return data;
 }
 
+export async function recordPresence(member_id) {
+  const { data } = await kiosk.post("/presence", { member_id });
+  return data;
+}
+
 export async function searchMembers(query) {
   const { data } = await kiosk.post("/search", { query });
   return data;

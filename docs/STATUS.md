@@ -1173,4 +1173,22 @@ through); guest visits, past payments and ended memberships never block, and all
 
 ---
 
-## Last Updated: 2026-10-11 (Kiosk PIN Change)
+## Swipes Log (2026-10-11)
+
+Every time someone presents themselves at the kiosk is recorded — not only successful check-ins — so
+members who come without a plan can be found and fixed.
+- `swipes` table (migration `q7r8s9t0u1v2`): member (nullable), card uid, source (`card` | `search`), outcome,
+  linked check-in, time. Outcomes: `checked_in`, `no_action` (had a plan, never tapped check-in), `no_plan`,
+  `expired`, `frozen`, `outside_hours`, `unknown_card`, `inactive_member`.
+- Logged in `POST /kiosk/scan` (card), new `POST /kiosk/presence` (member opened their account from a name
+  search), and `POST /kiosk/checkin` upgrades the swipe from the last 15 min to `checked_in` (or marks why it
+  was refused). `services/swipe_service.py`.
+- Admin: **Swipes** page under Check-ins (`GET /api/swipes`): same filters as Check-ins (name/card search,
+  date range, time range, quick Today/Week/Month) plus Outcome; CSV export; row click opens the member.
+- Dashboard tile "Came Without a Plan" = distinct members today with `no_plan`/`expired`/`frozen` swipes
+  (`no_plan_swipes_today`). Swipes are kept indefinitely (owner decision); no alerts for now.
+- Tests: `test_swipes.py` (suite 133).
+
+---
+
+## Last Updated: 2026-10-11 (Swipes Log)

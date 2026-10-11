@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Activity,
+  AlertCircle,
   DollarSign,
   TrendingUp,
   UserCheck,
@@ -46,7 +47,7 @@ export default function Dashboard() {
         description="Overview of today's pool activity"
       />
 
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard
           title="Check-ins Today"
           value={stats?.total_checkins_today ?? 0}
@@ -81,6 +82,13 @@ export default function Dashboard() {
           icon={TrendingUp}
           color="rose"
           onClick={() => navigate("/admin/guests")}
+        />
+        <StatCard
+          title="Came Without a Plan"
+          value={stats?.no_plan_swipes_today ?? 0}
+          icon={AlertCircle}
+          color="amber"
+          onClick={() => navigate("/admin/swipes")}
         />
       </div>
 

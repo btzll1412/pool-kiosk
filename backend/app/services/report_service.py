@@ -107,12 +107,24 @@ def get_dashboard_stats(db: Session) -> dict:
         GuestVisit.created_at.between(today_start, today_end)
     ).scalar() or 0
 
+    # Members who came but couldn't swim: no plan, expired, or frozen
+    from app.models.swipe import Swipe, SwipeOutcome
+    no_plan_swipes = (
+        db.query(func.count(func.distinct(Swipe.member_id)))
+        .filter(
+            Swipe.created_at.between(today_start, today_end),
+            Swipe.outcome.in_([SwipeOutcome.no_plan, SwipeOutcome.expired, SwipeOutcome.frozen]),
+        )
+        .scalar() or 0
+    )
+
     return {
         "total_checkins_today": total_checkins,
         "unique_members_today": unique_members,
         "revenue_today": Decimal(str(revenue)),
         "active_memberships": active_memberships,
         "guests_today": guests,
+        "no_plan_swipes_today": no_plan_swipes,
     }
 
 

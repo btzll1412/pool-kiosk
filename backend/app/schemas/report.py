@@ -10,6 +10,7 @@ class DashboardResponse(BaseModel):
     revenue_today: Decimal
     active_memberships: int
     guests_today: int
+    no_plan_swipes_today: int = 0
 
 
 class RevenueReportItem(BaseModel):

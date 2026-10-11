@@ -20,6 +20,10 @@ class ScanRequest(BaseModel):
     rfid_uid: str
 
 
+class KioskPresenceRequest(BaseModel):
+    member_id: uuid.UUID
+
+
 class SearchRequest(BaseModel):
     query: str
 

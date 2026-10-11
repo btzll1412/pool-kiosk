@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ArrowLeft, Loader2, Search } from "lucide-react";
 import toast from "react-hot-toast";
-import { searchMembers } from "../../api/kiosk";
+import { recordPresence, searchMembers } from "../../api/kiosk";
 import KioskInput from "../components/KioskInput";
 
 export default function SearchScreen({ setMember, goTo, goIdle }) {
@@ -31,6 +31,8 @@ export default function SearchScreen({ setMember, goTo, goIdle }) {
   function selectMember(m) {
     setMember(m);
     goTo("member");
+    // Log the visit like a card swipe (fire-and-forget; the screen never waits on it)
+    recordPresence(m.member_id).catch(() => {});
   }
 
   return (

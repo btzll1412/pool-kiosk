@@ -528,6 +528,11 @@ and additionally uploaded to S3/SFTP when configured. Restores run in a single t
 (e.g. server was off at the scheduled time). Failures fire the `backup_failed` webhook and email
 all active admins with an email address.
 
+### Swipes (admin auth)
+
+- `GET /api/swipes` — Every kiosk card read / name-search lookup with outcome; filters: `search`, `outcome`,
+  `start_date`, `end_date`, `start_time`, `end_time`; paginated; returns `unique_members` and `outcome_counts`.
+
 ### Guests (admin auth)
 
 - `GET /api/guests` — List guest visits with pagination
