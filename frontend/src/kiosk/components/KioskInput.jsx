@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import VirtualKeyboard from "./VirtualKeyboard";
 import NumPad from "./NumPad";
 
@@ -6,6 +6,20 @@ import NumPad from "./NumPad";
 const signalActivity = () => {
   window.dispatchEvent(new CustomEvent("kiosk-activity"));
 };
+
+// The on-screen keyboard is fixed to the bottom of the screen. Give the scrolling
+// form that much extra room so fields near the bottom can scroll up above it.
+const KEYBOARD_SPACER_CLASS = "pb-[26rem]";
+
+function scrollParentOf(el) {
+  let node = el?.parentElement;
+  while (node && node !== document.body) {
+    const overflowY = window.getComputedStyle(node).overflowY;
+    if (overflowY === "auto" || overflowY === "scroll") return node;
+    node = node.parentElement;
+  }
+  return null;
+}
 
 export default function KioskInput({
   type = "text",
@@ -23,6 +37,19 @@ export default function KioskInput({
 }) {
   const [showKeyboard, setShowKeyboard] = useState(false);
   const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!showKeyboard) return undefined;
+    const container = scrollParentOf(inputRef.current);
+    container?.classList.add(KEYBOARD_SPACER_CLASS);
+    const timer = setTimeout(() => {
+      inputRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 50);
+    return () => {
+      clearTimeout(timer);
+      container?.classList.remove(KEYBOARD_SPACER_CLASS);
+    };
+  }, [showKeyboard]);
 
   const handleFocus = () => {
     signalActivity();
