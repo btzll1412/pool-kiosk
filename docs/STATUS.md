@@ -1230,10 +1230,10 @@ Owner sells things that are not memberships (snacks, towels, lessons...) and wan
   cash, card and split all work. Item sales by guests are transactions with `guest_name` set — no
   `guest_visits` row, so they appear in Transactions, not the Guests page.
 - **Admin**: Plans form has the "Item (one-time sale)" type with open-amount + min/max; Member Detail has a
-  **Record Sale** button (`POST /members/{id}/sales`: cash, card on file, account credit, or charge to
-  account). Item plans are excluded from Add Membership and auto-charge. Open-amount items can't have a
+  **Record Sale** button (`POST /members/{id}/sales`: cash, card on file, a new card typed in now
+  (optionally saved), account credit, or charge to account). Item plans are excluded from Add Membership and auto-charge. Open-amount items can't have a
   custom member price (fixed-price items can).
-- Tests: `tests/test_item_sales.py` (21) — suite 155.
+- Tests: `tests/test_item_sales.py` (23) — suite 157.
 
 ---
 

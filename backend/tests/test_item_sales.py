@@ -273,3 +273,31 @@ def test_admin_sale_with_saved_card(client, db, admin_headers, member_with_pin, 
 def test_admin_sale_rejects_membership_plans(client, admin_headers, member_with_pin, single_swim_plan):
     r = _sale(client, admin_headers, member_with_pin, single_swim_plan, description="x", payment_method="cash")
     assert r.status_code == 404
+
+
+def test_admin_sale_with_new_card_and_save(client, db, admin_headers, member_with_pin, shop_plan, monkeypatch):
+    from app.payments.base import SavedCardChargeResult
+    from app.payments.stub import StubPaymentAdapter
+    captured = {}
+
+    def fake_sale(self, **kwargs):
+        captured.update(kwargs)
+        return SavedCardChargeResult(success=True, reference_id="ref-777", card_token="tok_new")
+    monkeypatch.setattr(StubPaymentAdapter, "process_manual_card_sale", fake_sale, raising=False)
+
+    r = _sale(client, admin_headers, member_with_pin, shop_plan, description="Lesson", amount="25.00",
+              payment_method="new_card", card_number="4111 1111 1111 1111", exp_date="12/30", cvv="123", save_card=True)
+    assert r.status_code == 200, r.text
+    assert captured["amount"] == D("25.00") and captured["save_card"] is True
+    [tx] = _payments(db, member_with_pin.id)
+    assert tx.amount == D("25.00") and tx.reference_id == "ref-777" and tx.notes == "Lesson — Card ****1111"
+    card = db.query(SavedCard).filter(SavedCard.member_id == member_with_pin.id).one()
+    assert card.card_last4 == "1111" and tx.saved_card_id == card.id and db.query(Membership).count() == 0
+
+
+def test_admin_sale_new_card_requires_card_fields(client, admin_headers, member_with_pin, towel_plan):
+    r = _sale(client, admin_headers, member_with_pin, towel_plan, description="Towel", payment_method="new_card")
+    assert r.status_code == 400
+    r = _sale(client, admin_headers, member_with_pin, towel_plan, description="Towel", payment_method="new_card",
+              card_number="12", exp_date="1230", cvv="123")
+    assert r.status_code == 422

@@ -1087,6 +1087,46 @@ def record_member_sale(
         tx.created_by = current_user.id
         db.commit()
         message = f"${amount:.2f} charged to card on file"
+    elif data.payment_method == "new_card":
+        if not (data.card_number and data.exp_date and data.cvv):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Card number, expiration and CVV are required")
+        adapter = get_payment_adapter(db)
+        if not hasattr(adapter, "process_manual_card_sale"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Manual card entry not supported by current payment processor")
+        charge_result = adapter.process_manual_card_sale(
+            card_number=data.card_number, exp_date=data.exp_date, cvv=data.cvv, amount=amount,
+            member_id=str(member_id), description=f"{plan.name}: {description}", save_card=data.save_card,
+            customer_name=f"{member.first_name} {member.last_name}",
+        )
+        if not charge_result.success:
+            raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                                detail=charge_result.message or "Card payment declined")
+        card_last4 = data.card_number[-4:]
+        saved_card = None
+        if data.save_card and charge_result.card_token:
+            card_brand = _detect_card_brand(data.card_number)
+            saved_card = SavedCard(
+                member_id=member_id, processor_token=charge_result.card_token,
+                card_last4=card_last4, card_brand=card_brand, friendly_name=f"{card_brand} ending {card_last4}",
+            )
+            db.add(saved_card)
+            db.flush()
+        tx = Transaction(
+            member_id=member_id,
+            transaction_type=TransactionType.payment,
+            payment_method=PaymentMethod.card,
+            amount=amount,
+            plan_id=plan.id,
+            saved_card_id=saved_card.id if saved_card else None,
+            reference_id=charge_result.reference_id,
+            notes=sale_note(description, f"Card ****{card_last4}"),
+            created_by=current_user.id,
+        )
+        db.add(tx)
+        db.commit()
+        db.refresh(tx)
+        message = f"${amount:.2f} charged to card ****{card_last4}" + (" and card saved" if saved_card else "")
     else:
         if data.payment_method == "cash":
             method, note = PaymentMethod.cash, None

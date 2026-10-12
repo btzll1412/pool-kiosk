@@ -125,6 +125,11 @@ export default function MemberDetail() {
   const [saleAmount, setSaleAmount] = useState("");
   const [saleMethod, setSaleMethod] = useState("cash");
   const [saleCardId, setSaleCardId] = useState("");
+  const [saleCardNumber, setSaleCardNumber] = useState("");
+  const [saleExpMonth, setSaleExpMonth] = useState("");
+  const [saleExpYear, setSaleExpYear] = useState("");
+  const [saleCvv, setSaleCvv] = useState("");
+  const [saleSaveCard, setSaleSaveCard] = useState(false);
   const [saleLoading, setSaleLoading] = useState(false);
 
   // Membership management
@@ -365,6 +370,11 @@ export default function MemberDetail() {
     setSaleAmount("");
     setSaleMethod("cash");
     setSaleCardId("");
+    setSaleCardNumber("");
+    setSaleExpMonth("");
+    setSaleExpYear("");
+    setSaleCvv("");
+    setSaleSaveCard(false);
   };
 
   const handleRecordSale = async () => {
@@ -372,6 +382,12 @@ export default function MemberDetail() {
     if (!saleDescription.trim()) return toast.error("Enter what this charge is for");
     if (salePlan.open_amount && !(Number(saleAmount) > 0)) return toast.error("Enter the amount");
     if (saleMethod === "saved_card" && !saleCardId) return toast.error("Choose a card on file");
+    const cleanCard = saleCardNumber.replace(/\s/g, "");
+    if (saleMethod === "new_card") {
+      if (cleanCard.length < 13 || cleanCard.length > 19) return toast.error("Please enter a valid card number");
+      if (!saleExpMonth || !saleExpYear) return toast.error("Please enter the card expiration date");
+      if (saleCvv.length < 3 || saleCvv.length > 4) return toast.error("Please enter a valid CVV (3-4 digits)");
+    }
     setSaleLoading(true);
     try {
       const result = await recordSale(id, {
@@ -380,6 +396,10 @@ export default function MemberDetail() {
         amount: salePlan.open_amount ? saleAmount : null,
         paymentMethod: saleMethod,
         savedCardId: saleMethod === "saved_card" ? saleCardId : null,
+        cardNumber: saleMethod === "new_card" ? cleanCard : null,
+        expDate: saleMethod === "new_card" ? `${saleExpMonth.padStart(2, "0")}${saleExpYear.slice(-2)}` : null,
+        cvv: saleMethod === "new_card" ? saleCvv : null,
+        saveCard: saleMethod === "new_card" && saleSaveCard,
       });
       toast.success(result.message);
       setShowSale(false);
@@ -1657,6 +1677,7 @@ export default function MemberDetail() {
             >
               <option value="cash">Cash (in hand)</option>
               {savedCards.length > 0 && <option value="saved_card">Card on file</option>}
+              <option value="new_card">New card (enter details)</option>
               {Number(member.credit_balance) > 0 && <option value="credit">Account credit (${Number(member.credit_balance).toFixed(2)} available)</option>}
               <option value="account">Charge to account (pay later)</option>
             </select>
@@ -1674,6 +1695,67 @@ export default function MemberDetail() {
                   <option key={c.id} value={c.id}>{c.friendly_name || `${c.card_brand || "Card"} ending ${c.card_last4}`}</option>
                 ))}
               </select>
+            </div>
+          )}
+          {saleMethod === "new_card" && (
+            <div className="space-y-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Card will be charged ${salePrice.toFixed(2)} immediately.
+              </p>
+              <Input
+                label="Card Number"
+                value={saleCardNumber}
+                onChange={(e) => setSaleCardNumber(formatCardNumber(e.target.value))}
+                placeholder="1234 5678 9012 3456"
+              />
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Month</label>
+                  <select
+                    value={saleExpMonth}
+                    onChange={(e) => setSaleExpMonth(e.target.value)}
+                    className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                  >
+                    <option value="">MM</option>
+                    {[...Array(12)].map((_, i) => (
+                      <option key={i + 1} value={String(i + 1).padStart(2, "0")}>{String(i + 1).padStart(2, "0")}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Year</label>
+                  <select
+                    value={saleExpYear}
+                    onChange={(e) => setSaleExpYear(e.target.value)}
+                    className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                  >
+                    <option value="">YY</option>
+                    {[...Array(12)].map((_, i) => {
+                      const year = new Date().getFullYear() + i;
+                      return <option key={year} value={String(year)}>{year}</option>;
+                    })}
+                  </select>
+                </div>
+                <Input
+                  label="CVV"
+                  maxLength={4}
+                  value={saleCvv}
+                  onChange={(e) => setSaleCvv(e.target.value.replace(/\D/g, ""))}
+                  placeholder="123"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="saleSaveCard"
+                  checked={saleSaveCard}
+                  onChange={(e) => setSaleSaveCard(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                />
+                <label htmlFor="saleSaveCard" className="text-sm text-gray-700 dark:text-gray-300">
+                  Save card for future use
+                </label>
+              </div>
             </div>
           )}
           {saleMethod === "account" && (

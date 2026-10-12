@@ -119,11 +119,15 @@ export const deletePriceOverride = (memberId, overrideId) =>
   client.delete(`/members/${memberId}/price-overrides/${overrideId}`).then((r) => r.data);
 
 // One-time item sale for a member (snacks, towels...): cash, card on file, account credit, or charged to account
-export const recordSale = (memberId, { planId, description, amount, paymentMethod, savedCardId }) =>
+export const recordSale = (memberId, { planId, description, amount, paymentMethod, savedCardId, cardNumber, expDate, cvv, saveCard }) =>
   client.post(`/members/${memberId}/sales`, {
     plan_id: planId,
     description,
     amount: amount != null && amount !== "" ? String(amount) : null,
     payment_method: paymentMethod,
     saved_card_id: savedCardId || null,
+    card_number: cardNumber || null,
+    exp_date: expDate || null,
+    cvv: cvv || null,
+    save_card: !!saveCard,
   }).then((r) => r.data);

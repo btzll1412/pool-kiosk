@@ -142,12 +142,35 @@ class AdminCardChargeRequest(AdminCardTokenizeRequest):
 
 
 class MemberSaleRequest(BaseModel):
-    """Admin records a one-time item sale for a member (snacks, towels, lessons...)."""
+    """Admin records a one-time item sale for a member (snacks, towels, lessons...).
+
+    ``new_card`` charges a card typed in now (card_number / exp_date / cvv required,
+    optionally saved on file); ``saved_card`` charges a card already on file.
+    """
     plan_id: uuid.UUID
     description: str
     amount: Decimal | None = None  # open-amount items only
-    payment_method: Literal["cash", "saved_card", "account", "credit"]
+    payment_method: Literal["cash", "saved_card", "new_card", "account", "credit"]
     saved_card_id: uuid.UUID | None = None
+    card_number: str | None = None
+    exp_date: str | None = None  # MMYY
+    cvv: str | None = None
+    save_card: bool = False
+
+    @field_validator("card_number")
+    @classmethod
+    def _card_number(cls, v: str | None) -> str | None:
+        return _digits(v, "Card number", 13, 19) if v else None
+
+    @field_validator("exp_date")
+    @classmethod
+    def _exp_date(cls, v: str | None) -> str | None:
+        return _digits(v, "Expiration date (MMYY)", 4, 4) if v else None
+
+    @field_validator("cvv")
+    @classmethod
+    def _cvv(cls, v: str | None) -> str | None:
+        return _digits(v, "CVV", 3, 4) if v else None
 
 
 class MemberSaleResponse(BaseModel):
