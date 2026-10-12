@@ -24,6 +24,9 @@ class PendingTerminalPayment(Base):
     save_card: Mapped[bool] = mapped_column(Boolean, default=False)
     billing_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)  # "full" | "prorate"
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Item sales: what the charge is for and (open-amount items) the amount entered
+    item_description: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    item_amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime)  # Auto-cleanup after expiry

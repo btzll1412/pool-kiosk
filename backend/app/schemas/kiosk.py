@@ -11,9 +11,16 @@ from app.services.billing_service import BillingMode
 
 
 class BillingChoice(BaseModel):
-    """How a monthly-type plan is billed: full price from the start date, or prorated to the billing day."""
+    """Purchase options that travel with every pay request.
+
+    Monthly-type plans: how the plan is billed (full price from the start date, or
+    prorated to the billing day). Item plans: what the charge is for and, for
+    open-amount items, the amount entered.
+    """
     billing_mode: BillingMode = BillingMode.full
     start_date: date | None = None  # default: today
+    description: str | None = None  # item plans: required
+    amount: Decimal | None = None   # item plans with an open amount: required
 
 
 class ScanRequest(BaseModel):
@@ -120,7 +127,13 @@ class PaymentResponse(BaseModel):
     message: str
 
 
-class GuestVisitRequest(BaseModel):
+class GuestItemChoice(BaseModel):
+    """Item plans bought by a guest: what the charge is for and (open amount) how much."""
+    description: str | None = None
+    amount: Decimal | None = None
+
+
+class GuestVisitRequest(GuestItemChoice):
     name: str
     phone: str
     payment_method: PaymentMethod
@@ -129,12 +142,12 @@ class GuestVisitRequest(BaseModel):
 
 
 class GuestVisitResponse(BaseModel):
-    visit_id: uuid.UUID
+    visit_id: uuid.UUID | None = None  # None for item sales (nothing to visit)
     amount_paid: Decimal
     message: str
 
 
-class GuestCardPaymentRequest(BaseModel):
+class GuestCardPaymentRequest(GuestItemChoice):
     name: str
     phone: str | None = None
     plan_id: uuid.UUID
@@ -143,7 +156,7 @@ class GuestCardPaymentRequest(BaseModel):
     cvv: str
 
 
-class GuestSplitPaymentRequest(BaseModel):
+class GuestSplitPaymentRequest(GuestItemChoice):
     name: str
     phone: str | None = None
     plan_id: uuid.UUID

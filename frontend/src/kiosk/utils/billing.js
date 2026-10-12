@@ -39,6 +39,22 @@ export function ordinal(n) {
   return `${num}${suffix}`;
 }
 
+/** Item plans: one-time sales (snacks, towels...) that create no membership. */
+export function isItemPlan(plan) {
+  return plan?.plan_type === "item";
+}
+
+/** Item plans always need the buyer to say what the charge is for (and, if open, how much). */
+export function needsItemDetails(plan) {
+  return isItemPlan(plan);
+}
+
+/** Billing selection for an item sale — carried through the pay screens like a billing choice. */
+export function itemBilling(plan, description, amount) {
+  const value = plan?.open_amount ? Number(amount) : Number(plan?.price || 0);
+  return { planId: plan.id, mode: "full", startDate: null, amount: value, quote: null, item: true, description };
+}
+
 /** True when the member has a real choice to make (full and pro-rated differ). */
 export function needsBillingChoice(plan) {
   return plan?.plan_type === "monthly" && plan?.billing_options?.prorate?.prorated === true;
@@ -54,6 +70,10 @@ export function defaultBilling(plan) {
 /** Amount due for a purchase: the chosen quote for monthly-type plans, else the plan price. */
 export function getPurchasePrice(plan, billing) {
   if (!plan) return 0;
+  if (isItemPlan(plan)) {
+    if (billing && billing.planId === plan.id) return Number(billing.amount);
+    return plan.open_amount ? 0 : Number(plan.price || 0);
+  }
   if (plan.plan_type === "monthly") {
     if (billing && billing.planId === plan.id) return Number(billing.amount);
     const full = plan.billing_options?.full;
@@ -65,6 +85,14 @@ export function getPurchasePrice(plan, billing) {
 /** Request fields the pay endpoints expect — must match what the member was shown. */
 export function getBillingParams(plan, billing) {
   if (billing && plan && billing.planId === plan.id) {
+    if (billing.item) {
+      return {
+        billing_mode: "full",
+        start_date: null,
+        description: billing.description,
+        amount: plan.open_amount ? String(Number(billing.amount).toFixed(2)) : null,
+      };
+    }
     return { billing_mode: billing.mode, start_date: billing.startDate || null };
   }
   return { billing_mode: "full", start_date: null };
@@ -72,6 +100,7 @@ export function getBillingParams(plan, billing) {
 
 /** One-line description of the chosen billing, or "" for non-monthly plans. */
 export function describeBilling(plan, billing, currency = "$") {
+  if (billing && plan && billing.planId === plan.id && billing.item) return `For: ${billing.description}`;
   if (!billing || !plan || billing.planId !== plan.id || !billing.quote) return "";
   const q = billing.quote;
   const covers = `Covers ${formatDate(q.start_date)} – ${formatDate(q.valid_until)}`;

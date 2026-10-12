@@ -47,7 +47,11 @@ def process_cash_payment(
     plan_id: uuid.UUID,
     amount_tendered: Decimal,
     wants_change: bool = False,
+    amount_override: Decimal | None = None,
+    description: str | None = None,
+    **membership_kwargs,
 ) -> tuple[Transaction, Decimal, Decimal]:
+    """Record a cash purchase. ``description`` marks an item sale (no membership is created)."""
     member = db.query(Member).filter(Member.id == member_id).first()
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
@@ -56,14 +60,15 @@ def process_cash_payment(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
-    if amount_tendered < plan.price:
-        logger.warning("Cash payment insufficient: member=%s, plan=%s, tendered=$%s, required=$%s", member_id, plan_id, amount_tendered, plan.price)
+    price = amount_override if amount_override is not None else plan.price
+    if amount_tendered < price:
+        logger.warning("Cash payment insufficient: member=%s, plan=%s, tendered=$%s, required=$%s", member_id, plan_id, amount_tendered, price)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Insufficient amount. Plan costs ${plan.price}, received ${amount_tendered}",
+            detail=f"Insufficient amount. Plan costs ${price}, received ${amount_tendered}",
         )
 
-    overpayment = amount_tendered - plan.price
+    overpayment = amount_tendered - price
     change_due = Decimal("0.00")
     credit_added = Decimal("0.00")
 
@@ -76,15 +81,16 @@ def process_cash_payment(
             member.credit_balance += credit_added
             logger.info("Cash payment overpay — added to credit: member=%s, credit=$%s, new_balance=$%s", member_id, credit_added, member.credit_balance)
 
-    membership = create_membership(db, member_id, plan_id)
+    membership = None if description else create_membership(db, member_id, plan_id, **membership_kwargs)
 
     tx = Transaction(
         member_id=member_id,
         transaction_type=TransactionType.payment,
         payment_method=PaymentMethod.cash,
-        amount=plan.price,
+        amount=price,
         plan_id=plan_id,
-        membership_id=membership.id,
+        membership_id=membership.id if membership else None,
+        notes=description,
     )
     db.add(tx)
     db.flush()  # Get the transaction ID before commit
@@ -110,7 +116,11 @@ def process_card_payment(
     db: Session,
     member_id: uuid.UUID,
     plan_id: uuid.UUID,
+    amount: Decimal | None = None,
+    description: str | None = None,
+    **membership_kwargs,
 ) -> Transaction:
+    """Charge a new card. ``description`` marks an item sale (no membership is created)."""
     member = db.query(Member).filter(Member.id == member_id).first()
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
@@ -119,25 +129,28 @@ def process_card_payment(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
+    price = amount if amount is not None else plan.price
+    label = f"{plan.name}: {description}" if description else f"Purchase: {plan.name}"
     adapter = get_payment_adapter(db)
-    session = adapter.initiate_payment(plan.price, str(member_id), f"Purchase: {plan.name}")
-    logger.info("Card payment initiated: member=%s, plan=%s, amount=$%s, session=%s", member_id, plan.name, plan.price, session.session_id)
+    session = adapter.initiate_payment(price, str(member_id), label)
+    logger.info("Card payment initiated: member=%s, plan=%s, amount=$%s, session=%s", member_id, plan.name, price, session.session_id)
 
-    membership = create_membership(db, member_id, plan_id)
+    membership = None if description else create_membership(db, member_id, plan_id, **membership_kwargs)
 
     tx = Transaction(
         member_id=member_id,
         transaction_type=TransactionType.payment,
         payment_method=PaymentMethod.card,
-        amount=plan.price,
+        amount=price,
         plan_id=plan_id,
-        membership_id=membership.id,
+        membership_id=membership.id if membership else None,
         reference_id=session.session_id,
+        notes=description,
     )
     db.add(tx)
     db.commit()
     db.refresh(tx)
-    logger.info("Card payment completed: member=%s, plan=%s, amount=$%s, tx=%s", member_id, plan.name, plan.price, tx.id)
+    logger.info("Card payment completed: member=%s, plan=%s, amount=$%s, tx=%s", member_id, plan.name, price, tx.id)
     return tx
 
 

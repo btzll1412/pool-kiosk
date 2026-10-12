@@ -1,5 +1,6 @@
 import logging
 import uuid
+from dataclasses import dataclass, field
 from calendar import monthrange
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
@@ -23,7 +24,9 @@ from app.models.saved_card import SavedCard
 from app.models.transaction import PaymentMethod, Transaction, TransactionType
 from datetime import timedelta
 from datetime import datetime
+from app.services.item_sale_service import clean_description, is_item_plan, resolve_item_amount, sale_note
 from app.schemas.kiosk import (
+    BillingChoice,
     AccountPaymentRequest,
     KioskClientErrorRequest,
     KioskPresenceRequest,
@@ -467,24 +470,67 @@ def kiosk_checkin(data: KioskCheckinRequest, request: Request, db: Session = Dep
 KIOSK_MAX_START_DAYS_AHEAD = 62
 
 
+@dataclass
+class Purchase:
+    """What a kiosk purchase costs and what it creates.
+
+    Membership plans create a membership (``membership_kwargs`` go to
+    ``create_membership``). Item plans create nothing: ``description`` says what the
+    one-time charge was for and is written into every transaction note.
+    """
+    amount: Decimal
+    membership_kwargs: dict = field(default_factory=dict)
+    description: str | None = None
+
+    @property
+    def is_item(self) -> bool:
+        return self.description is not None
+
+    def fulfill(self, db: Session, member_id: uuid.UUID, plan_id: uuid.UUID) -> Membership | None:
+        """Create the membership (None for item sales). Call once payment is secured."""
+        if self.is_item:
+            return None
+        return create_membership(db, member_id, plan_id, **self.membership_kwargs)
+
+    def note(self, base: str | None = None) -> str | None:
+        return sale_note(self.description, base)
+
+    def processor_description(self, plan: Plan) -> str:
+        return f"{plan.name}: {self.description}" if self.is_item else f"Purchase: {plan.name}"
+
+
+def _mid(membership: Membership | None) -> uuid.UUID | None:
+    return membership.id if membership else None
+
+
 def resolve_purchase(
     db: Session,
     plan: Plan,
     member_id: uuid.UUID,
-    billing_mode: BillingMode = BillingMode.full,
+    options=None,
     start_date: date | None = None,
-) -> tuple[Decimal, dict]:
-    """Price and membership dates for a kiosk purchase.
+) -> Purchase:
+    """Price and what-to-create for a kiosk purchase.
 
-    Returns (amount_due, create_membership kwargs). Monthly-type plans are either
-    full price starting on the chosen date (billing follows that date), or
-    prorated to the standard billing day. Other plans are always the plan price.
+    ``options`` carries the request's billing_mode / start_date (monthly-type plans)
+    and description / amount (item plans). Monthly-type plans are either full price
+    starting on the chosen date (billing follows that date), or prorated to the
+    standard billing day. Items are the plan price or the entered amount. Other
+    plans are always the plan price.
     """
     from app.services.pricing_service import get_member_price
 
+    billing_mode = getattr(options, "billing_mode", None) or BillingMode.full
+    start_date = start_date or getattr(options, "start_date", None)
     price = get_member_price(db, member_id, plan.id)
+
+    if is_item_plan(plan):
+        description = clean_description(getattr(options, "description", None))
+        amount = resolve_item_amount(plan, getattr(options, "amount", None), list_price=price)
+        return Purchase(amount=amount, description=description)
+
     if plan.plan_type != PlanType.monthly:
-        return price, {}
+        return Purchase(amount=price)
 
     today = _get_local_today(db)
     start = start_date or today
@@ -498,7 +544,7 @@ def resolve_purchase(
     kwargs = {"start_date": start}
     if billing_mode == BillingMode.prorate:
         kwargs["billing_day"] = DEFAULT_BILLING_DAY
-    return quote.amount, kwargs
+    return Purchase(amount=quote.amount, membership_kwargs=kwargs)
 
 
 @router.get("/plans")
@@ -544,6 +590,9 @@ def get_kiosk_plans(request: Request, db: Session = Depends(get_db), is_senior: 
                 for mode in BillingMode
             } if p.plan_type == PlanType.monthly else None,
             "allow_charge_to_account": bool(p.allow_charge_to_account and account_member and account_member.charge_to_account_enabled),
+            "open_amount": p.open_amount,
+            "min_amount": str(p.min_amount) if p.min_amount is not None else None,
+            "max_amount": str(p.max_amount) if p.max_amount is not None else None,
         })
     return result
 
@@ -606,7 +655,8 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
     from app.services.pricing_service import get_member_price
     local_today = _get_local_today(db)
     credit_used = Decimal("0.00")
-    base_price, membership_kwargs = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
+    purchase = resolve_purchase(db, plan, data.member_id, data)
+    base_price = purchase.amount
     effective_price = base_price
 
     # Apply account credit if requested
@@ -617,15 +667,15 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
 
     # If credit covers entire amount, no cash needed
     if effective_price <= 0:
-        membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
+        membership = purchase.fulfill(db, data.member_id, data.plan_id)
         credit_tx = Transaction(
             member_id=data.member_id,
             transaction_type=TransactionType.payment,
             payment_method=PaymentMethod.credit,
             amount=credit_used,
             plan_id=data.plan_id,
-            membership_id=membership.id,
-            notes="Paid with account credit",
+            membership_id=_mid(membership),
+            notes=purchase.note("Paid with account credit"),
         )
         db.add(credit_tx)
         db.commit()
@@ -634,7 +684,7 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
         return PaymentResponse(
             success=True,
             transaction_id=credit_tx.id,
-            membership_id=membership.id,
+            membership_id=_mid(membership),
             credit_used=credit_used,
             message=f"Paid ${credit_used} with account credit.",
         )
@@ -647,7 +697,7 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
         )
 
     # Create membership
-    membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
+    membership = purchase.fulfill(db, data.member_id, data.plan_id)
 
     # Handle cash payment for remaining amount
     change_due = Decimal("0.00")
@@ -668,8 +718,8 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
         payment_method=PaymentMethod.cash,
         amount=data.amount_tendered,
         plan_id=data.plan_id,
-        membership_id=membership.id,
-        notes="Cash portion of payment" if credit_used > 0 else None,
+        membership_id=_mid(membership),
+        notes=purchase.note("Cash portion of payment" if credit_used > 0 else None),
     )
     db.add(cash_tx)
     db.flush()  # Get ID for linking
@@ -682,8 +732,8 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
             payment_method=PaymentMethod.credit,
             amount=credit_used,
             plan_id=data.plan_id,
-            membership_id=membership.id,
-            notes="Credit portion of payment",
+            membership_id=_mid(membership),
+            notes=purchase.note("Credit portion of payment"),
             related_transaction_id=cash_tx.id,
         )
         db.add(credit_tx)
@@ -716,7 +766,7 @@ def pay_cash(data: CashPaymentRequest, request: Request, db: Session = Depends(g
     return PaymentResponse(
         success=True,
         transaction_id=cash_tx.id,
-        membership_id=membership.id,
+        membership_id=_mid(membership),
         change_due=change_due,
         credit_added=credit_added,
         credit_used=credit_used,
@@ -740,7 +790,8 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
     from app.services.pricing_service import get_member_price
     local_today = _get_local_today(db)
     credit_used = Decimal("0.00")
-    base_price, membership_kwargs = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
+    purchase = resolve_purchase(db, plan, data.member_id, data)
+    base_price = purchase.amount
     effective_price = base_price
 
     # Apply account credit if requested
@@ -751,15 +802,15 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
 
     # If credit covers entire amount, no card charge needed
     if effective_price <= 0:
-        membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
+        membership = purchase.fulfill(db, data.member_id, data.plan_id)
         credit_tx = Transaction(
             member_id=data.member_id,
             transaction_type=TransactionType.payment,
             payment_method=PaymentMethod.credit,
             amount=credit_used,
             plan_id=data.plan_id,
-            membership_id=membership.id,
-            notes="Paid with account credit",
+            membership_id=_mid(membership),
+            notes=purchase.note("Paid with account credit"),
         )
         db.add(credit_tx)
         db.commit()
@@ -768,7 +819,7 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
         return PaymentResponse(
             success=True,
             transaction_id=credit_tx.id,
-            membership_id=membership.id,
+            membership_id=_mid(membership),
             credit_used=credit_used,
             message=f"Paid ${credit_used} with account credit.",
         )
@@ -778,7 +829,7 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
         # Use saved card - note: charge_saved_card_now handles membership creation
         tx = charge_saved_card_now(
             db, data.saved_card_id, data.plan_id, data.member_id,
-            amount_override=effective_price, **membership_kwargs,
+            amount_override=effective_price, description=purchase.description, **purchase.membership_kwargs,
         )
 
         # If credit was used, record credit transaction (linked to card tx)
@@ -790,7 +841,7 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
                 amount=credit_used,
                 plan_id=data.plan_id,
                 membership_id=tx.membership_id,
-                notes="Credit portion of payment",
+                notes=purchase.note("Credit portion of payment"),
                 related_transaction_id=tx.id,
             )
             db.add(credit_tx)
@@ -806,7 +857,8 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
         )
 
     # New card payment
-    tx = process_card_payment(db, data.member_id, data.plan_id)
+    tx = process_card_payment(db, data.member_id, data.plan_id, amount=effective_price,
+                              description=purchase.description, **purchase.membership_kwargs)
 
     # If credit was used, record credit transaction (linked to card tx)
     if credit_used > 0:
@@ -817,7 +869,7 @@ def pay_card(data: CardPaymentRequest, request: Request, db: Session = Depends(g
             amount=credit_used,
             plan_id=data.plan_id,
             membership_id=tx.membership_id,
-            notes="Credit portion of payment",
+            notes=purchase.note("Credit portion of payment"),
             related_transaction_id=tx.id,
         )
         db.add(credit_tx)
@@ -901,7 +953,8 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
     from app.services.pricing_service import get_member_price
     local_today = _get_local_today(db)
     credit_used = Decimal("0.00")
-    base_price, membership_kwargs = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
+    purchase = resolve_purchase(db, plan, data.member_id, data)
+    base_price = purchase.amount
     effective_price = base_price
 
     # Apply account credit if requested
@@ -912,15 +965,15 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
 
     # If credit covers entire amount, no card charge needed
     if effective_price <= 0:
-        membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
+        membership = purchase.fulfill(db, data.member_id, data.plan_id)
         credit_tx = Transaction(
             member_id=data.member_id,
             transaction_type=TransactionType.payment,
             payment_method=PaymentMethod.credit,
             amount=credit_used,
             plan_id=data.plan_id,
-            membership_id=membership.id,
-            notes="Paid with account credit",
+            membership_id=_mid(membership),
+            notes=purchase.note("Paid with account credit"),
         )
         db.add(credit_tx)
         db.commit()
@@ -929,7 +982,7 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
         return PaymentResponse(
             success=True,
             transaction_id=credit_tx.id,
-            membership_id=membership.id,
+            membership_id=_mid(membership),
             credit_used=credit_used,
             message=f"Paid ${credit_used} with account credit.",
         )
@@ -951,7 +1004,7 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
         cvv=data.cvv,
         amount=effective_price,
         member_id=str(data.member_id),
-        description=f"Purchase: {plan.name}",
+        description=purchase.processor_description(plan),
         save_card=data.save_card,
         customer_name=customer_name,
     )
@@ -967,7 +1020,7 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
         )
 
     # Create membership
-    membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
+    membership = purchase.fulfill(db, data.member_id, data.plan_id)
 
     # Record card payment transaction first
     card_last4 = card_number[-4:]
@@ -977,9 +1030,9 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
         payment_method=PaymentMethod.card,
         amount=effective_price,
         plan_id=data.plan_id,
-        membership_id=membership.id,
+        membership_id=_mid(membership),
         reference_id=charge_result.reference_id,
-        notes=f"Manual card entry - ****{card_last4}",
+        notes=purchase.note(f"Manual card entry - ****{card_last4}"),
     )
     db.add(card_tx)
     db.flush()  # Get ID for linking
@@ -992,8 +1045,8 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
             payment_method=PaymentMethod.credit,
             amount=credit_used,
             plan_id=data.plan_id,
-            membership_id=membership.id,
-            notes="Credit portion of payment",
+            membership_id=_mid(membership),
+            notes=purchase.note("Credit portion of payment"),
             related_transaction_id=card_tx.id,
         )
         db.add(credit_tx)
@@ -1029,7 +1082,7 @@ def pay_card_manual(data: ManualCardPaymentRequest, request: Request, db: Sessio
     return PaymentResponse(
         success=True,
         transaction_id=card_tx.id,
-        membership_id=membership.id,
+        membership_id=_mid(membership),
         credit_used=credit_used,
         message=msg,
     )
@@ -1070,10 +1123,14 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
 
-    plan_price, membership_kwargs = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
+    purchase = resolve_purchase(db, plan, data.member_id, data)
+    plan_price = purchase.amount
 
     if data.cash_amount >= plan_price:
-        tx, change_due, credit_added = process_cash_payment(db, data.member_id, data.plan_id, data.cash_amount)
+        tx, change_due, credit_added = process_cash_payment(
+            db, data.member_id, data.plan_id, data.cash_amount,
+            amount_override=plan_price, description=purchase.description, **purchase.membership_kwargs,
+        )
         return PaymentResponse(
             success=True,
             transaction_id=tx.id,
@@ -1103,7 +1160,7 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
             token=saved_card.processor_token,
             amount=card_amount,
             member_id=str(data.member_id),
-            description=f"Split payment (card portion): {plan.name}",
+            description=f"Split payment (card portion): {purchase.processor_description(plan)}",
             customer_name=customer_name,
         )
         if not charge_result.success:
@@ -1113,11 +1170,11 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
             )
         card_reference = charge_result.reference_id
     else:
-        session = adapter.initiate_payment(card_amount, str(data.member_id), f"Split payment (card portion): {plan.name}")
+        session = adapter.initiate_payment(card_amount, str(data.member_id), f"Split payment (card portion): {purchase.processor_description(plan)}")
         card_reference = session.session_id
 
     # Create the membership once
-    membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
+    membership = purchase.fulfill(db, data.member_id, data.plan_id)
 
     # Record cash transaction first
     cash_tx = Transaction(
@@ -1126,8 +1183,8 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
         payment_method=PaymentMethod.cash,
         amount=data.cash_amount,
         plan_id=data.plan_id,
-        membership_id=membership.id,
-        notes="Split payment (cash portion)",
+        membership_id=_mid(membership),
+        notes=purchase.note("Split payment (cash portion)"),
     )
     db.add(cash_tx)
     db.flush()  # Get ID for linking
@@ -1139,9 +1196,9 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
         payment_method=PaymentMethod.card,
         amount=card_amount,
         plan_id=data.plan_id,
-        membership_id=membership.id,
+        membership_id=_mid(membership),
         reference_id=card_reference,
-        notes="Split payment (card portion)",
+        notes=purchase.note("Split payment (card portion)"),
         related_transaction_id=cash_tx.id,
     )
     db.add(card_tx)
@@ -1153,7 +1210,7 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
     return PaymentResponse(
         success=True,
         transaction_id=cash_tx.id,
-        membership_id=membership.id,
+        membership_id=_mid(membership),
         message=f"Split payment: ${data.cash_amount} cash + ${card_amount} card.",
     )
 
@@ -1202,7 +1259,8 @@ def pay_credit(data: CreditPaymentRequest, request: Request, db: Session = Depen
     if member.credit_balance <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No credit balance available")
 
-    effective_plan_price, membership_kwargs = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
+    purchase = resolve_purchase(db, plan, data.member_id, data)
+    effective_plan_price = purchase.amount
     credit_to_use = min(member.credit_balance, effective_plan_price)
     remaining = effective_plan_price - credit_to_use
 
@@ -1217,7 +1275,7 @@ def pay_credit(data: CreditPaymentRequest, request: Request, db: Session = Depen
 
     # Full credit payment - deduct credit and create membership
     member.credit_balance -= credit_to_use
-    membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
+    membership = purchase.fulfill(db, data.member_id, data.plan_id)
 
     # Record credit transaction
     credit_tx = Transaction(
@@ -1226,8 +1284,8 @@ def pay_credit(data: CreditPaymentRequest, request: Request, db: Session = Depen
         payment_method=PaymentMethod.credit,
         amount=credit_to_use,
         plan_id=data.plan_id,
-        membership_id=membership.id,
-        notes="Paid with account credit",
+        membership_id=_mid(membership),
+        notes=purchase.note("Paid with account credit"),
     )
     db.add(credit_tx)
     db.commit()
@@ -1237,9 +1295,9 @@ def pay_credit(data: CreditPaymentRequest, request: Request, db: Session = Depen
     return PaymentResponse(
         success=True,
         transaction_id=credit_tx.id,
-        membership_id=membership.id,
+        membership_id=_mid(membership),
         credit_used=credit_to_use,
-        message=f"Paid ${credit_to_use} with account credit. Enjoy your swim!",
+        message=f"Paid ${credit_to_use} with account credit." + ("" if purchase.is_item else " Enjoy your swim!"),
     )
 
 
@@ -1251,7 +1309,8 @@ def quote_purchase(data: KioskQuoteRequest, request: Request, db: Session = Depe
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
-    amount, kwargs = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
+    purchase = resolve_purchase(db, plan, data.member_id, data)
+    amount, kwargs = purchase.amount, purchase.membership_kwargs
     if plan.plan_type != PlanType.monthly:
         return {"amount": str(amount), "quote": None}
 
@@ -1283,7 +1342,8 @@ def pay_on_account(data: AccountPaymentRequest, request: Request, db: Session = 
             detail="Charging to account is not available for this plan. Please see staff.",
         )
 
-    amount, membership_kwargs = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
+    purchase = resolve_purchase(db, plan, data.member_id, data)
+    amount = purchase.amount
     new_balance = member.credit_balance - amount
     limit = member.charge_to_account_limit
     if limit is not None and new_balance < -limit:
@@ -1293,15 +1353,15 @@ def pay_on_account(data: AccountPaymentRequest, request: Request, db: Session = 
         )
 
     member.credit_balance = new_balance
-    membership = create_membership(db, data.member_id, data.plan_id, **membership_kwargs)
+    membership = purchase.fulfill(db, data.member_id, data.plan_id)
     tx = Transaction(
         member_id=data.member_id,
         transaction_type=TransactionType.payment,
         payment_method=PaymentMethod.credit,
         amount=amount,
         plan_id=data.plan_id,
-        membership_id=membership.id,
-        notes=f"Charged to account — balance after: ${new_balance}",
+        membership_id=_mid(membership),
+        notes=purchase.note(f"Charged to account — balance after: ${new_balance}"),
     )
     db.add(tx)
     db.commit()
@@ -1312,8 +1372,8 @@ def pay_on_account(data: AccountPaymentRequest, request: Request, db: Session = 
     return PaymentResponse(
         success=True,
         transaction_id=tx.id,
-        membership_id=membership.id,
-        message=f"${amount} was added to your account. Enjoy your swim!",
+        membership_id=_mid(membership),
+        message=f"${amount} was added to your account." + ("" if purchase.is_item else " Enjoy your swim!"),
     )
 
 
@@ -1620,6 +1680,37 @@ def disable_auto_charge_endpoint(
     return {"message": "Auto-charge disabled"}
 
 
+def _guest_pricing(plan: Plan, data) -> tuple[Decimal, str | None]:
+    """(amount due, item description or None) for a guest purchase."""
+    if is_item_plan(plan):
+        return resolve_item_amount(plan, data.amount), clean_description(data.description)
+    return plan.price, None
+
+
+def _guest_item_sale(db: Session, plan: Plan, name: str, description: str, amount: Decimal,
+                     parts: list[tuple[PaymentMethod, Decimal, str | None, str | None]], message: str) -> GuestVisitResponse:
+    """Record a guest's item purchase: one payment transaction per part, no guest visit."""
+    first = None
+    for method, part_amount, reference, base_note in parts:
+        tx = Transaction(
+            member_id=None,
+            guest_name=name,
+            transaction_type=TransactionType.payment,
+            payment_method=method,
+            amount=part_amount,
+            plan_id=plan.id,
+            reference_id=reference,
+            notes=sale_note(description, base_note),
+            related_transaction_id=first.id if first else None,
+        )
+        db.add(tx)
+        db.flush()
+        first = first or tx
+    db.commit()
+    logger.info("Guest item sale: name=%s, plan=%s, amount=$%s, for=%s", name, plan.name, amount, description)
+    return GuestVisitResponse(visit_id=None, amount_paid=amount, message=message)
+
+
 @router.post("/guest", response_model=GuestVisitResponse)
 @limiter.limit("15/minute")
 def guest_visit(data: GuestVisitRequest, request: Request, db: Session = Depends(get_db)):
@@ -1631,12 +1722,26 @@ def guest_visit(data: GuestVisitRequest, request: Request, db: Session = Depends
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
+    price, item_description = _guest_pricing(plan, data)
+
     # Calculate overpayment for cash
     overpayment = Decimal("0.00")
     if data.payment_method == "cash" and data.cash_tendered:
-        overpayment = data.cash_tendered - plan.price
+        overpayment = data.cash_tendered - price
         if overpayment < 0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cash amount is less than plan price")
+
+    if item_description:
+        method = PaymentMethod.cash if data.payment_method == "cash" else PaymentMethod.card
+        paid = data.cash_tendered if data.cash_tendered else price
+        note = f"Guest: {data.name}" + (f" (Overpaid: ${overpayment:.2f} - no change given)" if overpayment > 0 else "")
+        if data.payment_method == "cash":
+            currency = get_setting(db, "currency_symbol", "$")
+            cash_msg = get_setting(db, "cash_success_message", "Place {amount} in the cash box.")
+            message = f"Thank you, {data.name}! " + cash_msg.replace("{amount}", f"{currency}{price:.2f}")
+        else:
+            message = f"Thank you, {data.name}!"
+        return _guest_item_sale(db, plan, data.name, item_description, price, [(method, paid, None, note)], message)
 
     visit = GuestVisit(
         name=data.name,
@@ -1692,6 +1797,8 @@ def guest_pay_card(data: GuestCardPaymentRequest, request: Request, db: Session 
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
+    price, item_description = _guest_pricing(plan, data)
+
     # Validate card number format
     card_number = data.card_number.replace(" ", "").replace("-", "")
     if not card_number.isdigit() or len(card_number) < 13 or len(card_number) > 19:
@@ -1729,9 +1836,9 @@ def guest_pay_card(data: GuestCardPaymentRequest, request: Request, db: Session 
         card_number=card_number,
         exp_date=data.exp_date,
         cvv=data.cvv,
-        amount=plan.price,
+        amount=price,
         member_id=None,
-        description=f"Guest visit: {data.name} - {plan.name}",
+        description=f"Guest {'purchase' if item_description else 'visit'}: {data.name} - {plan.name}",
         save_card=False,
         customer_name=data.name,
     )
@@ -1742,8 +1849,15 @@ def guest_pay_card(data: GuestCardPaymentRequest, request: Request, db: Session 
             detail=charge_result.message or "Card payment declined"
         )
 
-    # Create guest visit record
     card_last4 = card_number[-4:]
+    if item_description:
+        return _guest_item_sale(
+            db, plan, data.name, item_description, price,
+            [(PaymentMethod.card, price, charge_result.reference_id, f"Guest: {data.name} (****{card_last4})")],
+            f"Thank you, {data.name}!",
+        )
+
+    # Create guest visit record
     visit = GuestVisit(
         name=data.name,
         phone=data.phone,
@@ -1791,13 +1905,15 @@ def guest_pay_split(data: GuestSplitPaymentRequest, request: Request, db: Sessio
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
+    price, item_description = _guest_pricing(plan, data)
+
     # Validate cash amount
     if data.cash_amount <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cash amount must be greater than zero")
-    if data.cash_amount >= plan.price:
+    if data.cash_amount >= price:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cash amount must be less than plan price for split payment")
 
-    card_amount = plan.price - data.cash_amount
+    card_amount = price - data.cash_amount
 
     # Validate card number format
     card_number = data.card_number.replace(" ", "").replace("-", "")
@@ -1847,8 +1963,21 @@ def guest_pay_split(data: GuestSplitPaymentRequest, request: Request, db: Sessio
             detail=charge_result.message or "Card payment declined"
         )
 
-    # Create guest visit record
     card_last4 = card_number[-4:]
+    if item_description:
+        currency = get_setting(db, "currency_symbol", "$")
+        cash_msg = get_setting(db, "cash_success_message", "Place {amount} in the cash box.")
+        cash_msg = cash_msg.replace("{amount}", f"{currency}{data.cash_amount:.2f}")
+        return _guest_item_sale(
+            db, plan, data.name, item_description, price,
+            [
+                (PaymentMethod.cash, data.cash_amount, None, f"Guest split (cash): {data.name}"),
+                (PaymentMethod.card, card_amount, charge_result.reference_id, f"Guest split (card): {data.name} (****{card_last4})"),
+            ],
+            f"Thank you, {data.name}! {cash_msg}",
+        )
+
+    # Create guest visit record
     visit = GuestVisit(
         name=data.name,
         phone=data.phone,
@@ -2032,7 +2161,8 @@ def initiate_terminal_payment(
         )
 
     # Calculate effective price (apply credit if requested)
-    base_price, _ = resolve_purchase(db, plan, data.member_id, data.billing_mode, data.start_date)
+    purchase = resolve_purchase(db, plan, data.member_id, data)
+    base_price = purchase.amount
     credit_used = Decimal("0.00")
     effective_price = base_price
 
@@ -2051,7 +2181,7 @@ def initiate_terminal_payment(
     result = adapter.initiate_terminal_payment(
         amount=effective_price,
         member_id=str(data.member_id),
-        description=f"Purchase: {plan.name}",
+        description=purchase.processor_description(plan),
         save_card=data.save_card,
     )
 
@@ -2079,6 +2209,8 @@ def initiate_terminal_payment(
         start_date=data.start_date,
         credit_used=credit_used,
         save_card=data.save_card,
+        item_description=purchase.description,
+        item_amount=purchase.amount if purchase.is_item else None,
         expires_at=datetime.utcnow() + timedelta(minutes=TERMINAL_PAYMENT_EXPIRY_MINUTES),
     )
     db.add(pending)
@@ -2140,12 +2272,17 @@ def check_terminal_payment_status(
 
                 if member and plan:
                     # Create membership
-                    purchase_price, membership_kwargs = resolve_purchase(
+                    purchase = resolve_purchase(
                         db, plan, pending.member_id,
-                        BillingMode(pending.billing_mode or BillingMode.full.value),
-                        max(pending.start_date, _get_local_today(db)) if pending.start_date else None,
+                        BillingChoice(
+                            billing_mode=BillingMode(pending.billing_mode or BillingMode.full.value),
+                            description=pending.item_description,
+                            amount=pending.item_amount,
+                        ),
+                        start_date=max(pending.start_date, _get_local_today(db)) if pending.start_date else None,
                     )
-                    membership = create_membership(db, pending.member_id, pending.plan_id, **membership_kwargs)
+                    purchase_price = purchase.amount
+                    membership = purchase.fulfill(db, pending.member_id, pending.plan_id)
 
                     # Create card payment transaction first
                     effective_price = purchase_price - pending.credit_used
@@ -2155,9 +2292,9 @@ def check_terminal_payment_status(
                         payment_method=PaymentMethod.card,
                         amount=effective_price,
                         plan_id=pending.plan_id,
-                        membership_id=membership.id,
+                        membership_id=_mid(membership),
                         reference_id=result.transaction_key,
-                        notes=f"Terminal payment - {result.card_brand or 'Card'} ****{result.card_last4 or '????'}",
+                        notes=purchase.note(f"Terminal payment - {result.card_brand or 'Card'} ****{result.card_last4 or '????'}"),
                     )
                     db.add(tx)
                     db.flush()  # Get ID for linking
@@ -2180,7 +2317,7 @@ def check_terminal_payment_status(
                     db.commit()
 
                     response.transaction_id = tx.id
-                    response.membership_id = membership.id
+                    response.membership_id = _mid(membership)
 
                     logger.info(
                         "Terminal payment completed: member=%s, plan=%s, tx=%s",

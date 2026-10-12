@@ -1210,4 +1210,31 @@ fixes it) and that the email field had no "." key.
 
 ---
 
-## Last Updated: 2026-10-11 (Kiosk Reliability)
+## Item Plans: One-Time Sales (2026-10-12)
+
+Owner sells things that are not memberships (snacks, towels, lessons...) and wanted them sold like plans.
+- **Plan type `item`** (`plans.plan_type`, enum value added by migration `r8s9t0u1v2w3`). Fixed price, or
+  **open amount** (`plans.open_amount`) where the buyer types the amount within optional
+  `plans.min_amount` / `plans.max_amount`. Rules live in `services/item_sale_service.py`
+  (`validate_item_plan_fields`, `resolve_item_amount`, `clean_description`, `sale_note`).
+- **A sale creates nothing**: no membership, no swims, no check-in rights. `create_membership` refuses item
+  plans. Only a `payment` transaction is written, `plan_id` = the item, `notes` = "what it is for" (required,
+  ≤200 chars) followed by any payment detail. Revenue is lumped into the same totals as everything else.
+- **Kiosk, members**: item plans show as cards with the other plans; selecting one opens `ItemDetailsScreen`
+  (description + amount), then the normal payment screen with every method — cash, card, saved card, Tap to
+  Pay, split, account credit, charge to account (same two-switch rule as other plans). The request fields
+  `description` / `amount` ride on `BillingChoice` (all pay requests, `/quote`, pending terminal payments
+  via `item_description` / `item_amount`). `routers/kiosk.py` now resolves every purchase into a `Purchase`
+  (`amount`, `membership_kwargs`, `description`) whose `fulfill()` returns `None` for items.
+- **Kiosk, guests**: guest flow lists single-swim plans **and** items; items get a description/amount step;
+  cash, card and split all work. Item sales by guests are transactions with `guest_name` set — no
+  `guest_visits` row, so they appear in Transactions, not the Guests page.
+- **Admin**: Plans form has the "Item (one-time sale)" type with open-amount + min/max; Member Detail has a
+  **Record Sale** button (`POST /members/{id}/sales`: cash, card on file, account credit, or charge to
+  account). Item plans are excluded from Add Membership and auto-charge. Open-amount items can't have a
+  custom member price (fixed-price items can).
+- Tests: `tests/test_item_sales.py` (21) — suite 155.
+
+---
+
+## Last Updated: 2026-10-12 (Item Plans)

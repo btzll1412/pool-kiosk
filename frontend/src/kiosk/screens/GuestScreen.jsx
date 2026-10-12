@@ -6,6 +6,8 @@ import KioskInput from "../components/KioskInput";
 import PlanCard from "../components/PlanCard";
 import NumPad from "../components/NumPad";
 import { getPlans, guestVisit, guestPayCard, guestPaySplit } from "../../api/kiosk";
+import { isItemPlan } from "../utils/billing";
+import { describeAmountLimits, validateItemDetails, ITEM_DESCRIPTION_MAX } from "./ItemDetailsScreen";
 
 // Compact number pad for card entry
 function CardNumberPad({ onKey, onBackspace, onClear }) {
@@ -43,12 +45,15 @@ function CardNumberPad({ onKey, onBackspace, onClear }) {
 }
 
 export default function GuestScreen({ goTo, goIdle, settings }) {
-  const [step, setStep] = useState("info"); // info | plan | payment | cash | card | splitCash | splitCard
+  const [step, setStep] = useState("info"); // info | plan | item | payment | cash | card | splitCash | splitCard
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [plans, setPlans] = useState([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
+  // One-time items: what the purchase is for and (open-amount items) how much
+  const [itemDescription, setItemDescription] = useState("");
+  const [itemAmount, setItemAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const [cashAmount, setCashAmount] = useState("");
   const [splitCashAmount, setSplitCashAmount] = useState("");
@@ -60,6 +65,17 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
   const [cvv, setCvv] = useState("");
   const [activeField, setActiveField] = useState("card");
   const [paymentError, setPaymentError] = useState(null);
+
+  const isItem = isItemPlan(selectedPlan);
+  const planPrice = !selectedPlan
+    ? 0
+    : isItem && selectedPlan.open_amount
+    ? Number(itemAmount) || 0
+    : planPrice;
+  const itemFields = isItem
+    ? { description: itemDescription.trim(), amount: selectedPlan.open_amount ? Number(itemAmount).toFixed(2) : null }
+    : {};
+  const successTitle = isItem ? "Thank You!" : `Welcome, ${name.trim()}!`;
 
   function formatCardNumber(value) {
     const digits = value.replace(/\D/g, "");
@@ -141,10 +157,10 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
     setLoading(true);
     setPaymentError(null);
     try {
-      const data = await guestPayCard(name.trim(), phone.trim() || null, selectedPlan.id, cleanCardNumber, expDate, cvv);
+      const data = await guestPayCard(name.trim(), phone.trim() || null, selectedPlan.id, cleanCardNumber, expDate, cvv, itemFields);
       goTo("status", {
         statusType: "success",
-        statusTitle: `Welcome, ${name.trim()}!`,
+        statusTitle: successTitle,
         statusMessage: data.message || "Enjoy your swim!",
       });
     } catch (err) {
@@ -181,11 +197,12 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
         parseFloat(splitCashAmount),
         cleanCardNumber,
         expDate,
-        cvv
+        cvv,
+        itemFields,
       );
       goTo("status", {
         statusType: "success",
-        statusTitle: `Welcome, ${name.trim()}!`,
+        statusTitle: successTitle,
         statusMessage: data.message || "Enjoy your swim!",
       });
     } catch (err) {
@@ -216,9 +233,10 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
     setLoadingPlans(true);
     getPlans()
       .then((data) => {
-        const singlePlans = data.filter((p) => p.plan_type === "single");
-        setPlans(singlePlans.length > 0 ? singlePlans : data);
-        if (singlePlans.length === 1) setSelectedPlan(singlePlans[0]);
+        // Guests can buy a single swim or any one-time item
+        const guestPlans = data.filter((p) => p.plan_type === "single" || p.plan_type === "item");
+        setPlans(guestPlans.length > 0 ? guestPlans : data);
+        if (guestPlans.length === 1 && guestPlans[0].plan_type !== "item") setSelectedPlan(guestPlans[0]);
         setStep("plan");
       })
       .catch(() => toast.error("Failed to load plans"))
@@ -232,19 +250,19 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
     }
     setLoading(true);
     try {
-      const data = await guestVisit(name.trim(), phone.trim() || null, method, selectedPlan.id, method === "cash" ? parseFloat(cashAmount) : null);
+      const data = await guestVisit(name.trim(), phone.trim() || null, method, selectedPlan.id, method === "cash" ? parseFloat(cashAmount) : null, itemFields);
 
       let message = data.message || "Enjoy your swim!";
       // For cash payments, show the cash instruction with the amount
       if (method === "cash") {
-        const amountStr = `${settings.currency}${parseFloat(cashAmount || selectedPlan.price).toFixed(2)}`;
+        const amountStr = `${settings.currency}${(parseFloat(cashAmount) || planPrice).toFixed(2)}`;
         const cashMsg = (settings.cash_success_message || "Place {amount} in the cash box.").replace("{amount}", amountStr);
         message = cashMsg;
       }
 
       goTo("status", {
         statusType: "success",
-        statusTitle: `Welcome, ${name.trim()}!`,
+        statusTitle: successTitle,
         statusMessage: message,
       });
     } catch (err) {
@@ -262,8 +280,8 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
           onClick={() => {
             if (step === "splitCard") setStep("splitCash");
             else if (step === "cash" || step === "card" || step === "splitCash") setStep("payment");
-            else if (step === "payment") setStep("plan");
-            else if (step === "plan") setStep("info");
+            else if (step === "payment") setStep(isItem ? "item" : "plan");
+            else if (step === "item" || step === "plan") setStep(step === "item" ? "plan" : "info");
             else goIdle();
           }}
           className="flex items-center gap-2 rounded-xl px-4 py-2 text-gray-500 transition-all hover:bg-gray-100 active:bg-gray-200"
@@ -271,7 +289,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
           <ArrowLeft className="h-5 w-5" />
           <span className="font-medium">Back</span>
         </button>
-        <h1 className="text-lg font-bold text-gray-900">Guest Visit</h1>
+        <h1 className="text-lg font-bold text-gray-900">{isItem ? "Guest Purchase" : "Guest Visit"}</h1>
         <div className="w-24" />
       </div>
 
@@ -327,7 +345,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
         {step === "plan" && (
           <div className="w-full max-w-2xl">
             <h2 className="mb-4 text-xl font-bold text-gray-900 text-center">
-              Select a Swim Option
+              {plans.some((p) => p.plan_type === "item") ? "What would you like?" : "Select a Swim Option"}
             </h2>
 
             {plans.length === 0 ? (
@@ -351,12 +369,64 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
               <KioskButton
                 variant="primary"
                 size="xl"
-                onClick={() => setStep("payment")}
+                onClick={() => setStep(isItem ? "item" : "payment")}
                 className="mt-6 w-full max-w-md mx-auto"
               >
-                Continue to Payment
+                {isItem ? "Continue" : "Continue to Payment"}
               </KioskButton>
             )}
+          </div>
+        )}
+
+        {step === "item" && selectedPlan && (
+          <div className="w-full max-w-md">
+            <div className="mb-6 text-center">
+              <h2 className="text-2xl font-bold text-gray-900">{selectedPlan.name}</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {selectedPlan.open_amount
+                  ? "Tell us what you're buying and the amount"
+                  : `${settings.currency}${Number(selectedPlan.price).toFixed(2)} — tell us what it's for`}
+              </p>
+            </div>
+            <div className="space-y-4">
+              <KioskInput
+                label="What is this for? *"
+                value={itemDescription}
+                onChange={(e) => setItemDescription(e.target.value.slice(0, ITEM_DESCRIPTION_MAX))}
+                placeholder="e.g. 2 bottles of water"
+                maxLength={ITEM_DESCRIPTION_MAX}
+              />
+              {selectedPlan.open_amount && (
+                <div>
+                  <KioskInput
+                    label={`Amount (${settings.currency}) *`}
+                    numeric
+                    showDecimal
+                    value={itemAmount}
+                    onChange={(e) => setItemAmount(e.target.value)}
+                    placeholder="0.00"
+                  />
+                  {describeAmountLimits(selectedPlan, settings.currency) && (
+                    <p className="mt-2 text-sm text-gray-500">{describeAmountLimits(selectedPlan, settings.currency)}</p>
+                  )}
+                </div>
+              )}
+            </div>
+            <KioskButton
+              variant="primary"
+              size="xl"
+              onClick={() => {
+                const error = validateItemDetails(selectedPlan, itemDescription, itemAmount);
+                if (error) {
+                  toast.error(error);
+                  return;
+                }
+                setStep("payment");
+              }}
+              className="mt-6 w-full"
+            >
+              Continue to Payment
+            </KioskButton>
           </div>
         )}
 
@@ -365,7 +435,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
             <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
               <p className="text-sm text-gray-500">{selectedPlan.name}</p>
               <p className="mt-2 text-4xl font-extrabold text-gray-900">
-                {settings.currency}{Number(selectedPlan.price).toFixed(2)}
+                {settings.currency}{planPrice.toFixed(2)}
               </p>
             </div>
 
@@ -425,7 +495,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
             <div className="mb-6 rounded-2xl bg-white p-5 text-center shadow-sm ring-1 ring-gray-100">
               <p className="text-sm text-gray-500">{selectedPlan.name}</p>
               <p className="mt-1 text-4xl font-extrabold text-gray-900">
-                {settings.currency}{Number(selectedPlan.price).toFixed(2)}
+                {settings.currency}{planPrice.toFixed(2)}
               </p>
               <p className="mt-2 text-xs font-medium text-amber-600">
                 Exact Change Only
@@ -446,7 +516,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
               size="xl"
               icon={Banknote}
               loading={loading}
-              disabled={parseFloat(cashAmount) < Number(selectedPlan.price)}
+              disabled={parseFloat(cashAmount) < planPrice}
               onClick={() => handlePay("cash")}
               className="mt-4 w-full"
             >
@@ -461,7 +531,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
             <div className="mb-4 rounded-xl bg-white p-4 text-center shadow-sm ring-1 ring-gray-100">
               <p className="text-xs text-gray-500">{selectedPlan.name}</p>
               <p className="text-3xl font-extrabold text-gray-900">
-                {settings.currency}{Number(selectedPlan.price).toFixed(2)}
+                {settings.currency}{planPrice.toFixed(2)}
               </p>
             </div>
 
@@ -549,7 +619,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
                 onClick={handleCardPay}
                 className="w-full"
               >
-                Pay {settings.currency}{Number(selectedPlan.price).toFixed(2)}
+                Pay {settings.currency}{planPrice.toFixed(2)}
               </KioskButton>
 
               <KioskButton
@@ -569,7 +639,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
             <div className="mb-4 rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-gray-100">
               <p className="text-sm text-gray-500">{selectedPlan.name}</p>
               <p className="text-3xl font-extrabold text-gray-900">
-                {settings.currency}{Number(selectedPlan.price).toFixed(2)}
+                {settings.currency}{planPrice.toFixed(2)}
               </p>
               <p className="mt-2 text-xs text-purple-600 font-medium">Split Payment</p>
             </div>
@@ -579,9 +649,9 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
               <p className="text-3xl font-extrabold text-gray-900">
                 {settings.currency}{splitCashAmount || "0.00"}
               </p>
-              {splitCashAmount && parseFloat(splitCashAmount) > 0 && parseFloat(splitCashAmount) < Number(selectedPlan.price) && (
+              {splitCashAmount && parseFloat(splitCashAmount) > 0 && parseFloat(splitCashAmount) < planPrice && (
                 <p className="mt-1 text-sm text-blue-600">
-                  Card: {settings.currency}{(Number(selectedPlan.price) - parseFloat(splitCashAmount)).toFixed(2)}
+                  Card: {settings.currency}{(planPrice - parseFloat(splitCashAmount)).toFixed(2)}
                 </p>
               )}
             </div>
@@ -592,14 +662,14 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
               variant="primary"
               size="xl"
               loading={loading}
-              disabled={!splitCashAmount || parseFloat(splitCashAmount) <= 0 || parseFloat(splitCashAmount) >= Number(selectedPlan.price)}
+              disabled={!splitCashAmount || parseFloat(splitCashAmount) <= 0 || parseFloat(splitCashAmount) >= planPrice}
               onClick={() => setStep("splitCard")}
               className="mt-4 w-full"
             >
               Continue to Card Entry
             </KioskButton>
 
-            {parseFloat(splitCashAmount) >= Number(selectedPlan.price) && (
+            {parseFloat(splitCashAmount) >= planPrice && (
               <p className="mt-2 text-center text-sm text-amber-600">
                 Cash must be less than total for split payment
               </p>
@@ -614,7 +684,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
               <p className="text-xs text-gray-500">{selectedPlan.name} - Split Payment</p>
               <div className="mt-2 flex justify-center gap-4 text-sm">
                 <span className="text-emerald-600">Cash: {settings.currency}{parseFloat(splitCashAmount).toFixed(2)}</span>
-                <span className="text-blue-600">Card: {settings.currency}{(Number(selectedPlan.price) - parseFloat(splitCashAmount)).toFixed(2)}</span>
+                <span className="text-blue-600">Card: {settings.currency}{(planPrice - parseFloat(splitCashAmount)).toFixed(2)}</span>
               </div>
             </div>
 

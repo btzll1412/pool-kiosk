@@ -416,8 +416,12 @@ def auto_recharge_swim_pass(db: Session, member_id: uuid.UUID) -> tuple[bool, st
 def charge_saved_card_now(
     db: Session, saved_card_id: uuid.UUID, plan_id: uuid.UUID, member_id: uuid.UUID,
     amount_override: "Decimal | None" = None, start_date: "date | None" = None, billing_day: int = None,
+    description: str | None = None,
 ) -> Transaction:
-    """Charge a saved card on-demand for a kiosk payment."""
+    """Charge a saved card on-demand for a kiosk payment.
+
+    ``description`` marks an item sale: nothing is created, the note says what it was for.
+    """
     card = db.query(SavedCard).filter(
         SavedCard.id == saved_card_id, SavedCard.member_id == member_id
     ).first()
@@ -439,7 +443,7 @@ def charge_saved_card_now(
         token=card.processor_token,
         amount=charge_amount,
         member_id=str(member_id),
-        description=f"Purchase: {plan.name}",
+        description=f"{plan.name}: {description}" if description else f"Purchase: {plan.name}",
         customer_name=customer_name,
     )
 
@@ -449,7 +453,7 @@ def charge_saved_card_now(
             detail=charge_result.message or "Card charge failed",
         )
 
-    membership = create_membership(db, member_id, plan_id, start_date=start_date, billing_day=billing_day)
+    membership = None if description else create_membership(db, member_id, plan_id, start_date=start_date, billing_day=billing_day)
 
     tx = Transaction(
         member_id=member_id,
@@ -457,9 +461,10 @@ def charge_saved_card_now(
         payment_method=PaymentMethod.card,
         amount=charge_amount,
         plan_id=plan.id,
-        membership_id=membership.id,
+        membership_id=membership.id if membership else None,
         saved_card_id=card.id,
         reference_id=charge_result.reference_id,
+        notes=description,
     )
     db.add(tx)
     db.commit()

@@ -13,6 +13,7 @@ import {
   Power,
   PowerOff,
   Shield,
+  ShoppingBag,
   Ticket,
   Trash2,
   Unlock,
@@ -52,6 +53,7 @@ import {
   getPriceOverrides,
   setPriceOverride,
   deletePriceOverride,
+  recordSale,
 } from "../../../api/members";
 import {
   adjustMembershipSwims,
@@ -115,6 +117,15 @@ export default function MemberDetail() {
   const [creditAmount, setCreditAmount] = useState("");
   const [creditNotes, setCreditNotes] = useState("");
   const [creditLoading, setCreditLoading] = useState(false);
+
+  // Record Sale (one-time items)
+  const [showSale, setShowSale] = useState(false);
+  const [salePlanId, setSalePlanId] = useState("");
+  const [saleDescription, setSaleDescription] = useState("");
+  const [saleAmount, setSaleAmount] = useState("");
+  const [saleMethod, setSaleMethod] = useState("cash");
+  const [saleCardId, setSaleCardId] = useState("");
+  const [saleLoading, setSaleLoading] = useState(false);
 
   // Membership management
   const [plans, setPlans] = useState([]);
@@ -337,6 +348,47 @@ export default function MemberDetail() {
       toast.error(err.response?.data?.detail || "Failed to save charge limit");
     } finally {
       setChargeToAccountSaving(false);
+    }
+  };
+
+  const itemPlans = plans.filter((p) => p.plan_type === "item" && p.is_active);
+  const salePlan = itemPlans.find((p) => p.id === salePlanId);
+  const salePrice = salePlan
+    ? salePlan.open_amount
+      ? Number(saleAmount) || 0
+      : Number(priceOverrides.find((o) => o.plan_id === salePlan.id)?.custom_price ?? salePlan.price)
+    : 0;
+
+  const resetSaleForm = () => {
+    setSalePlanId("");
+    setSaleDescription("");
+    setSaleAmount("");
+    setSaleMethod("cash");
+    setSaleCardId("");
+  };
+
+  const handleRecordSale = async () => {
+    if (!salePlan) return toast.error("Choose an item");
+    if (!saleDescription.trim()) return toast.error("Enter what this charge is for");
+    if (salePlan.open_amount && !(Number(saleAmount) > 0)) return toast.error("Enter the amount");
+    if (saleMethod === "saved_card" && !saleCardId) return toast.error("Choose a card on file");
+    setSaleLoading(true);
+    try {
+      const result = await recordSale(id, {
+        planId: salePlanId,
+        description: saleDescription.trim(),
+        amount: salePlan.open_amount ? saleAmount : null,
+        paymentMethod: saleMethod,
+        savedCardId: saleMethod === "saved_card" ? saleCardId : null,
+      });
+      toast.success(result.message);
+      setShowSale(false);
+      resetSaleForm();
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to record sale");
+    } finally {
+      setSaleLoading(false);
     }
   };
 
@@ -875,6 +927,15 @@ export default function MemberDetail() {
               >
                 Adjust Credit
               </Button>
+              {itemPlans.length > 0 && (
+                <Button
+                  variant="secondary"
+                  icon={ShoppingBag}
+                  onClick={() => setShowSale(true)}
+                >
+                  Record Sale
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 icon={Lock}
@@ -1088,7 +1149,7 @@ export default function MemberDetail() {
                     className="block w-full rounded-lg border-0 px-3 py-2.5 text-sm shadow-sm ring-1 ring-gray-300 dark:ring-gray-600 dark:bg-gray-800 dark:text-gray-100"
                   >
                     <option value="">Select plan...</option>
-                    {plans.filter(p => p.is_active).map(p => (
+                    {plans.filter(p => p.is_active && !(p.plan_type === "item" && p.open_amount)).map(p => (
                       <option key={p.id} value={p.id}>{p.name} (${Number(p.price).toFixed(2)})</option>
                     ))}
                   </select>
@@ -1537,6 +1598,105 @@ export default function MemberDetail() {
         </div>
       </Modal>
 
+      {/* Record Sale Modal — one-time items, no membership created */}
+      <Modal
+        open={showSale}
+        onClose={() => {
+          setShowSale(false);
+          resetSaleForm();
+        }}
+        title="Record Sale"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Item</label>
+            <select
+              value={salePlanId}
+              onChange={(e) => {
+                setSalePlanId(e.target.value);
+                setSaleAmount("");
+              }}
+              className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="">Choose an item...</option>
+              {itemPlans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}{p.open_amount ? " (open amount)" : ` - $${Number(p.price).toFixed(2)}`}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Input
+            label="What is this for?"
+            value={saleDescription}
+            onChange={(e) => setSaleDescription(e.target.value.slice(0, 200))}
+            placeholder="e.g. 2 bottles of water"
+          />
+          {salePlan?.open_amount && (
+            <Input
+              label="Amount ($)"
+              type="number"
+              step="0.01"
+              min="0"
+              value={saleAmount}
+              onChange={(e) => setSaleAmount(e.target.value)}
+              placeholder="0.00"
+              helpText={[
+                salePlan.min_amount != null ? `min $${Number(salePlan.min_amount).toFixed(2)}` : null,
+                salePlan.max_amount != null ? `max $${Number(salePlan.max_amount).toFixed(2)}` : null,
+              ].filter(Boolean).join(", ") || undefined}
+            />
+          )}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Paid by</label>
+            <select
+              value={saleMethod}
+              onChange={(e) => setSaleMethod(e.target.value)}
+              className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="cash">Cash (in hand)</option>
+              {savedCards.length > 0 && <option value="saved_card">Card on file</option>}
+              {Number(member.credit_balance) > 0 && <option value="credit">Account credit (${Number(member.credit_balance).toFixed(2)} available)</option>}
+              <option value="account">Charge to account (pay later)</option>
+            </select>
+          </div>
+          {saleMethod === "saved_card" && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Card</label>
+              <select
+                value={saleCardId}
+                onChange={(e) => setSaleCardId(e.target.value)}
+                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+              >
+                <option value="">Choose a card...</option>
+                {savedCards.map((c) => (
+                  <option key={c.id} value={c.id}>{c.friendly_name || `${c.card_brand || "Card"} ending ${c.card_last4}`}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {saleMethod === "account" && (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              The amount is added to what the member owes (balance goes negative) until it is paid.
+            </p>
+          )}
+          <div className="flex items-center justify-between border-t border-gray-100 dark:border-gray-700 pt-4">
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              Total: <span className="font-semibold text-gray-900 dark:text-gray-100">${salePrice.toFixed(2)}</span>
+            </span>
+            <div className="flex gap-3">
+              <Button variant="secondary" onClick={() => { setShowSale(false); resetSaleForm(); }}>
+                Cancel
+              </Button>
+              <Button onClick={handleRecordSale} loading={saleLoading} disabled={!salePlanId}>
+                Record Sale
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
       {/* Reset PIN Modal */}
       <Modal
         open={showResetPin}
@@ -1638,7 +1798,7 @@ export default function MemberDetail() {
             >
               <option value="">Choose a plan...</option>
               {plans
-                .filter((p) => p.is_active)
+                .filter((p) => p.is_active && p.plan_type !== "item")
                 .map((plan) => {
                   const override = priceOverrides.find(o => o.plan_id === plan.id);
                   const displayPrice = override ? Number(override.custom_price) : Number(plan.price);

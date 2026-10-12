@@ -31,6 +31,12 @@ def create_membership(db: Session, member_id: uuid.UUID, plan_id: uuid.UUID, sta
     plan = db.query(Plan).filter(Plan.id == plan_id).first()
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+    if plan.plan_type == PlanType.item:
+        # Item plans are one-time sales — they never become a membership
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"\"{plan.name}\" is a one-time item, not a membership plan",
+        )
 
     today = _get_local_today(db)
 

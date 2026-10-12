@@ -13,6 +13,9 @@ class PlanType(str, enum.Enum):
     single = "single"
     swim_pass = "swim_pass"
     monthly = "monthly"
+    # One-time sale of something that is not a membership (snacks, towels, lessons...).
+    # Paid like any plan but creates nothing — no membership, no swims, no check-in rights.
+    item = "item"
 
 
 class Plan(Base):
@@ -29,6 +32,10 @@ class Plan(Base):
     is_senior_plan: Mapped[bool] = mapped_column(Boolean, default=False)
     # Members whose account also allows it may buy this plan "on account" (balance goes negative)
     allow_charge_to_account: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Item plans only: the buyer types the amount (within min/max) instead of a fixed price
+    open_amount: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    min_amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    max_amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, default=0)
     # Set when an admin deletes a plan that has history: hidden everywhere, but kept so past
     # memberships, payments and guest visits still show what was bought.

@@ -1,16 +1,18 @@
-import { Calendar, Repeat, Waves } from "lucide-react";
+import { Calendar, Repeat, ShoppingBag, Waves } from "lucide-react";
 import { needsBillingChoice } from "../utils/billing";
 
 const typeIcons = {
   single: Waves,
   swim_pass: Repeat,
   monthly: Calendar,
+  item: ShoppingBag,
 };
 
 const typeLabels = {
   single: "Single Swim",
   swim_pass: "Swim Pass",
   monthly: "Monthly",
+  item: "One-time purchase",
 };
 
 export default function PlanCard({ plan, selected, onSelect }) {
@@ -39,10 +41,14 @@ export default function PlanCard({ plan, selected, onSelect }) {
         {plan.swim_count ? ` \u2022 ${plan.swim_count} swims` : ""}
         {plan.duration_months ? ` \u2022 ${plan.duration_months} month${plan.duration_months !== 1 ? "s" : ""}` : ""}
       </p>
-      <p className="mt-2 text-3xl font-extrabold">
-        ${Number(plan.price).toFixed(2)}
-        {plan.duration_months && <span className="text-base font-medium">{plan.duration_months > 1 ? ` / ${plan.duration_months} months` : "/mo"}</span>}
-      </p>
+      {plan.plan_type === "item" && plan.open_amount ? (
+        <p className={`mt-2 text-xl font-bold ${selected ? "text-brand-100" : "text-gray-600"}`}>You enter the amount</p>
+      ) : (
+        <p className="mt-2 text-3xl font-extrabold">
+          ${Number(plan.price).toFixed(2)}
+          {plan.duration_months && <span className="text-base font-medium">{plan.duration_months > 1 ? ` / ${plan.duration_months} months` : "/mo"}</span>}
+        </p>
+      )}
       {needsBillingChoice(plan) && (
         <p className={`mt-1 text-sm font-medium ${selected ? "text-brand-100" : "text-gray-500"}`}>
           or pro-rated from ${Number(plan.billing_options.prorate.amount).toFixed(2)}

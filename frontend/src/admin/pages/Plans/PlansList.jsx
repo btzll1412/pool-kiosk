@@ -81,12 +81,14 @@ export default function PlansList() {
     single: "Single Swim",
     swim_pass: "Swim Pass",
     monthly: "Monthly",
+    item: "Item",
   };
 
   const typeColor = {
     single: "blue",
     swim_pass: "purple",
     monthly: "green",
+    item: "amber",
   };
 
   if (loading) {
@@ -172,7 +174,7 @@ export default function PlansList() {
 
               <div className="mt-2 flex items-baseline gap-1">
                 <span className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
-                  ${Number(plan.price).toFixed(2)}
+                  {plan.plan_type === "item" && plan.open_amount ? "Open amount" : `$${Number(plan.price).toFixed(2)}`}
                 </span>
                 {plan.plan_type === "monthly" && (
                   <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -187,6 +189,13 @@ export default function PlansList() {
                 {plan.plan_type === "monthly" &&
                   `${plan.duration_months} month${plan.duration_months !== 1 ? 's' : ''} membership`}
                 {plan.plan_type === "single" && "One-time swim"}
+                {plan.plan_type === "item" && (
+                  plan.open_amount
+                    ? `One-time sale, buyer enters the amount${plan.min_amount != null || plan.max_amount != null
+                        ? ` (${plan.min_amount != null ? `min $${Number(plan.min_amount).toFixed(2)}` : ""}${plan.min_amount != null && plan.max_amount != null ? ", " : ""}${plan.max_amount != null ? `max $${Number(plan.max_amount).toFixed(2)}` : ""})`
+                        : ""}`
+                    : "One-time sale, no membership created"
+                )}
               </div>
 
               <div className="mt-3 flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
@@ -338,8 +347,13 @@ function PlanForm({ plan, onClose, onSaved }) {
     display_order: plan?.display_order ?? 0,
     is_senior_plan: plan?.is_senior_plan || false,
     allow_charge_to_account: plan?.allow_charge_to_account || false,
+    open_amount: plan?.open_amount || false,
+    min_amount: plan?.min_amount ?? "",
+    max_amount: plan?.max_amount ?? "",
   });
   const [loading, setLoading] = useState(false);
+  const isItem = form.plan_type === "item";
+  const openAmount = isItem && form.open_amount;
 
   const handleChange = (field) => (e) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -351,12 +365,15 @@ function PlanForm({ plan, onClose, onSaved }) {
       const payload = {
         name: form.name,
         plan_type: form.plan_type,
-        price: parseFloat(form.price),
+        price: openAmount ? 0 : parseFloat(form.price),
         swim_count: form.plan_type === "swim_pass" ? parseInt(form.swim_count) : null,
         duration_months: form.plan_type === "monthly" ? parseInt(form.duration_months) : null,
         display_order: parseInt(form.display_order) || 0,
         is_senior_plan: form.is_senior_plan,
         allow_charge_to_account: form.allow_charge_to_account,
+        open_amount: openAmount,
+        min_amount: openAmount && form.min_amount !== "" ? parseFloat(form.min_amount) : null,
+        max_amount: openAmount && form.max_amount !== "" ? parseFloat(form.max_amount) : null,
       };
 
       if (plan) {
@@ -410,6 +427,7 @@ function PlanForm({ plan, onClose, onSaved }) {
                 <option value="single">Single Swim</option>
                 <option value="swim_pass">Swim Pass</option>
                 <option value="monthly">Monthly</option>
+                <option value="item">Item (one-time sale)</option>
               </select>
             </div>
             <div>
@@ -420,13 +438,66 @@ function PlanForm({ plan, onClose, onSaved }) {
                 type="number"
                 step="0.01"
                 min="0"
-                value={form.price}
+                value={openAmount ? "" : form.price}
                 onChange={handleChange("price")}
-                required
-                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                required={!openAmount}
+                disabled={openAmount}
+                placeholder={openAmount ? "Buyer enters it" : ""}
+                className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-900 disabled:text-gray-400"
               />
             </div>
           </div>
+
+          {isItem && (
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 p-3 ring-1 ring-amber-200 dark:ring-amber-800 space-y-3">
+              <p className="text-xs text-amber-800 dark:text-amber-300">
+                An item is sold like a plan (kiosk, guests, admin) but creates no membership — just a one-time payment.
+                The buyer is always asked what the charge is for.
+              </p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="open_amount"
+                  checked={form.open_amount}
+                  onChange={(e) => setForm((f) => ({ ...f, open_amount: e.target.checked }))}
+                  className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-brand-600 focus:ring-brand-600"
+                />
+                <label htmlFor="open_amount" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Open amount — the buyer enters the price
+                </label>
+              </div>
+              {openAmount && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Minimum ($, optional)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={form.min_amount}
+                      onChange={handleChange("min_amount")}
+                      className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Maximum ($, optional)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={form.max_amount}
+                      onChange={handleChange("max_amount")}
+                      className="block w-full rounded-lg border-0 px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {form.plan_type === "swim_pass" && (
             <div>

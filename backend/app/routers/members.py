@@ -29,6 +29,8 @@ from app.schemas.membership import SavedCardCreate, SavedCardResponse
 from app.services.auth_service import hash_pin
 from app.services.payment_service import get_payment_adapter
 from app.schemas.member import (
+    MemberSaleRequest,
+    MemberSaleResponse,
     ActivePlanInfo,
     AdminCardChargeRequest,
     AdminCardSwipeRequest,
@@ -1051,3 +1053,75 @@ def delete_price_override(
     db.commit()
     logger.info("Price override removed: member=%s, override=%s, by=%s", member_id, override_id, current_user.id)
     return {"message": "Custom price removed"}
+
+
+@router.post("/{member_id}/sales", response_model=MemberSaleResponse)
+def record_member_sale(
+    member_id: uuid.UUID,
+    data: MemberSaleRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Record a one-time item sale for a member — cash in hand, their card on file,
+    their account credit, or charged to their account (balance goes negative)."""
+    from decimal import Decimal
+    from app.models.transaction import PaymentMethod, Transaction, TransactionType
+    from app.services.auto_charge_service import charge_saved_card_now
+    from app.services.item_sale_service import clean_description, is_item_plan, resolve_item_amount, sale_note
+    from app.services.pricing_service import get_member_price
+
+    member = db.query(Member).filter(Member.id == member_id).with_for_update().first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    plan = db.query(Plan).filter(Plan.id == data.plan_id, Plan.deleted_at.is_(None)).first()
+    if not plan or not is_item_plan(plan):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item plan not found")
+
+    description = clean_description(data.description)
+    amount = resolve_item_amount(plan, data.amount, list_price=get_member_price(db, member_id, plan.id))
+
+    if data.payment_method == "saved_card":
+        if not data.saved_card_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a saved card")
+        tx = charge_saved_card_now(db, data.saved_card_id, plan.id, member_id, amount_override=amount, description=description)
+        tx.created_by = current_user.id
+        db.commit()
+        message = f"${amount:.2f} charged to card on file"
+    else:
+        if data.payment_method == "cash":
+            method, note = PaymentMethod.cash, None
+            message = f"${amount:.2f} cash sale recorded"
+        elif data.payment_method == "credit":
+            if member.credit_balance < amount:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Not enough account credit (${max(member.credit_balance, Decimal('0')):.2f} available)",
+                )
+            member.credit_balance -= amount
+            method, note = PaymentMethod.credit, "Paid with account credit"
+            message = f"${amount:.2f} paid from account credit"
+        else:  # account
+            member.credit_balance -= amount
+            method, note = PaymentMethod.credit, f"Charged to account — balance after: ${member.credit_balance}"
+            message = f"${amount:.2f} charged to account"
+        tx = Transaction(
+            member_id=member_id,
+            transaction_type=TransactionType.payment,
+            payment_method=method,
+            amount=amount,
+            plan_id=plan.id,
+            notes=sale_note(description, note),
+            created_by=current_user.id,
+        )
+        db.add(tx)
+        db.commit()
+        db.refresh(tx)
+
+    db.refresh(member)
+    log_activity(
+        db, user_id=current_user.id, action="sale.record", entity_type="member", entity_id=member_id,
+        after={"plan": plan.name, "description": description, "amount": str(amount), "method": data.payment_method},
+    )
+    logger.info("Admin item sale: member=%s, plan=%s, amount=$%s, method=%s, by=%s",
+                member_id, plan.name, amount, data.payment_method, current_user.id)
+    return MemberSaleResponse(transaction_id=tx.id, amount=amount, credit_balance=member.credit_balance, message=message)

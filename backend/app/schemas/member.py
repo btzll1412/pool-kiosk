@@ -1,4 +1,5 @@
 import uuid
+from typing import Literal
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -138,3 +139,20 @@ class AdminCardChargeRequest(AdminCardTokenizeRequest):
     description: str | None = None
     save_card: bool = False
 
+
+
+class MemberSaleRequest(BaseModel):
+    """Admin records a one-time item sale for a member (snacks, towels, lessons...)."""
+    plan_id: uuid.UUID
+    description: str
+    amount: Decimal | None = None  # open-amount items only
+    payment_method: Literal["cash", "saved_card", "account", "credit"]
+    saved_card_id: uuid.UUID | None = None
+
+
+class MemberSaleResponse(BaseModel):
+    success: bool = True
+    transaction_id: uuid.UUID
+    amount: Decimal
+    credit_balance: Decimal
+    message: str

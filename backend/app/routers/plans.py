@@ -1,5 +1,6 @@
 import logging
 import uuid
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -9,16 +10,21 @@ logger = logging.getLogger(__name__)
 from app.database import get_db
 from app.models.member import Member
 from app.models.membership import Membership
-from app.models.plan import Plan
+from app.models.plan import Plan, PlanType
 from app.models.saved_card import SavedCard
 from app.models.user import User
 from app.schemas.plan import PlanCreate, PlanResponse, PlanUpdate
 from app.services.activity_service import log_activity
 from app.services.auth_service import get_current_user
+from app.services.item_sale_service import validate_item_plan_fields
 from app.services.plan_service import count_active_members, delete_plan
 from app.services.report_service import is_membership_usable
 
 router = APIRouter()
+
+
+def _check_plan_fields(plan_type, open_amount, min_amount, max_amount, price) -> None:
+    validate_item_plan_fields(plan_type, bool(open_amount), min_amount, max_amount, price)
 
 
 @router.get("")
@@ -48,6 +54,9 @@ def list_plans(
             "is_active": plan.is_active,
             "is_senior_plan": plan.is_senior_plan,
             "allow_charge_to_account": plan.allow_charge_to_account,
+            "open_amount": plan.open_amount,
+            "min_amount": str(plan.min_amount) if plan.min_amount is not None else None,
+            "max_amount": str(plan.max_amount) if plan.max_amount is not None else None,
             "created_at": plan.created_at.isoformat() if plan.created_at else None,
             "active_subscribers": active_subscribers,
         })
@@ -60,7 +69,13 @@ def create_plan(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    plan = Plan(**data.model_dump())
+    _check_plan_fields(data.plan_type, data.open_amount, data.min_amount, data.max_amount, data.price)
+    values = data.model_dump()
+    if data.plan_type == PlanType.item:
+        values.update(swim_count=None, duration_days=None, duration_months=None)
+        if data.open_amount:
+            values["price"] = Decimal("0.00")
+    plan = Plan(**values)
     db.add(plan)
     db.commit()
     db.refresh(plan)
@@ -79,7 +94,23 @@ def update_plan(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
     before = {"name": plan.name, "price": str(plan.price), "is_active": plan.is_active}
-    for field, value in data.model_dump(exclude_unset=True).items():
+    changes = data.model_dump(exclude_unset=True)
+    merged = {
+        "plan_type": changes.get("plan_type", plan.plan_type),
+        "open_amount": changes.get("open_amount", plan.open_amount),
+        "min_amount": changes.get("min_amount", plan.min_amount),
+        "max_amount": changes.get("max_amount", plan.max_amount),
+        "price": changes.get("price", plan.price),
+    }
+    _check_plan_fields(**merged)
+    if merged["plan_type"] == PlanType.item:
+        changes.update(swim_count=None, duration_days=None, duration_months=None)
+        if merged["open_amount"]:
+            changes["price"] = Decimal("0.00")
+    elif plan.plan_type == PlanType.item:
+        # No longer an item plan — drop the item-only settings
+        changes.update(open_amount=False, min_amount=None, max_amount=None)
+    for field, value in changes.items():
         setattr(plan, field, value)
     db.commit()
     db.refresh(plan)

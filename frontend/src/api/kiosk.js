@@ -81,18 +81,21 @@ export async function getPlans(isSenior = null, memberId = null) {
   return data;
 }
 
-// Billing choice for monthly-type plans. The server prices the purchase from these,
-// so they must match what the member was shown.
-function billingFields({ billing_mode = "full", start_date = null } = {}) {
-  return { billing_mode, start_date };
+// Purchase options sent with every pay request. Monthly-type plans: the billing
+// choice (the server prices the purchase from it, so it must match what the member
+// was shown). Item plans: what the charge is for and, for open amounts, how much.
+function billingFields({ billing_mode = "full", start_date = null, description = null, amount = null } = {}) {
+  const fields = { billing_mode, start_date };
+  if (description != null) fields.description = description;
+  if (amount != null) fields.amount = String(amount);
+  return fields;
 }
 
-export async function getQuote(member_id, plan_id, billing_mode = "full", start_date = null) {
+export async function getQuote(member_id, plan_id, billing_mode = "full", start_date = null, extra = {}) {
   const { data } = await kiosk.post("/quote", {
     member_id,
     plan_id,
-    billing_mode,
-    start_date,
+    ...billingFields({ billing_mode, start_date, ...extra }),
   });
   return data;
 }
@@ -110,7 +113,7 @@ export async function payCash(member_id, plan_id, amount_tendered, pin, wants_ch
   return data;
 }
 
-export async function payCard(member_id, plan_id, pin, { saved_card_id = null, save_card = false, card_last4 = null, card_brand = null, friendly_name = null, use_credit = false, billing_mode = "full", start_date = null } = {}) {
+export async function payCard(member_id, plan_id, pin, { saved_card_id = null, save_card = false, card_last4 = null, card_brand = null, friendly_name = null, use_credit = false, ...billing } = {}) {
   const { data } = await kiosk.post("/pay/card", {
     member_id,
     plan_id,
@@ -121,8 +124,7 @@ export async function payCard(member_id, plan_id, pin, { saved_card_id = null, s
     card_brand,
     friendly_name,
     use_credit,
-    billing_mode,
-    start_date,
+    ...billingFields(billing),
   });
   return data;
 }
@@ -149,13 +151,12 @@ export async function payCredit(member_id, plan_id, pin, billing = {}) {
   return data;
 }
 
-export async function payOnAccount(member_id, plan_id, pin, billing_mode = "full", start_date = null) {
+export async function payOnAccount(member_id, plan_id, pin, billing = {}) {
   const { data } = await kiosk.post("/pay/account", {
     member_id,
     plan_id,
     pin,
-    billing_mode,
-    start_date,
+    ...billingFields(billing),
   });
   return data;
 }
@@ -182,12 +183,21 @@ export async function unfreezeMembership(member_id, pin) {
   return data;
 }
 
-export async function guestVisit(name, phone, payment_method, plan_id, cash_tendered = null) {
+// Item plans bought by a guest: { description, amount } (amount only for open-amount items)
+function guestItemFields({ description = null, amount = null } = {}) {
+  const fields = {};
+  if (description != null) fields.description = description;
+  if (amount != null) fields.amount = String(amount);
+  return fields;
+}
+
+export async function guestVisit(name, phone, payment_method, plan_id, cash_tendered = null, item = {}) {
   const payload = {
     name,
     phone,
     payment_method,
     plan_id,
+    ...guestItemFields(item),
   };
   if (cash_tendered !== null) {
     payload.cash_tendered = String(cash_tendered);
@@ -196,7 +206,7 @@ export async function guestVisit(name, phone, payment_method, plan_id, cash_tend
   return data;
 }
 
-export async function guestPayCard(name, phone, plan_id, card_number, exp_date, cvv) {
+export async function guestPayCard(name, phone, plan_id, card_number, exp_date, cvv, item = {}) {
   const { data } = await kiosk.post("/guest/pay/card", {
     name,
     phone,
@@ -204,11 +214,12 @@ export async function guestPayCard(name, phone, plan_id, card_number, exp_date, 
     card_number,
     exp_date,
     cvv,
+    ...guestItemFields(item),
   });
   return data;
 }
 
-export async function guestPaySplit(name, phone, plan_id, cash_amount, card_number, exp_date, cvv) {
+export async function guestPaySplit(name, phone, plan_id, cash_amount, card_number, exp_date, cvv, item = {}) {
   const { data } = await kiosk.post("/guest/pay/split", {
     name,
     phone,
@@ -217,6 +228,7 @@ export async function guestPaySplit(name, phone, plan_id, cash_amount, card_numb
     card_number,
     exp_date,
     cvv,
+    ...guestItemFields(item),
   });
   return data;
 }

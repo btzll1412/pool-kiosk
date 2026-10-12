@@ -10,7 +10,7 @@ from app.models.plan import PlanType
 class PlanCreate(BaseModel):
     name: str
     plan_type: PlanType
-    price: Decimal
+    price: Decimal = Decimal("0.00")  # ignored for open-amount items
     swim_count: int | None = None
     duration_days: int | None = None
     duration_months: int | None = None
@@ -18,6 +18,10 @@ class PlanCreate(BaseModel):
     display_order: int = 0
     is_senior_plan: bool = False
     allow_charge_to_account: bool = False
+    # Item plans: the buyer enters the amount (optionally bounded) instead of a fixed price
+    open_amount: bool = False
+    min_amount: Decimal | None = None
+    max_amount: Decimal | None = None
 
 
 class PlanUpdate(BaseModel):
@@ -31,6 +35,9 @@ class PlanUpdate(BaseModel):
     display_order: int | None = None
     is_senior_plan: bool | None = None
     allow_charge_to_account: bool | None = None
+    open_amount: bool | None = None
+    min_amount: Decimal | None = None
+    max_amount: Decimal | None = None
 
 
 class PlanResponse(BaseModel):
@@ -45,6 +52,9 @@ class PlanResponse(BaseModel):
     display_order: int
     is_senior_plan: bool
     allow_charge_to_account: bool = False
+    open_amount: bool = False
+    min_amount: Decimal | None = None
+    max_amount: Decimal | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

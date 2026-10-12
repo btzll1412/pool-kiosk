@@ -29,6 +29,7 @@ import TerminalPaymentScreen from "./screens/TerminalPaymentScreen";
 import ViewPlansScreen from "./screens/ViewPlansScreen";
 import AddMoneyScreen from "./screens/AddMoneyScreen";
 import BillingOptionsScreen from "./screens/BillingOptionsScreen";
+import ItemDetailsScreen from "./screens/ItemDetailsScreen";
 
 const SCREENS = {
   idle: IdleScreen,
@@ -36,6 +37,7 @@ const SCREENS = {
   checkin: CheckinScreen,
   payment: PaymentScreen,
   billing: BillingOptionsScreen,
+  itemDetails: ItemDetailsScreen,
   cash: CashScreen,
   card: CardPaymentScreen,
   split: SplitPaymentScreen,

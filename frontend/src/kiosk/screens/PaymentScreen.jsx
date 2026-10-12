@@ -4,7 +4,7 @@ import toast from "react-hot-toast";
 import PlanCard from "../components/PlanCard";
 import KioskButton from "../components/KioskButton";
 import { getPlans, payCredit, payOnAccount, getTerminalInfo } from "../../api/kiosk";
-import { defaultBilling, describeBilling, getBillingParams, getPurchasePrice, needsBillingChoice } from "../utils/billing";
+import { defaultBilling, describeBilling, getBillingParams, getPurchasePrice, isItemPlan, needsBillingChoice, needsItemDetails } from "../utils/billing";
 
 export default function PaymentScreen({ member, goTo, context, settings }) {
   const [plans, setPlans] = useState([]);
@@ -34,7 +34,7 @@ export default function PaymentScreen({ member, goTo, context, settings }) {
         if (chosen) {
           setSelectedPlan(chosen);
           setBilling(context.billing);
-        } else if (data.length === 1 && !needsBillingChoice(data[0])) {
+        } else if (data.length === 1 && !needsBillingChoice(data[0]) && !needsItemDetails(data[0])) {
           setSelectedPlan(data[0]);
           setBilling(defaultBilling(data[0]));
         }
@@ -55,6 +55,11 @@ export default function PaymentScreen({ member, goTo, context, settings }) {
 
   function handleSelectPlan(plan) {
     setConfirmAccount(false);
+    if (needsItemDetails(plan)) {
+      // One-time item: ask what it's for (and the amount) before paying
+      goTo("itemDetails", { plan, pin: context.pin });
+      return;
+    }
     if (needsBillingChoice(plan)) {
       // Monthly-type plan with two different prices — let the member choose first
       goTo("billing", { plan, pin: context.pin });
@@ -87,8 +92,7 @@ export default function PaymentScreen({ member, goTo, context, settings }) {
 
     setAccountLoading(true);
     try {
-      const { billing_mode, start_date } = getBillingParams(selectedPlan, billing);
-      const result = await payOnAccount(member.member_id, selectedPlan.id, context.pin, billing_mode, start_date);
+      const result = await payOnAccount(member.member_id, selectedPlan.id, context.pin, getBillingParams(selectedPlan, billing));
       goTo("status", {
         statusType: "success",
         statusTitle: "You're All Set!",
@@ -194,10 +198,10 @@ export default function PaymentScreen({ member, goTo, context, settings }) {
                   {billingSummary && (
                     <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
                       <p className="text-sm text-gray-600">{billingSummary}</p>
-                      {needsBillingChoice(selectedPlan) && (
+                      {(needsBillingChoice(selectedPlan) || isItemPlan(selectedPlan)) && (
                         <button
                           type="button"
-                          onClick={() => goTo("billing", { plan: selectedPlan, billing, pin: context.pin })}
+                          onClick={() => goTo(isItemPlan(selectedPlan) ? "itemDetails" : "billing", { plan: selectedPlan, billing, pin: context.pin })}
                           className="flex-shrink-0 rounded-xl bg-gray-100 px-5 py-3 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-200 active:scale-[0.98]"
                         >
                           Change
