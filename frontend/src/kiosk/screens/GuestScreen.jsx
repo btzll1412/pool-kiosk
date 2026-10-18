@@ -71,7 +71,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
     ? 0
     : isItem && selectedPlan.open_amount
     ? Number(itemAmount) || 0
-    : planPrice;
+    : Number(selectedPlan.price);
   const itemFields = isItem
     ? { description: itemDescription.trim(), amount: selectedPlan.open_amount ? Number(itemAmount).toFixed(2) : null }
     : {};
