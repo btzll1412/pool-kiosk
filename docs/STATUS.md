@@ -1210,6 +1210,10 @@ fixes it) and that the email field had no "." key.
 
 ---
 
+## Hotfix: Guest screen crash (2026-10-18)
+
+The item-plans change (f5f6262) replaced every `Number(selectedPlan.price)` in `GuestScreen.jsx` with `planPrice`, including the line defining `planPrice`, so the Guest screen threw "Cannot access 'planPrice' before initialization" on every render. The kiosk error boundary caught it (two `kiosk.client_error` reports, 2026-10-14 ~10:03 PM EDT, shown on the admin dashboard). Guest visits/items could not be sold from the kiosk between 2026-10-12 17:48 and 2026-10-18 11:23 EDT; no guest transactions were recorded in the 3 weeks before the break either. Fixed in c364868, deployed with pre-deploy dump `pooldb_2026-10-18_1123_pre-guestfix-deploy.sql.gz`.
+
 ## Item Plans: One-Time Sales (2026-10-12)
 
 Owner sells things that are not memberships (snacks, towels, lessons...) and wanted them sold like plans.
@@ -1237,4 +1241,4 @@ Owner sells things that are not memberships (snacks, towels, lessons...) and wan
 
 ---
 
-## Last Updated: 2026-10-12 (Item Plans)
+## Last Updated: 2026-10-18 (Guest screen hotfix)
