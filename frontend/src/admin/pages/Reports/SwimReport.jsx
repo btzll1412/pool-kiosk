@@ -19,6 +19,7 @@ import StatCard from "../../../shared/StatCard";
 import { SkeletonStatCards, SkeletonCard } from "../../../shared/Skeleton";
 import { Activity, TrendingUp, Users } from "lucide-react";
 import { useTimezone, getTodayDate } from "../../../context/TimezoneContext";
+import ReportTabs from "./ReportTabs";
 
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b"];
 
@@ -75,6 +76,7 @@ export default function SwimReport() {
           </select>
         }
       />
+      <ReportTabs />
 
       <div className="grid gap-5 sm:grid-cols-3 mb-6">
         <StatCard

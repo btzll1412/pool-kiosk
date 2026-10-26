@@ -1,6 +1,7 @@
 import csv
 import io
 import logging
+import uuid
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query
@@ -19,6 +20,10 @@ from app.schemas.report import (
     SwimReportResponse,
 )
 from app.services.auth_service import get_current_user
+from app.services.monthly_report_service import (
+    get_monthly_report,
+    get_report_bounds,
+)
 from app.services.report_service import (
     get_dashboard_stats,
     get_membership_report,
@@ -130,3 +135,76 @@ def kiosk_errors(
         ],
     }
 
+
+
+@router.get("/monthly/bounds")
+def monthly_report_bounds(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """First and last month that can be picked on the monthly report."""
+    return get_report_bounds(db)
+
+
+@router.get("/monthly")
+def monthly_report(
+    start: str = Query(..., description="First month, YYYY-MM"),
+    end: str | None = Query(None, description="Last month, YYYY-MM (defaults to start)"),
+    member_ids: list[uuid.UUID] | None = Query(None, description="Narrow the report to these members"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Everything that happened in a month or a range of months, optionally for chosen customers."""
+    return get_monthly_report(db, start, end or start, member_ids)
+
+
+@router.get("/monthly/export")
+def monthly_report_export(
+    start: str = Query(...),
+    end: str | None = Query(None),
+    member_ids: list[uuid.UUID] | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """CSV of the monthly report: a summary block per month, then every transaction."""
+    report = get_monthly_report(db, start, end or start, member_ids)
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(["Month", "Net total", "Cash", "Card", "Card on file", "Account credit", "Charged to account",
+                     "Refunds", "Credits added", "Sales", "Swims", "Unique swimmers", "Guest visits",
+                     "Memberships started", "Memberships expired", "Active at month end"])
+    for m in report["months"] + [{"label": "TOTAL", **report["totals"]}]:
+        writer.writerow([m["label"], m["total"], m["cash"], m["card"], m["card_on_file"], m["credit"], m["account"],
+                         m["refunds"], m["credits_added"], m["sales"], m["swims"], m["unique_swimmers"], m["guest_visits"],
+                         m["memberships_started"], m["memberships_expired"], m["active_at_end"]])
+
+    writer.writerow([])
+    writer.writerow(["Date", "Month", "Customer", "Type", "Method", "Card", "Plan", "Amount", "Notes"])
+    for tx in report["transactions"]:
+        writer.writerow([
+            tx["created_at"].isoformat(),
+            tx["period"],
+            tx["member_name"] or (f"Guest: {tx['guest_name']}" if tx["guest_name"] else ""),
+            tx["transaction_type"].replace("_", " "),
+            tx["method_label"],
+            tx["card"] or "",
+            tx["plan_name"] or "",
+            tx["amount"],
+            tx["notes"] or "",
+        ])
+
+    if report["checkins"]:
+        writer.writerow([])
+        writer.writerow(["Check-in", "Month", "Customer", "Type", "Guests"])
+        for c in report["checkins"]:
+            writer.writerow([c["checked_in_at"].isoformat(), c["period"], c["member_name"], c["checkin_type"], c["guest_count"]])
+
+    suffix = report["start"] if report["start"] == report["end"] else f"{report['start']}_to_{report['end']}"
+    logger.info("Monthly report CSV: %s, %d transactions, members=%s", suffix, len(report["transactions"]), member_ids)
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=monthly_report_{suffix}.csv"},
+    )

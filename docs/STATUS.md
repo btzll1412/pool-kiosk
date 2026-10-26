@@ -1210,6 +1210,18 @@ fixes it) and that the email field had no "." key.
 
 ---
 
+## Monthly Report (2026-10-26)
+
+Reports now has three tabs: Revenue, **Monthly**, Swims (the Swims page previously had no link to it).
+
+**Monthly** (`/admin/reports/monthly`): pick a month + year, or a range of months ("Range of months" checkbox, "Whole year" shortcut), going back to the first month with data (`GET /api/reports/monthly/bounds`). Optional customer filter (search box, one or more members). Shows summary tiles, a month-by-month table (one column per month + Total), sales by plan, account balances as of today (who owes / who has credit), per-customer activity (net paid, sales, charged to account, swims, memberships started, balance now), memberships started and expired in the period, check-ins (only when customers are selected), and every transaction. Buttons: **CSV** (`GET /api/reports/monthly/export`: per-month summary block, then transactions, then check-ins) and **Print / PDF** (browser print; the sidebar/header/controls are `print:hidden`, Layout wraps them).
+
+Rules: revenue is counted by payment date, not membership period. Payment method on the report is recovered from the stored row: `card` + `saved_card_id` → "Card on file"; `credit` with a "Charged to account" note → "Charged to account"; otherwise Cash / Card / Account credit. Old guest-visit transactions have no `guest_name`/`plan_id`, so the name is parsed from the `Guest visit: <name> - <plan>` note and they are listed under plan "Guest visit". Guests are not members, so a customer filter excludes guest visits. "Active at month end" is date-based on `valid_from`/`valid_until` + `is_active` (a membership deactivated later is not counted for past months). Balances are current balances, not reconstructed month-end balances. Max 60 months per request.
+
+Member page: the Transactions card has a month dropdown (this month back to the join month) and a "Monthly report" link that opens the report preselected on that member (`?member=<id>&start=YYYY-MM`).
+
+Code: `backend/app/services/monthly_report_service.py`, endpoints in `routers/reports.py`, `frontend/src/admin/pages/Reports/{MonthlyReport,ReportTabs}.jsx`, `api/reports.js`. Tests: `tests/test_monthly_report.py` (4; suite 161). Render smoke test used before deploy: esbuild-bundle the pages and `renderToString` them in node (loading state + `ReportBody` with fixture data).
+
 ## Hotfix: Guest screen crash (2026-10-18)
 
 The item-plans change (f5f6262) replaced every `Number(selectedPlan.price)` in `GuestScreen.jsx` with `planPrice`, including the line defining `planPrice`, so the Guest screen threw "Cannot access 'planPrice' before initialization" on every render. The kiosk error boundary caught it (two `kiosk.client_error` reports, 2026-10-14 ~10:03 PM EDT, shown on the admin dashboard). Guest visits/items could not be sold from the kiosk between 2026-10-12 17:48 and 2026-10-18 11:23 EDT; no guest transactions were recorded in the 3 weeks before the break either. Fixed in c364868, deployed with pre-deploy dump `pooldb_2026-10-18_1123_pre-guestfix-deploy.sql.gz`.
@@ -1241,4 +1253,4 @@ Owner sells things that are not memberships (snacks, towels, lessons...) and wan
 
 ---
 
-## Last Updated: 2026-10-18 (Guest screen hotfix)
+## Last Updated: 2026-10-26 (Monthly Report)

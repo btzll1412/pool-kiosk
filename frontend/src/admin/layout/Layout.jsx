@@ -8,10 +8,14 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <div className="print:hidden">
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      </div>
 
-      <div className="lg:pl-64">
-        <Header onMenuToggle={() => setSidebarOpen(true)} />
+      <div className="lg:pl-64 print:pl-0">
+        <div className="print:hidden">
+          <Header onMenuToggle={() => setSidebarOpen(true)} />
+        </div>
 
         <main className="px-4 py-6 lg:px-8">
           <Outlet />

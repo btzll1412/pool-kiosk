@@ -19,6 +19,7 @@ import TransactionsList from "./admin/pages/Transactions/TransactionsList";
 import GuestsList from "./admin/pages/Guests/GuestsList";
 import RevenueReport from "./admin/pages/Reports/RevenueReport";
 import SwimReport from "./admin/pages/Reports/SwimReport";
+import MonthlyReport from "./admin/pages/Reports/MonthlyReport";
 import Settings from "./admin/pages/Settings/Settings";
 import CheckinsList from "./admin/pages/Checkins/CheckinsList";
 import SwipesList from "./admin/pages/Swipes/SwipesList";
@@ -138,6 +139,7 @@ export default function App() {
               <Route path="checkins" element={<CheckinsList />} />
               <Route path="swipes" element={<SwipesList />} />
               <Route path="reports" element={<RevenueReport />} />
+              <Route path="reports/monthly" element={<MonthlyReport />} />
               <Route path="reports/swims" element={<SwimReport />} />
               <Route path="schedules" element={<ScheduleManager />} />
               <Route path="settings" element={<Settings />} />

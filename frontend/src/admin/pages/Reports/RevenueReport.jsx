@@ -17,6 +17,7 @@ import { SkeletonStatCards, SkeletonCard } from "../../../shared/Skeleton";
 import StatCard from "../../../shared/StatCard";
 import { DollarSign, TrendingUp, Users } from "lucide-react";
 import { useTimezone, getTodayDate } from "../../../context/TimezoneContext";
+import ReportTabs from "./ReportTabs";
 
 export default function RevenueReport() {
   const timezone = useTimezone();
@@ -69,6 +70,7 @@ export default function RevenueReport() {
         title="Reports"
         description="Revenue analytics and membership insights"
       />
+      <ReportTabs />
 
       {/* Top stats */}
       <div className="grid gap-5 sm:grid-cols-3 mb-6">

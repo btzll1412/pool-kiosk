@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Calendar,
@@ -110,6 +110,8 @@ export default function MemberDetail() {
   const [memberships, setMemberships] = useState([]);
   const [history, setHistory] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [txMonth, setTxMonth] = useState(""); // "" = most recent, else "YYYY-MM"
+  const [txLoading, setTxLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCredit, setShowCredit] = useState(false);
   const [showDeactivate, setShowDeactivate] = useState(false);
@@ -234,6 +236,39 @@ export default function MemberDetail() {
     },
     enabled: showAddCard && addCardMethod === "swipe",
   });
+
+  // Months offered in the Transactions filter: this month back to the month the member joined
+  const txMonthOptions = (() => {
+    const thisMonth = getTodayDate(timezone).slice(0, 7);
+    const joined = (member?.created_at || "").slice(0, 7) || thisMonth;
+    const out = [];
+    let [y, m] = thisMonth.split("-").map(Number);
+    for (let i = 0; i < 60; i++) {
+      const key = `${y}-${String(m).padStart(2, "0")}`;
+      out.push({ value: key, label: new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" }) });
+      if (key <= joined) break;
+      m -= 1;
+      if (m === 0) { m = 12; y -= 1; }
+    }
+    return out;
+  })();
+
+  const loadTransactionsFor = (month) => {
+    setTxMonth(month);
+    setTxLoading(true);
+    const params = { member_id: id, per_page: 100 };
+    if (month) {
+      const [y, m] = month.split("-").map(Number);
+      params.start_date = `${month}-01`;
+      params.end_date = `${month}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+    } else {
+      params.per_page = 50;
+    }
+    getTransactions(params)
+      .then((tx) => setTransactions(tx.items || []))
+      .catch((err) => toast.error(err.response?.data?.detail || "Failed to load transactions"))
+      .finally(() => setTxLoading(false));
+  };
 
   const load = () => {
     setLoading(true);
@@ -1487,9 +1522,36 @@ export default function MemberDetail() {
 
         {/* Transactions */}
         <Card>
-          <CardHeader title="Transactions" />
-          {transactions.length === 0 ? (
-            <p className="text-sm text-gray-400 dark:text-gray-500">No transactions yet</p>
+          <CardHeader
+            title="Transactions"
+            action={
+              <div className="flex items-center gap-2">
+                <select
+                  value={txMonth}
+                  onChange={(e) => loadTransactionsFor(e.target.value)}
+                  className="rounded-lg border-0 py-1 pl-2 pr-7 text-xs shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-brand-600 dark:bg-gray-800 dark:text-gray-100"
+                  aria-label="Filter transactions by month"
+                >
+                  <option value="">Most recent</option>
+                  {txMonthOptions.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                <Link
+                  to={`/admin/reports/monthly?member=${id}${txMonth ? `&start=${txMonth}` : ""}`}
+                  className="whitespace-nowrap text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                >
+                  Monthly report
+                </Link>
+              </div>
+            }
+          />
+          {txLoading ? (
+            <p className="text-sm text-gray-400 dark:text-gray-500">Loading…</p>
+          ) : transactions.length === 0 ? (
+            <p className="text-sm text-gray-400 dark:text-gray-500">
+              {txMonth ? "No transactions in this month" : "No transactions yet"}
+            </p>
           ) : (
             <div className="space-y-2 max-h-80 overflow-y-auto scrollbar-thin">
               {transactions.map((tx) => (
