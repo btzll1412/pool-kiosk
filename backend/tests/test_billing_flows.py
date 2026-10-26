@@ -291,3 +291,104 @@ def test_admin_can_record_partial_payment_toward_owed_balance(client, db, admin_
     assert member_with_pin.credit_balance == D("-95.00")
     # Deductions still may not push a balance below zero
     assert client.post(url, headers=admin_headers, json={"amount": "-10.00", "notes": "x"}).status_code == 400
+
+
+# --- Auto-charge never pays twice for a covered period -----------------------------------
+
+def _freeze_today(monkeypatch, day: date):
+    class _Frozen(date):
+        @classmethod
+        def today(cls):
+            return day
+    monkeypatch.setattr(auto_charge_service, "date", _Frozen)
+    monkeypatch.setattr(membership_service, "_get_local_today", lambda db: day)
+
+
+def test_auto_charge_skips_when_member_already_has_a_plan(db, member_with_pin, monthly_plan, quarterly_plan, saved_card, seed_settings, monkeypatch):
+    _freeze_today(monkeypatch, date(2026, 11, 1))
+    # Admin gave her a paid quarter Nov 1 - Jan 31; the card is set to renew Monthly on Nov 1
+    db.add(Membership(member_id=member_with_pin.id, plan_id=quarterly_plan.id, plan_type=PlanType.monthly,
+                      valid_from=date(2026, 11, 1), valid_until=date(2027, 1, 31), next_billing_date=date(2027, 2, 1), is_active=True))
+    saved_card.auto_charge_enabled = True
+    saved_card.auto_charge_plan_id = monthly_plan.id
+    saved_card.billing_day = 1
+    saved_card.next_charge_date = date(2026, 11, 1)
+    db.commit()
+
+    result = process_due_charges(db)
+    assert result == {"processed": 1, "succeeded": 0, "failed": 0, "skipped": 1}
+    db.refresh(saved_card)
+    assert saved_card.auto_charge_enabled and saved_card.next_charge_date == date(2027, 2, 1)
+    assert db.query(Transaction).count() == 0
+    assert db.query(Membership).count() == 1  # nothing stacked on top
+
+    from app.models.activity_log import ActivityLog
+    entry = db.query(ActivityLog).filter(ActivityLog.action_type == "auto_charge.skipped").one()
+    assert "covered by" in entry.note and entry.after_value["next_charge_date"] == "2027-02-01"
+
+    # Feb 1: coverage is over -> charges normally
+    _freeze_today(monkeypatch, date(2027, 2, 1))
+    assert process_due_charges(db)["succeeded"] == 1
+    assert db.query(Transaction).one().amount == monthly_plan.price
+    db.refresh(saved_card)
+    assert saved_card.next_charge_date == date(2027, 3, 1)
+
+
+def test_auto_charge_skip_uses_the_longest_coverage(db, member_with_pin, monthly_plan, quarterly_plan, saved_card, seed_settings, monkeypatch):
+    _freeze_today(monkeypatch, date(2026, 10, 26))
+    # Faigy's situation: a prorated Monthly stub to Oct 31 and a paid Quarterly Nov 1 - Jan 31
+    db.add_all([
+        Membership(member_id=member_with_pin.id, plan_id=monthly_plan.id, plan_type=PlanType.monthly,
+                   valid_from=date(2026, 10, 26), valid_until=date(2026, 10, 31), next_billing_date=date(2026, 11, 1), is_active=True),
+        Membership(member_id=member_with_pin.id, plan_id=quarterly_plan.id, plan_type=PlanType.monthly,
+                   valid_from=date(2026, 11, 1), valid_until=date(2027, 1, 31), next_billing_date=date(2027, 2, 1), is_active=True),
+    ])
+    saved_card.auto_charge_enabled = True
+    saved_card.auto_charge_plan_id = quarterly_plan.id
+    saved_card.next_charge_date = date(2026, 10, 26)
+    db.commit()
+
+    assert process_due_charges(db)["skipped"] == 1
+    db.refresh(saved_card)
+    assert saved_card.next_charge_date == date(2026, 11, 1)  # the stub ends Oct 31
+
+    _freeze_today(monkeypatch, date(2026, 11, 1))
+    assert process_due_charges(db)["skipped"] == 1
+    db.refresh(saved_card)
+    assert saved_card.next_charge_date == date(2027, 2, 1)  # the quarter covers Nov 1
+    assert db.query(Transaction).count() == 0
+
+
+def test_enable_auto_charge_starts_after_existing_coverage_and_previews_it(client, db, admin_headers, member_with_pin, monthly_plan, quarterly_plan, saved_card, seed_settings, monkeypatch):
+    _freeze_today(monkeypatch, date(2026, 10, 26))
+    db.add(Membership(member_id=member_with_pin.id, plan_id=quarterly_plan.id, plan_type=PlanType.monthly,
+                      valid_from=date(2026, 11, 1), valid_until=date(2027, 1, 31), next_billing_date=date(2027, 2, 1), is_active=True))
+    member_with_pin.credit_balance = D("50.00")
+    db.commit()
+
+    base = f"/api/members/{member_with_pin.id}/saved-cards/{saved_card.id}/auto-charge"
+    preview = client.get(f"{base}/preview", headers=admin_headers, params={"plan_id": str(quarterly_plan.id)})
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert body["covered_until"] == "2027-01-31" and body["covering_plan_name"] == quarterly_plan.name
+    assert body["first_charge_date"] == "2027-02-01"
+    assert D(body["amount"]) == D("360.00") and D(body["credit_applied"]) == D("50.00") and D(body["card_amount"]) == D("310.00")
+
+    enabled = client.post(base, headers=admin_headers, params={"plan_id": str(quarterly_plan.id)})
+    assert enabled.status_code == 200, enabled.text
+    assert enabled.json()["next_charge_date"] == "2027-02-01"
+
+    # No coverage at all: first charge on the next 1st, nothing covered
+    other = Member(first_name="New", last_name="Person", credit_balance=D("0.00"))
+    db.add(other)
+    db.commit()
+    card2 = SavedCard(member_id=other.id, processor_token="tok2", card_last4="1111", card_brand="Visa")
+    db.add(card2)
+    db.commit()
+    body = client.get(f"/api/members/{other.id}/saved-cards/{card2.id}/auto-charge/preview", headers=admin_headers,
+                      params={"plan_id": str(monthly_plan.id)}).json()
+    assert body["covered_until"] is None and body["first_charge_date"] == "2026-11-01"
+    assert D(body["card_amount"]) == monthly_plan.price
+
+    assert client.get(f"{base}/preview", headers=admin_headers, params={"plan_id": str(uuid.uuid4())}).status_code == 404
+    assert client.get(f"{base}/preview", params={"plan_id": str(monthly_plan.id)}).status_code in (401, 403)

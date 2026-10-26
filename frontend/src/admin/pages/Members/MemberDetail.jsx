@@ -48,6 +48,7 @@ import {
   unlockMemberPin,
   enableCardAutoCharge,
   disableCardAutoCharge,
+  getAutoChargePreview,
   toggleUnlimited,
   updateChargeToAccount,
   getPriceOverrides,
@@ -98,6 +99,13 @@ const parseDateInput = (value) => {
 const formatBalance = (value) => {
   const amount = Number(value) || 0;
   return `${amount < 0 ? "-" : ""}$${Math.abs(amount).toFixed(2)}`;
+};
+
+// Calendar dates from the API ("YYYY-MM-DD") have no time zone; show them as written.
+const formatPlainDate = (d) => {
+  if (!d) return "";
+  const [y, m, day] = d.split("-").map(Number);
+  return new Date(y, m - 1, day).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
 export default function MemberDetail() {
@@ -215,6 +223,20 @@ export default function MemberDetail() {
   const [autoChargeCard, setAutoChargeCard] = useState(null);
   const [autoChargePlanId, setAutoChargePlanId] = useState("");
   const [autoChargeLoading, setAutoChargeLoading] = useState(false);
+  const [autoChargePreview, setAutoChargePreview] = useState(null);
+
+  // Show what enabling auto-charge would do before the admin confirms
+  useEffect(() => {
+    if (!showAutoChargeModal || !autoChargeCard || !autoChargePlanId) {
+      setAutoChargePreview(null);
+      return undefined;
+    }
+    let cancelled = false;
+    getAutoChargePreview(id, autoChargeCard.id, autoChargePlanId)
+      .then((p) => { if (!cancelled) setAutoChargePreview(p); })
+      .catch(() => { if (!cancelled) setAutoChargePreview(null); });
+    return () => { cancelled = true; };
+  }, [showAutoChargeModal, autoChargeCard, autoChargePlanId, id]);
 
   // Listen for NFC scans when modal is open
   const { connected: nfcConnected } = useNFCReader({
@@ -3041,9 +3063,35 @@ export default function MemberDetail() {
               </optgroup>
             </select>
             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-              Monthly plans charge on the 1st of each month. Swim passes auto-recharge when swims are depleted.
+              Monthly plans charge on their billing day. Swim passes auto-recharge when swims are depleted.
+              A plan the member already holds is never charged for twice: the charge waits until that plan ends.
             </p>
           </div>
+
+          {autoChargePreview && autoChargePreview.first_charge_date && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+              {autoChargePreview.covered_until ? (
+                <p>
+                  Covered by <span className="font-medium">{autoChargePreview.covering_plan_name}</span> until{" "}
+                  {formatPlainDate(autoChargePreview.covered_until)}. Nothing is charged before then.
+                </p>
+              ) : (
+                <p>No active plan right now.</p>
+              )}
+              <p className="mt-1">
+                First charge <span className="font-medium">{formatPlainDate(autoChargePreview.first_charge_date)}</span>:{" "}
+                <span className="font-medium">${Number(autoChargePreview.amount).toFixed(2)}</span>
+                {Number(autoChargePreview.amount) !== Number(autoChargePreview.full_price) && (
+                  <span className="text-blue-700 dark:text-blue-300"> (prorated from ${Number(autoChargePreview.full_price).toFixed(2)})</span>
+                )}
+                {Number(autoChargePreview.credit_applied) > 0 && (
+                  <span>
+                    {" "}· ${Number(autoChargePreview.credit_applied).toFixed(2)} from account credit, ${Number(autoChargePreview.card_amount).toFixed(2)} on the card
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
 
           <div className="flex gap-3 pt-2">
             <Button

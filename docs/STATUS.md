@@ -1210,6 +1210,17 @@ fixes it) and that the email field had no "." key.
 
 ---
 
+## Auto-charge never pays twice (2026-10-26)
+
+Owner rule: if a member already holds a plan covering the charge date, auto-charge must not charge again. Account credit was already applied before the card; that is unchanged.
+
+- `process_due_charges`: for monthly-type plans, `covering_membership(db, member_id, today)` (active, `valid_from <= today <= valid_until`, longest coverage first). If found: no charge, no membership, `next_charge_date` moves to `day_after_coverage()` (= `next_billing_date` or `valid_until + 1`, never earlier than tomorrow), `activity_log` entry `auto_charge.skipped` with a readable note, result counter `skipped`.
+- `enable_auto_charge`: first charge date = day after the current coverage ends (was `next_billing_date` of the longest membership; same thing when that field is set, now also works when it is missing or stale).
+- New `GET /members/{id}/saved-cards/{card_id}/auto-charge/preview?plan_id=` → `first_charge_date`, `covered_until`, `covering_plan_name`, `amount` (prorated quote), `credit_applied`, `card_amount`. The admin Enable Auto-Charge modal shows this box once a plan is picked.
+- Not changed: which plan auto-renews (still the plan on the card), the kiosk auto-charge screen (shares the backend rule), swim-pass auto-recharge.
+
+Tests: 3 new in `test_billing_flows.py` (suite 164).
+
 ## Monthly Report (2026-10-26)
 
 Reports now has three tabs: Revenue, **Monthly**, Swims (the Swims page previously had no link to it).
@@ -1253,4 +1264,4 @@ Owner sells things that are not memberships (snacks, towels, lessons...) and wan
 
 ---
 
-## Last Updated: 2026-10-26 (Monthly Report)
+## Last Updated: 2026-10-26 (Monthly Report, auto-charge coverage check)

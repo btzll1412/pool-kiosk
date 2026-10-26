@@ -468,6 +468,26 @@ def delete_member_saved_card(
     return {"message": "Saved card removed"}
 
 
+@router.get("/{member_id}/saved-cards/{card_id}/auto-charge/preview")
+def preview_card_auto_charge(
+    member_id: uuid.UUID,
+    card_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    billing_day: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """What enabling auto-charge would do: first charge date, existing coverage, amount, credit."""
+    from app.services.auto_charge_service import auto_charge_preview
+    card = db.query(SavedCard).filter(SavedCard.id == card_id, SavedCard.member_id == member_id).first()
+    if not card:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved card not found")
+    plan = db.query(Plan).filter(Plan.id == plan_id, Plan.is_active.is_(True)).first()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+    return auto_charge_preview(db, member_id, plan, billing_day)
+
+
 @router.post("/{member_id}/saved-cards/{card_id}/auto-charge")
 def enable_card_auto_charge(
     member_id: uuid.UUID,

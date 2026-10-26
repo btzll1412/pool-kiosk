@@ -58,6 +58,77 @@ def _get_next_billing_date(from_date: date = None, billing_day: int = None) -> d
     return date(next_year, next_month, min(billing_day, last_day))
 
 
+def covering_membership(db: Session, member_id: uuid.UUID, on_date: date):
+    """The member's active monthly-type membership that covers ``on_date``, if any.
+
+    With several (e.g. a prorated stub plus a paid quarter) the one ending last wins.
+    """
+    from app.models.membership import Membership
+
+    return (
+        db.query(Membership)
+        .filter(
+            Membership.member_id == member_id,
+            Membership.plan_type == PlanType.monthly,
+            Membership.is_active.is_(True),
+            Membership.valid_from <= on_date,
+            Membership.valid_until >= on_date,
+        )
+        .order_by(Membership.valid_until.desc())
+        .first()
+    )
+
+
+def day_after_coverage(membership, not_before: date) -> date:
+    """First day no longer covered by ``membership`` — never earlier than ``not_before``."""
+    candidate = membership.next_billing_date or (membership.valid_until + timedelta(days=1))
+    if membership.valid_until and candidate <= membership.valid_until:
+        candidate = membership.valid_until + timedelta(days=1)
+    return max(candidate, not_before)
+
+
+def auto_charge_preview(db: Session, member_id: uuid.UUID, plan: Plan, billing_day: int | None = None) -> dict:
+    """What enabling auto-charge for ``plan`` would do: first charge date, coverage, amounts."""
+    from app.services.pricing_service import get_member_price
+
+    member = db.query(Member).filter(Member.id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    today = date.today()
+    preview = {
+        "plan_name": plan.name,
+        "first_charge_date": None,
+        "covered_until": None,
+        "covering_plan_name": None,
+        "full_price": None,
+        "amount": None,
+        "credit_applied": None,
+        "card_amount": None,
+    }
+    if plan.plan_type != PlanType.monthly:
+        return preview  # swim passes recharge when depleted, no date to predict
+
+    current = _current_monthly_membership(db, member_id)
+    day = billing_day if billing_day and 1 <= billing_day <= 28 else None
+    if current and current.valid_until and current.valid_until >= today:
+        first = day_after_coverage(current, today + timedelta(days=1))
+        preview["covered_until"] = current.valid_until
+        preview["covering_plan_name"] = current.plan.name if current.plan else current.plan_type.value
+    else:
+        first = _get_next_billing_date(billing_day=day)
+    quote = quote_membership(get_member_price(db, member_id, plan.id), plan.duration_months, first,
+                             BillingMode.prorate, day or (first.day if first.day <= 28 else DEFAULT_BILLING_DAY))
+    credit = min(member.credit_balance or Decimal("0"), quote.amount) if (member.credit_balance or 0) > 0 else Decimal("0.00")
+    preview.update({
+        "first_charge_date": first,
+        "full_price": quote.full_price,
+        "amount": quote.amount,
+        "credit_applied": credit,
+        "card_amount": quote.amount - credit,
+    })
+    return preview
+
+
 def process_due_charges(db: Session) -> dict:
     """Find all saved cards with auto-charge due today or earlier and charge them."""
     today = date.today()
@@ -71,7 +142,7 @@ def process_due_charges(db: Session) -> dict:
         .all()
     )
 
-    results = {"processed": 0, "succeeded": 0, "failed": 0}
+    results = {"processed": 0, "succeeded": 0, "failed": 0, "skipped": 0}
     adapter = get_payment_adapter(db)
 
     for card in due_cards:
@@ -106,6 +177,29 @@ def process_due_charges(db: Session) -> dict:
             continue
 
         customer_name = f"{member.first_name} {member.last_name}"
+
+        # Already covered by a plan (bought at the kiosk, added by an admin, a prorated
+        # stub...)? Then there is nothing to pay for today: charge nothing, create
+        # nothing, and come back the day that coverage ends.
+        if plan.plan_type == PlanType.monthly:
+            covering = covering_membership(db, member.id, today)
+            if covering:
+                resume = day_after_coverage(covering, today + timedelta(days=1))
+                covering_name = covering.plan.name if covering.plan else covering.plan_type.value
+                card.next_charge_date = resume
+                from app.services.activity_service import log_activity
+                log_activity(
+                    db, user_id=None, action="auto_charge.skipped", entity_type="member", entity_id=member.id,
+                    after={"plan": plan.name, "covered_by": covering_name, "covered_until": str(covering.valid_until),
+                           "next_charge_date": str(resume)},
+                    note=f"Auto-charge skipped for {customer_name}: covered by {covering_name} until "
+                         f"{covering.valid_until:%b %d, %Y}, next charge {resume:%b %d, %Y}",
+                )
+                db.commit()
+                logger.info("Auto-charge skipped: member %s already covered by %s until %s; next charge %s",
+                            member.id, covering_name, covering.valid_until, resume)
+                results["skipped"] += 1
+                continue
 
         # Use member's custom price if set, otherwise plan price
         # Price and period come from the billing service. On the billing day this is
@@ -293,11 +387,13 @@ def enable_auto_charge(
     # Monthly plans charge on billing day; swim pass plans charge when depleted (no date needed)
     if plan.plan_type == PlanType.monthly:
         current = _current_monthly_membership(db, member_id)
-        if current and current.next_billing_date:
-            # Renew exactly when the paid period ends (a quarterly plan renews quarterly)
-            card.next_charge_date = current.next_billing_date
-            if not card.billing_day:
-                card.billing_day = current.next_billing_date.day
+        today = date.today()
+        if current and current.valid_until and current.valid_until >= today:
+            # Renew exactly when the paid period ends (a quarterly plan renews quarterly);
+            # anything the member already holds is never charged for twice.
+            card.next_charge_date = day_after_coverage(current, today + timedelta(days=1))
+            if not card.billing_day and card.next_charge_date.day <= 28:
+                card.billing_day = card.next_charge_date.day
         else:
             card.next_charge_date = _get_next_billing_date(billing_day=card.billing_day)
     else:

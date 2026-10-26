@@ -95,6 +95,11 @@ export const enableCardAutoCharge = (memberId, cardId, planId, billingDay) =>
     params: { plan_id: planId, ...(billingDay ? { billing_day: billingDay } : {}) }
   }).then((r) => r.data);
 
+export const getAutoChargePreview = (memberId, cardId, planId, billingDay) =>
+  client.get(`/members/${memberId}/saved-cards/${cardId}/auto-charge/preview`, {
+    params: { plan_id: planId, ...(billingDay ? { billing_day: billingDay } : {}) }
+  }).then((r) => r.data);
+
 export const disableCardAutoCharge = (memberId, cardId) =>
   client.delete(`/members/${memberId}/saved-cards/${cardId}/auto-charge`).then((r) => r.data);
 
