@@ -1210,6 +1210,25 @@ fixes it) and that the email field had no "." key.
 
 ---
 
+## Admin Add Membership: account credit first, any amount (2026-10-27)
+
+Owner found the admin Add Membership modal only offered Cash / Card (Record Sale already had credit and
+account). Now, when the member has credit, a purple "Use account credit ($X available)" box appears
+with an amount field pre-filled to the maximum (min(balance, charge)); the admin can lower it. The rest
+is collected by Cash, Card (saved / new-record / new-charge) or the new **Charge to account (pay later)**
+option. If credit covers everything the payment-method row disappears and the button reads "Add & Use Credit".
+- `PaymentInfo.credit_amount` (any method) and `payment_method` `"credit"` (credit must equal the price)
+  / `"account"` (balance goes negative, note "Charged to account — balance after: $… (via admin)").
+- Credit portion = `payment` transaction, method `credit`, linked via `related_transaction_id` to the
+  cash/card/account transaction; standalone ("Paid with account credit (via admin)") when it covers all.
+  Balance is only reduced after a card charge succeeds. Response gains `credit_used`.
+- Card-on-file / new-card charges are for the remainder only; the new-card "charge" path records the
+  credit part as a credit-only payment with `charge_amount` = credit (the card part is recorded by `/charge-card`).
+- Scheduled future-start charges stay card-only (credit box hidden); kiosk unchanged (auto-applies credit).
+- Verified in a real headless Chromium (Playwright, local SQLite stack): default/partial/account/covered
+  states and two real submissions (credit-only, credit+cash with overpayment). Tests
+  `tests/test_admin_membership_credit.py` (8). Suite 183. Also fixed "21th/22th/23th of each month" labels.
+
 ## Timezone audit + fixes (2026-10-27)
 
 Owner asked to confirm every time in the system follows the timezone setting. Audit: containers pinned
@@ -1303,4 +1322,4 @@ Owner sells things that are not memberships (snacks, towels, lessons...) and wan
 
 ---
 
-## Last Updated: 2026-10-27 (Item Sales page; timezone audit + fixes)
+## Last Updated: 2026-10-27 (Item Sales page; timezone fixes; admin membership credit)

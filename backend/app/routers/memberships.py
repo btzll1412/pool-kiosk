@@ -111,6 +111,52 @@ def quote_membership_endpoint(
     return {"amount": str(quote.amount), "quote": quote_to_dict(quote)}
 
 
+
+def _credit_to_apply(member: Member, payment, price: Decimal) -> Decimal:
+    """How much account credit this purchase uses, validated against what the member has."""
+    available = max(member.credit_balance or Decimal("0.00"), Decimal("0.00"))
+    if payment.payment_method == "credit":
+        amount = Decimal(str(payment.credit_amount)) if payment.credit_amount is not None else price
+        if amount != price:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Account credit must cover the full ${price} — pick cash, card or account for the rest")
+    elif payment.credit_amount is not None:
+        amount = Decimal(str(payment.credit_amount))
+    else:
+        return Decimal("0.00")
+    amount = amount.quantize(Decimal("0.01"))
+    if amount < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Credit amount cannot be negative")
+    if amount > available:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Member only has ${available} account credit")
+    if amount > price:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Credit amount cannot exceed the ${price} being charged")
+    return amount
+
+
+def _apply_credit(db: Session, member: Member, data, membership, amount: Decimal, current_user: User,
+                  linked_to, adjust_balance: bool = True) -> Transaction:
+    """Record the account-credit part of a membership purchase."""
+    if adjust_balance:
+        member.credit_balance -= amount
+    tx = Transaction(
+        member_id=data.member_id,
+        transaction_type=TransactionType.payment,
+        payment_method=PaymentMethod.credit,
+        amount=amount,
+        plan_id=data.plan_id,
+        membership_id=membership.id,
+        created_by=current_user.id,
+        notes="Credit portion of payment (via admin)" if linked_to else "Paid with account credit (via admin)",
+        related_transaction_id=linked_to,
+    )
+    db.add(tx)
+    db.flush()
+    return tx
+
+
 @router.post("", response_model=MembershipCreateWithPaymentResponse, status_code=201)
 def create_membership_endpoint(
     data: MembershipCreate,
@@ -161,7 +207,47 @@ def create_membership_endpoint(
         else:
             effective_price = quote.amount if quote else list_price
 
-        if payment.payment_method == "cash":
+        # Account credit first (any amount the admin chose, up to what the member has),
+        # then the rest by the chosen method. "credit" means the credit covers it all.
+        credit_used = _credit_to_apply(member, payment, effective_price)
+        effective_price -= credit_used
+
+        if credit_used > 0 and effective_price == 0:
+            membership = create_membership(db, data.member_id, data.plan_id, start_date=data.start_date, billing_day=dates_billing_day)
+            tx = _apply_credit(db, member, data, membership, credit_used, current_user, linked_to=None)
+            db.commit()
+            db.refresh(tx)
+            transaction_id = tx.id
+            message = f"Membership created, ${credit_used} paid from account credit"
+            logger.info("Admin credit payment: member=%s, plan=%s, credit=$%s, by=%s",
+                        data.member_id, plan.name, credit_used, current_user.id)
+
+        elif payment.payment_method == "account":
+            # Staff decision: the member owes the remainder (balance goes negative)
+            membership = create_membership(db, data.member_id, data.plan_id, start_date=data.start_date, billing_day=dates_billing_day)
+            member.credit_balance -= credit_used + effective_price
+            tx = Transaction(
+                member_id=data.member_id,
+                transaction_type=TransactionType.payment,
+                payment_method=PaymentMethod.credit,
+                amount=effective_price,
+                plan_id=data.plan_id,
+                membership_id=membership.id,
+                created_by=current_user.id,
+                notes=f"Charged to account — balance after: ${member.credit_balance} (via admin)",
+            )
+            db.add(tx)
+            db.flush()
+            if credit_used > 0:
+                _apply_credit(db, member, data, membership, credit_used, current_user, linked_to=tx.id, adjust_balance=False)
+            db.commit()
+            db.refresh(tx)
+            transaction_id = tx.id
+            message = f"Membership created, ${effective_price} charged to account" + (f" (${credit_used} credit applied)" if credit_used else "")
+            logger.info("Admin charge to account: member=%s, plan=%s, amount=$%s, credit=$%s, balance=$%s, by=%s",
+                        data.member_id, plan.name, effective_price, credit_used, member.credit_balance, current_user.id)
+
+        elif payment.payment_method == "cash":
             # Cash payment
             membership = create_membership(db, data.member_id, data.plan_id, start_date=data.start_date, billing_day=dates_billing_day)
             amount_tendered = Decimal(str(payment.amount_tendered)) if payment.amount_tendered else effective_price
@@ -195,14 +281,18 @@ def create_membership_endpoint(
                 notes=f"Cash payment via admin (${amount_tendered} tendered, charged ${effective_price})",
             )
             db.add(tx)
+            db.flush()
+            if credit_used > 0:
+                _apply_credit(db, member, data, membership, credit_used, current_user, linked_to=tx.id)
             db.commit()
             db.refresh(tx)
             transaction_id = tx.id
 
+            credit_note = f" ${credit_used} paid from account credit." if credit_used > 0 else ""
             if credit_added > 0:
-                message = f"Membership created with cash payment of ${effective_price}. ${credit_added} added to account credit."
+                message = f"Membership created with cash payment of ${effective_price}.{credit_note} ${credit_added} added to account credit."
             else:
-                message = f"Membership created with cash payment of ${effective_price}"
+                message = f"Membership created with cash payment of ${effective_price}.{credit_note}"
             logger.info("Admin cash payment: member=%s, plan=%s, tendered=$%s, charged=$%s, credit_added=$%s, by=%s",
                        data.member_id, plan.name, amount_tendered, effective_price, credit_added, current_user.id)
 
@@ -214,7 +304,10 @@ def create_membership_endpoint(
                 saved_card_id = payment.saved_card_id
                 # Get the membership that was created by charge_saved_card_now
                 membership = db.query(Membership).filter_by(id=tx.membership_id).first()
-                message = f"Membership created and charged ${effective_price} to saved card"
+                if credit_used > 0:
+                    _apply_credit(db, member, data, membership, credit_used, current_user, linked_to=tx.id)
+                    db.commit()
+                message = f"Membership created and charged ${effective_price} to saved card" + (f" (${credit_used} credit applied)" if credit_used else "")
                 logger.info("Admin saved card payment: member=%s, plan=%s, amount=$%s, card=%s, by=%s",
                            data.member_id, plan.name, effective_price, payment.saved_card_id, current_user.id)
 
@@ -265,6 +358,9 @@ def create_membership_endpoint(
                     notes=f"Card payment via admin ({payment.card_brand} *{payment.card_last4})",
                 )
                 db.add(tx)
+                db.flush()
+                if credit_used > 0:
+                    _apply_credit(db, member, data, membership, credit_used, current_user, linked_to=tx.id)
                 db.commit()
                 db.refresh(tx)
                 transaction_id = tx.id
@@ -279,7 +375,7 @@ def create_membership_endpoint(
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid payment method. Use 'cash' or 'card'"
+                detail="Invalid payment method. Use 'cash', 'card', 'credit' or 'account'"
             )
 
     return MembershipCreateWithPaymentResponse(
@@ -297,6 +393,7 @@ def create_membership_endpoint(
         transaction_id=transaction_id,
         saved_card_id=saved_card_id,
         credit_added=credit_added,
+        credit_used=credit_used if data.payment else None,
         message=message,
     )
 

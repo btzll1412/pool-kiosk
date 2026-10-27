@@ -1157,6 +1157,7 @@ The system supports PC/SC compatible NFC/RFID card readers for member card scann
 | Date | Change | Author |
 |---|---|---|
 | 2026-10-12 | Item plans (`plan_type=item`): one-time sales with fixed or open amount (`open_amount`, `min_amount`, `max_amount`), required description, no membership created; sold at the kiosk (members + guests) with every payment method and by admins via `POST /members/{id}/sales`; `services/item_sale_service.py`; kiosk purchases resolved through `Purchase` | — |
+| 2026-10-27 | Admin Add Membership: `PaymentInfo.credit_amount`, methods `credit` / `account`; credit portion linked via `related_transaction_id`; `credit_used` in response |  |
 | 2026-10-27 | Timezone: `time_service` (setting-driven today/now/bounds); schedule overrides stored as pool wall-clock; transactions CSV + kiosk-errors + report defaults in local days; `formatPlainDate` for date-only strings |  |
 | 2026-10-27 | Item Sales admin page (`/api/item-sales` list/plans/export, filters, summary); `transactions.phone` kept from guest item sales; items never counted as swims |  |
 | 2026-10-26 | Monthly Report: month/year (range) picker, customer filter, CSV + print/PDF, outstanding balances; Reports tabs; member page month filter |  |

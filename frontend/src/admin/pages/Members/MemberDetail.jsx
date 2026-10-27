@@ -160,6 +160,9 @@ export default function MemberDetail() {
   // Payment options for Add Membership
   const [chargeNow, setChargeNow] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  // Account credit applied first: "" = use everything available (up to the charge), "0" = none
+  const [useCredit, setUseCredit] = useState(true);
+  const [creditToUse, setCreditToUse] = useState("");
   const [cashAmount, setCashAmount] = useState("");
   const [useExistingCard, setUseExistingCard] = useState(true);
   const [selectedSavedCardId, setSelectedSavedCardId] = useState("");
@@ -633,7 +636,8 @@ export default function MemberDetail() {
         }
 
         const expDate = `${newCardExpMonth.padStart(2, "0")}${newCardExpYear.slice(-2)}`;
-        const amount = getChargeAmount(selectedPlan);
+        // Only what account credit does not cover goes on the card
+        const amount = remainderDue.toFixed(2);
 
         // Charge the card via admin API
         try {
@@ -680,10 +684,16 @@ export default function MemberDetail() {
           enable_autopay: enableAutopay,
         };
       } else if (chargeNow) {
-        if (paymentMethod === "cash") {
+        const credit = creditApplied > 0 ? { credit_amount: creditApplied.toFixed(2) } : {};
+        if (creditCoversAll) {
+          payload.payment = { payment_method: "credit", ...credit, ...customCharge };
+        } else if (paymentMethod === "account") {
+          payload.payment = { payment_method: "account", ...credit, ...customCharge };
+        } else if (paymentMethod === "cash") {
           payload.payment = {
             payment_method: "cash",
-            amount_tendered: cashAmount ? parseFloat(cashAmount) : parseFloat(chargeAmt),
+            amount_tendered: cashAmount ? parseFloat(cashAmount) : remainderDue,
+            ...credit,
             ...customCharge,
           };
         } else if (paymentMethod === "card") {
@@ -691,6 +701,7 @@ export default function MemberDetail() {
             payload.payment = {
               payment_method: "card",
               saved_card_id: selectedSavedCardId,
+              ...credit,
               ...customCharge,
             };
           } else if (!effectiveUseExisting && cardEntryMode === "record" && newCardLast4) {
@@ -701,9 +712,16 @@ export default function MemberDetail() {
               card_brand: newCardBrand,
               save_card: saveNewCard,
               enable_autopay: enableAutopay,
+              ...credit,
+              ...customCharge,
             };
           } else if (!effectiveUseExisting && cardEntryMode === "charge") {
-            // Already charged and recorded via chargeCard above — don't add payment to avoid duplicate transaction
+            // The card part was charged and recorded by chargeCard above. Only the
+            // credit part (if any) is left to record, so send it as a credit-only payment
+            // for exactly that amount.
+            if (creditApplied > 0) {
+              payload.payment = { payment_method: "credit", ...credit, charge_amount: creditApplied };
+            }
           }
         }
       }
@@ -714,8 +732,8 @@ export default function MemberDetail() {
       if (scheduleCharge) {
         // No membership yet — it is created when the scheduled charge succeeds
         toast.success(result.message || "Charge scheduled for the start date", { duration: 8000 });
-      } else if (chargeNow && paymentMethod === "card") {
-        toast.success(`Card charged $${Number(chargeAmt).toFixed(2)} successfully!\n${msg}`, { duration: 5000 });
+      } else if (chargeNow && paymentMethod === "card" && !creditCoversAll) {
+        toast.success(`Card charged $${remainderDue.toFixed(2)} successfully!\n${msg}`, { duration: 5000 });
       } else {
         toast.success(msg);
       }
@@ -762,10 +780,25 @@ export default function MemberDetail() {
     return getMemberPlanPrice(plan).toFixed(2);
   };
 
+  // Account credit split for Add Membership
+  const availableCredit = Math.max(0, Number(member?.credit_balance) || 0);
+  const chargeTotal = Number(getChargeAmount(plans.find((p) => p.id === selectedPlanId))) || 0;
+  const maxCredit = Math.min(availableCredit, chargeTotal);
+  const creditApplied = (() => {
+    if (!chargeNow || scheduleCharge || !useCredit || maxCredit <= 0) return 0;
+    const typed = creditToUse === "" ? maxCredit : parseFloat(creditToUse);
+    if (!(typed >= 0)) return 0;
+    return Math.round(Math.min(typed, maxCredit) * 100) / 100;
+  })();
+  const remainderDue = Math.round((chargeTotal - creditApplied) * 100) / 100;
+  const creditCoversAll = creditApplied > 0 && remainderDue <= 0;
+
   const resetMembershipForm = () => {
     setSelectedPlanId("");
     setChargeNow(false);
     setPaymentMethod("cash");
+    setUseCredit(true);
+    setCreditToUse("");
     setCashAmount("");
     setUseExistingCard(true);
     setSelectedSavedCardId("");
@@ -2013,7 +2046,7 @@ export default function MemberDetail() {
                   </option>
                   {[...Array(28)].map((_, i) => (
                     <option key={i + 1} value={String(i + 1)}>
-                      {i + 1}{i === 0 ? "st" : i === 1 ? "nd" : i === 2 ? "rd" : "th"} of each month
+                      {i + 1}{[1, 21].includes(i + 1) ? "st" : [2, 22].includes(i + 1) ? "nd" : [3, 23].includes(i + 1) ? "rd" : "th"} of each month
                     </option>
                   ))}
                 </select>
@@ -2164,12 +2197,58 @@ export default function MemberDetail() {
                 </div>
               </div>
 
+              {/* Account credit first */}
+              {availableCredit > 0 && !scheduleCharge && (
+                <div className="rounded-lg border border-purple-200 bg-purple-50 p-3 dark:border-purple-800 dark:bg-purple-900/20">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={useCredit}
+                      onChange={(e) => setUseCredit(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-600"
+                    />
+                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      Use account credit (${availableCredit.toFixed(2)} available)
+                    </span>
+                  </label>
+                  {useCredit && (
+                    <div className="mt-2 flex flex-wrap items-end gap-3">
+                      <div className="w-40">
+                        <Input
+                          label="Credit to apply"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max={maxCredit.toFixed(2)}
+                          value={creditToUse}
+                          onChange={(e) => setCreditToUse(e.target.value)}
+                          placeholder={maxCredit.toFixed(2)}
+                        />
+                      </div>
+                      <p className="pb-2 text-sm text-gray-700 dark:text-gray-300">
+                        Applying <span className="font-semibold">${creditApplied.toFixed(2)}</span>
+                        {" · "}
+                        {creditCoversAll ? (
+                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">fully covered, nothing else to collect</span>
+                        ) : (
+                          <>
+                            remaining to collect{" "}
+                            <span className="font-semibold">${remainderDue.toFixed(2)}</span>
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Payment Method Selection */}
+              {!creditCoversAll && (
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Payment Method
+                  {creditApplied > 0 ? `Payment Method for the remaining $${remainderDue.toFixed(2)}` : "Payment Method"}
                 </label>
-                <div className="flex gap-4">
+                <div className="flex flex-wrap gap-4">
                   <label className="flex items-center gap-2">
                     <input
                       type="radio"
@@ -2192,24 +2271,43 @@ export default function MemberDetail() {
                     />
                     <span className="text-sm text-gray-700 dark:text-gray-300">Card</span>
                   </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="account"
+                      checked={paymentMethod === "account"}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Charge to account (pay later)</span>
+                  </label>
                 </div>
               </div>
+              )}
+
+              {!creditCoversAll && paymentMethod === "account" && (
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  ${remainderDue.toFixed(2)} will be added to what the member owes. Balance after:{" "}
+                  ${(Number(member?.credit_balance || 0) - creditApplied - remainderDue).toFixed(2)}
+                </p>
+              )}
 
               {/* Cash Payment Options */}
-              {paymentMethod === "cash" && (
+              {!creditCoversAll && paymentMethod === "cash" && (
                 <Input
                   label="Amount Received"
                   type="number"
                   step="0.01"
                   value={cashAmount}
                   onChange={(e) => setCashAmount(e.target.value)}
-                  placeholder={`Charge amount: $${getChargeAmount(plans.find(p => p.id === selectedPlanId))}`}
-                  helpText="Leave blank to use the charge amount above. Overpayment is added as credit."
+                  placeholder={`Amount due: $${remainderDue.toFixed(2)}`}
+                  helpText="Leave blank to use the amount due. Overpayment is added as credit."
                 />
               )}
 
               {/* Card Payment Options */}
-              {paymentMethod === "card" && (
+              {!creditCoversAll && paymentMethod === "card" && (
                 <div className="space-y-3">
                   {/* Use Existing or New Card */}
                   {savedCards.length > 0 && (
@@ -2509,7 +2607,7 @@ export default function MemberDetail() {
                 if (chargeNow && chargeAmountMode === "custom" && !(parseFloat(customChargeAmount) > 0)) return true;
                 // Monthly plans are charged the server quote — wait for it
                 if (chargeNow && isMonthlyPlan && chargeAmountMode !== "custom" && !activeQuote) return true;
-                if (!chargeNow || paymentMethod !== "card") return false;
+                if (!chargeNow || creditCoversAll || paymentMethod !== "card") return false;
                 const effectiveUseExisting = useExistingCard && savedCards.length > 0;
                 if (effectiveUseExisting) return !selectedSavedCardId;
                 if (cardEntryMode === "record") return newCardLast4.length !== 4;
@@ -2519,6 +2617,8 @@ export default function MemberDetail() {
             >
               {scheduleCharge
                 ? "Schedule Charge"
+                : chargeNow && creditCoversAll
+                ? "Add & Use Credit"
                 : chargeNow && paymentMethod === "card" && !(useExistingCard && savedCards.length > 0) && cardEntryMode === "charge"
                 ? "Add & Charge Card"
                 : chargeNow ? "Add & Charge" : "Add Membership"}

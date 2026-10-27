@@ -10,7 +10,10 @@ from app.services.billing_service import BillingMode
 
 class PaymentInfo(BaseModel):
     """Payment information for membership creation."""
-    payment_method: str  # "cash" or "card"
+    payment_method: str  # "cash" | "card" | "credit" (account credit covers it all) | "account" (owe it)
+    # Account credit to apply first; the rest is collected with payment_method.
+    # Required (and equal to the price) for "credit"; optional for the others.
+    credit_amount: Decimal | None = None
     amount_tendered: Decimal | None = None  # For cash payments
     charge_amount: Decimal | None = None  # Override amount to charge (prorate/custom)
     saved_card_id: uuid.UUID | None = None  # Use existing saved card
@@ -102,6 +105,7 @@ class MembershipCreateWithPaymentResponse(BaseModel):
     transaction_id: uuid.UUID | None = None
     saved_card_id: uuid.UUID | None = None
     credit_added: Decimal | None = None
+    credit_used: Decimal | None = None  # account credit applied to this purchase
     message: str | None = None
 
     model_config = {"from_attributes": True}
