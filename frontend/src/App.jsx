@@ -17,6 +17,7 @@ import MemberForm from "./admin/pages/Members/MemberForm";
 import PlansList from "./admin/pages/Plans/PlansList";
 import TransactionsList from "./admin/pages/Transactions/TransactionsList";
 import GuestsList from "./admin/pages/Guests/GuestsList";
+import ItemSalesList from "./admin/pages/ItemSales/ItemSalesList";
 import RevenueReport from "./admin/pages/Reports/RevenueReport";
 import SwimReport from "./admin/pages/Reports/SwimReport";
 import MonthlyReport from "./admin/pages/Reports/MonthlyReport";
@@ -136,6 +137,7 @@ export default function App() {
               <Route path="plans" element={<PlansList />} />
               <Route path="transactions" element={<TransactionsList />} />
               <Route path="guests" element={<GuestsList />} />
+              <Route path="item-sales" element={<ItemSalesList />} />
               <Route path="checkins" element={<CheckinsList />} />
               <Route path="swipes" element={<SwipesList />} />
               <Route path="reports" element={<RevenueReport />} />

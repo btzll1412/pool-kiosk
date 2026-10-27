@@ -37,6 +37,7 @@ class Transaction(Base):
     saved_card_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("saved_cards.id"))
     reference_id: Mapped[str | None] = mapped_column(String(255))
     guest_name: Mapped[str | None] = mapped_column(String(255))
+    phone: Mapped[str | None] = mapped_column(String(20))  # guest's phone on guest item sales
     notes: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)

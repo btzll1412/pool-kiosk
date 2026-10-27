@@ -1687,14 +1687,20 @@ def _guest_pricing(plan: Plan, data) -> tuple[Decimal, str | None]:
     return plan.price, None
 
 
-def _guest_item_sale(db: Session, plan: Plan, name: str, description: str, amount: Decimal,
+def _guest_item_sale(db: Session, plan: Plan, name: str, phone: str | None, description: str, amount: Decimal,
                      parts: list[tuple[PaymentMethod, Decimal, str | None, str | None]], message: str) -> GuestVisitResponse:
-    """Record a guest's item purchase: one payment transaction per part, no guest visit."""
+    """Record a guest's item purchase: one payment transaction per part, no guest visit.
+
+    The guest's phone goes on the transaction so the Item Sales page can show it,
+    the way Guest Visits shows it for swims.
+    """
     first = None
+    phone = (phone or "").strip() or None
     for method, part_amount, reference, base_note in parts:
         tx = Transaction(
             member_id=None,
             guest_name=name,
+            phone=phone,
             transaction_type=TransactionType.payment,
             payment_method=method,
             amount=part_amount,
@@ -1741,7 +1747,7 @@ def guest_visit(data: GuestVisitRequest, request: Request, db: Session = Depends
             message = f"Thank you, {data.name}! " + cash_msg.replace("{amount}", f"{currency}{price:.2f}")
         else:
             message = f"Thank you, {data.name}!"
-        return _guest_item_sale(db, plan, data.name, item_description, price, [(method, paid, None, note)], message)
+        return _guest_item_sale(db, plan, data.name, data.phone, item_description, price, [(method, paid, None, note)], message)
 
     visit = GuestVisit(
         name=data.name,
@@ -1852,7 +1858,7 @@ def guest_pay_card(data: GuestCardPaymentRequest, request: Request, db: Session 
     card_last4 = card_number[-4:]
     if item_description:
         return _guest_item_sale(
-            db, plan, data.name, item_description, price,
+            db, plan, data.name, data.phone, item_description, price,
             [(PaymentMethod.card, price, charge_result.reference_id, f"Guest: {data.name} (****{card_last4})")],
             f"Thank you, {data.name}!",
         )
@@ -1969,7 +1975,7 @@ def guest_pay_split(data: GuestSplitPaymentRequest, request: Request, db: Sessio
         cash_msg = get_setting(db, "cash_success_message", "Place {amount} in the cash box.")
         cash_msg = cash_msg.replace("{amount}", f"{currency}{data.cash_amount:.2f}")
         return _guest_item_sale(
-            db, plan, data.name, item_description, price,
+            db, plan, data.name, data.phone, item_description, price,
             [
                 (PaymentMethod.cash, data.cash_amount, None, f"Guest split (cash): {data.name}"),
                 (PaymentMethod.card, card_amount, charge_result.reference_id, f"Guest split (card): {data.name} (****{card_last4})"),

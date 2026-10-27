@@ -1210,6 +1210,25 @@ fixes it) and that the email field had no "." key.
 
 ---
 
+## Item Sales page + guest phone on item sales (2026-10-27)
+
+**Problem:** a guest buying a "Misc" (item plan) at the kiosk typed their phone number, but item sales
+create no Guest Visit (by design — they are not swims) and the transaction had no phone column, so the
+number was dropped. Three Misc sales (Oct 22–26) lost their phones; unrecoverable.
+
+**Fix (owner's design):** a dedicated **Item Sales** admin page instead of mixing items into Guest Visits.
+- `transactions.phone` (alembic `s9t0u1v2w3x4`) — set on every guest item sale (`/kiosk/guest`, `/guest/pay/card`, `/guest/pay/split`).
+- `GET /api/item-sales` — one row per sale (split/credit+card parts grouped via `related_transaction_id`),
+  members (phone from profile, link to member page) and guests (phone from the kiosk). Filters: `search`
+  (name / phone with separators ignored / description), `buyer` member|guest, `plan_id`, `method`
+  cash|card|credit|account|split, `start_date`/`end_date` (local days). Returns `summary` over the whole
+  filtered set (count, amount, cash/card/credit/account). `GET /api/item-sales/plans` (incl. archived),
+  `GET /api/item-sales/export` CSV with Date, Time, Buyer, Name, Phone, Item, Description, Amount, Payment, Recorded By.
+- Frontend: sidebar "Item Sales" (`/admin/item-sales`), filters mirrored in the URL, summary tiles, debounced search.
+- Item sales remain excluded from swims everywhere (no visit, no check-in). Owner declined a kiosk warning
+  about using Misc for memberships.
+- Tests: `tests/test_item_sales.py` +5 (phone kept, listing, filters, CSV, memberships/refunds excluded). Suite 169.
+
 ## Auto-charge never pays twice (2026-10-26)
 
 Owner rule: if a member already holds a plan covering the charge date, auto-charge must not charge again. Account credit was already applied before the card; that is unchanged.
@@ -1264,4 +1283,4 @@ Owner sells things that are not memberships (snacks, towels, lessons...) and wan
 
 ---
 
-## Last Updated: 2026-10-26 (Monthly Report, auto-charge coverage check)
+## Last Updated: 2026-10-27 (Item Sales page, guest phone on item sales)

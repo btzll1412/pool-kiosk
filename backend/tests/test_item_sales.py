@@ -1,6 +1,7 @@
 """Item plans: one-time sales (fixed or open amount) that create no membership."""
 
 import uuid
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -301,3 +302,105 @@ def test_admin_sale_new_card_requires_card_fields(client, admin_headers, member_
     r = _sale(client, admin_headers, member_with_pin, towel_plan, description="Towel", payment_method="new_card",
               card_number="12", exp_date="1230", cvv="123")
     assert r.status_code == 422
+
+
+# --- Item Sales page --------------------------------------------------------------
+
+def _fake_card(monkeypatch, reference="ref-xyz"):
+    from app.payments.base import SavedCardChargeResult
+    from app.payments.stub import StubPaymentAdapter
+    monkeypatch.setattr(StubPaymentAdapter, "process_manual_card_sale",
+                        lambda self, **kw: SavedCardChargeResult(success=True, reference_id=reference), raising=False)
+
+
+def test_guest_item_sale_keeps_the_phone(client, db, towel_plan, seed_settings):
+    r = client.post("/api/kiosk/guest", json={"name": "Frady", "phone": "(845) 555-1234", "payment_method": "cash",
+                                              "plan_id": str(towel_plan.id), "cash_tendered": "5.00", "description": "Towel"})
+    assert r.status_code == 200, r.text
+    [tx] = _payments(db)
+    assert tx.phone == "(845) 555-1234" and tx.guest_name == "Frady"
+
+
+def _seed_sales(client, db, admin_headers, member_with_pin, towel_plan, shop_plan, monkeypatch):
+    """One member cash sale, one guest cash sale, one guest split sale."""
+    assert _sale(client, admin_headers, member_with_pin, towel_plan, description="Towel for Test", payment_method="cash").status_code == 200
+    assert client.post("/api/kiosk/guest", json={"name": "Walk In", "phone": "845-555-0001", "payment_method": "cash",
+                                                 "plan_id": str(shop_plan.id), "cash_tendered": "6.00",
+                                                 "description": "Two sodas", "amount": "6.00"}).status_code == 200
+    _fake_card(monkeypatch)
+    r = client.post("/api/kiosk/guest/pay/split", json={"name": "Split Guest", "phone": "212-555-0002", "plan_id": str(shop_plan.id),
+                                                        "cash_amount": "10.00", "card_number": "4111111111111111",
+                                                        "exp_date": "1230", "cvv": "123", "description": "Goggles", "amount": "25.00"})
+    assert r.status_code == 200, r.text
+
+
+def test_item_sales_page_lists_members_and_guests_with_phone(client, db, admin_headers, member_with_pin, towel_plan, shop_plan,
+                                                             seed_settings, monkeypatch):
+    _seed_sales(client, db, admin_headers, member_with_pin, towel_plan, shop_plan, monkeypatch)
+
+    assert client.get("/api/item-sales").status_code in (401, 403)
+
+    body = client.get("/api/item-sales", headers=admin_headers).json()
+    assert body["total"] == 3
+    rows = {r["name"]: r for r in body["items"]}
+
+    member_row = rows["Test Member"]
+    assert member_row["buyer"] == "member" and member_row["phone"] == "555-0100" and member_row["member_id"] == str(member_with_pin.id)
+    assert member_row["plan_name"] == "Towel" and member_row["description"] == "Towel for Test"
+    assert member_row["amount"] == "5.00" and member_row["method"] == "cash" and member_row["recorded_by"] == "testadmin"
+
+    guest_row = rows["Walk In"]
+    assert guest_row["buyer"] == "guest" and guest_row["phone"] == "845-555-0001" and guest_row["member_id"] is None
+    assert guest_row["description"] == "Two sodas" and guest_row["amount"] == "6.00" and guest_row["recorded_by"] == "kiosk"
+
+    split_row = rows["Split Guest"]
+    assert split_row["phone"] == "212-555-0002" and split_row["amount"] == "25.00" and split_row["method"] == "split"
+    assert [p["method"] for p in split_row["parts"]] == ["cash", "card"]
+    assert split_row["parts"][1]["card_last4"] == "1111" and "****1111" in split_row["method_label"]
+
+    s = body["summary"]
+    assert s["count"] == 3 and s["amount"] == "36.00" and s["cash"] == "21.00" and s["card"] == "15.00"
+
+
+def test_item_sales_filters(client, db, admin_headers, member_with_pin, towel_plan, shop_plan, seed_settings, monkeypatch):
+    _seed_sales(client, db, admin_headers, member_with_pin, towel_plan, shop_plan, monkeypatch)
+    names = lambda **params: sorted(r["name"] for r in client.get("/api/item-sales", params=params, headers=admin_headers).json()["items"])
+
+    assert names(buyer="guest") == ["Split Guest", "Walk In"]
+    assert names(buyer="member") == ["Test Member"]
+    assert names(plan_id=str(towel_plan.id)) == ["Test Member"]
+    assert names(method="card") == ["Split Guest"]
+    assert names(method="split") == ["Split Guest"]
+    assert names(method="cash") == ["Split Guest", "Test Member", "Walk In"]
+    assert names(method="account") == []
+    assert names(search="0002") == ["Split Guest"]          # guest phone, digits only
+    assert names(search="555-0100") == ["Test Member"]      # member phone from profile
+    assert names(search="soda") == ["Walk In"]              # description
+    assert names(search="walk") == ["Walk In"]              # guest name
+    assert names(search="test mem") == ["Test Member"]      # member full name
+
+    today = date.today()
+    assert len(names(start_date=str(today - timedelta(days=1)), end_date=str(today + timedelta(days=1)))) == 3
+    assert names(start_date=str(today + timedelta(days=2))) == []
+    assert names(end_date=str(today - timedelta(days=2))) == []
+
+    plans = client.get("/api/item-sales/plans", headers=admin_headers).json()
+    assert {p["name"] for p in plans} == {"Towel", "Snack Bar"} and all(p["archived"] is False for p in plans)
+
+
+def test_item_sales_csv_has_phone_column(client, db, admin_headers, member_with_pin, towel_plan, shop_plan, seed_settings, monkeypatch):
+    _seed_sales(client, db, admin_headers, member_with_pin, towel_plan, shop_plan, monkeypatch)
+    r = client.get("/api/item-sales/export", params={"buyer": "guest"}, headers=admin_headers)
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
+    lines = r.text.strip().splitlines()
+    assert lines[0] == "Date,Time,Buyer,Name,Phone,Item,Description,Amount,Payment,Recorded By"
+    assert len(lines) == 3
+    assert any("Walk In,845-555-0001,Snack Bar,Two sodas,6.00,cash,kiosk" in l for l in lines)
+    assert any("Split Guest,212-555-0002,Snack Bar,Goggles,25.00,split: cash $10.00 + card $15.00 ****1111,kiosk" in l for l in lines)
+
+
+def test_item_sales_page_ignores_memberships_and_refunds(client, db, admin_headers, member_with_pin, single_swim_plan, towel_plan, seed_settings):
+    assert _cash(client, member_with_pin, single_swim_plan, single_swim_plan.price).status_code == 200
+    assert _sale(client, admin_headers, member_with_pin, towel_plan, description="Towel", payment_method="cash").status_code == 200
+    body = client.get("/api/item-sales", headers=admin_headers).json()
+    assert body["total"] == 1 and body["items"][0]["plan_name"] == "Towel"
