@@ -71,7 +71,7 @@ export default function CheckinsList() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `checkins-${new Date().toISOString().split("T")[0]}.csv`;
+    a.download = `checkins-${getTodayDate(timezone)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success("Export downloaded");

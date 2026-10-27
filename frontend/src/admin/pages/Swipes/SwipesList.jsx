@@ -77,7 +77,7 @@ export default function SwipesList() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `swipes-${new Date().toISOString().split("T")[0]}.csv`;
+    a.download = `swipes-${getTodayDate(timezone)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success("Export downloaded");

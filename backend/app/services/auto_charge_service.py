@@ -16,6 +16,8 @@ from app.services.membership_service import create_membership
 from app.services.notification_service import notify_auto_charge_failed, notify_auto_charge_success
 from app.services.payment_service import get_payment_adapter
 
+from app.services.time_service import local_today
+
 logger = logging.getLogger(__name__)
 
 
@@ -94,7 +96,7 @@ def auto_charge_preview(db: Session, member_id: uuid.UUID, plan: Plan, billing_d
     member = db.query(Member).filter(Member.id == member_id).first()
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
-    today = date.today()
+    today = local_today(db)
     preview = {
         "plan_name": plan.name,
         "first_charge_date": None,
@@ -131,7 +133,7 @@ def auto_charge_preview(db: Session, member_id: uuid.UUID, plan: Plan, billing_d
 
 def process_due_charges(db: Session) -> dict:
     """Find all saved cards with auto-charge due today or earlier and charge them."""
-    today = date.today()
+    today = local_today(db)
     due_cards = (
         db.query(SavedCard)
         .filter(
@@ -387,7 +389,7 @@ def enable_auto_charge(
     # Monthly plans charge on billing day; swim pass plans charge when depleted (no date needed)
     if plan.plan_type == PlanType.monthly:
         current = _current_monthly_membership(db, member_id)
-        today = date.today()
+        today = local_today(db)
         if current and current.valid_until and current.valid_until >= today:
             # Renew exactly when the paid period ends (a quarterly plan renews quarterly);
             # anything the member already holds is never charged for twice.

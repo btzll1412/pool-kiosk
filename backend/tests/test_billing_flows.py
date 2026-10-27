@@ -34,6 +34,7 @@ def fixed_today(monkeypatch):
         def today(cls):
             return TODAY
     monkeypatch.setattr(auto_charge_service, "date", _Date)
+    monkeypatch.setattr(auto_charge_service, "local_today", lambda db: _Date.today())
 
 
 @pytest.fixture()
@@ -236,6 +237,7 @@ def test_quarterly_auto_charge_renews_quarterly_not_monthly(db, member_with_pin,
         def today(cls):
             return date(2026, 10, 1)
     monkeypatch.setattr(auto_charge_service, "date", _Oct1)
+    monkeypatch.setattr(auto_charge_service, "local_today", lambda db: _Oct1.today())
     monkeypatch.setattr(membership_service, "_get_local_today", lambda db: date(2026, 10, 1))
 
     saved_card.auto_charge_enabled = True
@@ -301,6 +303,7 @@ def _freeze_today(monkeypatch, day: date):
         def today(cls):
             return day
     monkeypatch.setattr(auto_charge_service, "date", _Frozen)
+    monkeypatch.setattr(auto_charge_service, "local_today", lambda db: day)
     monkeypatch.setattr(membership_service, "_get_local_today", lambda db: day)
 
 

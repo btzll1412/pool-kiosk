@@ -4,6 +4,7 @@ import logging
 import uuid
 from datetime import date, timedelta
 
+import pytz
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -24,6 +25,7 @@ from app.services.monthly_report_service import (
     get_monthly_report,
     get_report_bounds,
 )
+from app.services.time_service import local_today, local_tz, utc_bounds
 from app.services.report_service import (
     get_dashboard_stats,
     get_membership_report,
@@ -32,6 +34,12 @@ from app.services.report_service import (
 )
 
 router = APIRouter()
+
+
+def _default_range(db: Session, start_date: date | None, end_date: date | None) -> tuple[date, date]:
+    """Last 30 local days unless the caller picked dates."""
+    today = local_today(db)
+    return start_date or today - timedelta(days=30), end_date or today
 
 
 @router.get("/dashboard", response_model=DashboardResponse)
@@ -44,23 +52,25 @@ def dashboard(
 
 @router.get("/revenue", response_model=RevenueReportResponse)
 def revenue_report(
-    start_date: date = Query(default_factory=lambda: date.today() - timedelta(days=30)),
-    end_date: date = Query(default_factory=date.today),
-    group_by: str = Query("day", regex="^(day|week|month)$"),
+    start_date: date | None = None,
+    end_date: date | None = None,
+    group_by: str = Query("day", pattern="^(day|week|month)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    start_date, end_date = _default_range(db, start_date, end_date)
     items, grand_total = get_revenue_report(db, start_date, end_date, group_by)
     return RevenueReportResponse(items=items, grand_total=grand_total)
 
 
 @router.get("/swims", response_model=SwimReportResponse)
 def swim_report(
-    start_date: date = Query(default_factory=lambda: date.today() - timedelta(days=30)),
-    end_date: date = Query(default_factory=date.today),
+    start_date: date | None = None,
+    end_date: date | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    start_date, end_date = _default_range(db, start_date, end_date)
     return get_swim_report(db, start_date, end_date)
 
 
@@ -74,16 +84,17 @@ def membership_report(
 
 @router.get("/export")
 def export_csv(
-    start_date: date = Query(default_factory=lambda: date.today() - timedelta(days=30)),
-    end_date: date = Query(default_factory=date.today),
+    start_date: date | None = None,
+    end_date: date | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from datetime import datetime
     from app.models.transaction import Transaction
 
-    start = datetime.combine(start_date, datetime.min.time())
-    end = datetime.combine(end_date, datetime.max.time())
+    # Local days in → UTC window for the query; local date/time out in the CSV
+    start_date, end_date = _default_range(db, start_date, end_date)
+    tz = local_tz(db)
+    start, end = utc_bounds(tz, start_date, end_date)
     transactions = db.query(Transaction).filter(Transaction.created_at.between(start, end)).order_by(Transaction.created_at).all()
 
     output = io.StringIO()
@@ -91,7 +102,7 @@ def export_csv(
     writer.writerow(["Date", "Type", "Method", "Amount", "Member ID", "Notes"])
     for tx in transactions:
         writer.writerow([
-            tx.created_at.isoformat(),
+            pytz.UTC.localize(tx.created_at).astimezone(tz).strftime("%Y-%m-%d %H:%M:%S"),
             tx.transaction_type.value,
             tx.payment_method.value,
             str(tx.amount),
@@ -116,7 +127,7 @@ def kiosk_errors(
     current_user: User = Depends(get_current_user),
 ) -> dict:
     """Problems the kiosk reported about itself (crashes, hung requests) in the last N days."""
-    since = date.today() - timedelta(days=days)
+    since, _ = utc_bounds(local_tz(db), local_today(db) - timedelta(days=days))
     query = db.query(ActivityLog).filter(
         ActivityLog.action_type == "kiosk.client_error",
         ActivityLog.created_at >= since,

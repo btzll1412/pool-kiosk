@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatPlainDate } from "../../../context/TimezoneContext";
 import { Link } from "react-router-dom";
 import { Edit, Plus, Power, RefreshCw, Trash2, Users, X } from "lucide-react";
 import toast from "react-hot-toast";
@@ -311,7 +312,7 @@ export default function PlansList() {
                       </div>
                       <div className="text-right text-sm text-gray-500 dark:text-gray-400">
                         {sub.valid_until && (
-                          <p>Expires: {new Date(sub.valid_until).toLocaleDateString()}</p>
+                          <p>Expires: {formatPlainDate(sub.valid_until)}</p>
                         )}
                         {sub.swims_remaining !== null && (
                           <p>{sub.swims_remaining} swim{sub.swims_remaining !== 1 ? "s" : ""} left</p>

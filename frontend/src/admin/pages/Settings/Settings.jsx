@@ -8,6 +8,7 @@ import Card, { CardHeader } from "../../../shared/Card";
 import ConfirmDialog from "../../../shared/ConfirmDialog";
 import PageHeader from "../../../shared/PageHeader";
 import { SkeletonLine } from "../../../shared/Skeleton";
+import { useTimezone, formatDateTime, getTodayDate } from "../../../context/TimezoneContext";
 
 const CATEGORIES = [
   { id: "general", label: "General", icon: Settings2 },
@@ -349,6 +350,7 @@ const settingGroups = [
 ];
 
 export default function Settings() {
+  const timezone = useTimezone();
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1202,7 +1204,7 @@ function AutomaticBackupSection({ settings, onSettingsChange }) {
                 </div>
                 <p className="text-gray-500 dark:text-gray-400">
                   <Clock className="inline h-3 w-3 mr-1" />
-                  {new Date(status.last_run).toLocaleString()}
+                  {formatDateTime(status.last_run, timezone)}
                 </p>
                 {status.last_location && (
                   <p className="text-gray-500 dark:text-gray-400 text-xs truncate">
@@ -1216,7 +1218,7 @@ function AutomaticBackupSection({ settings, onSettingsChange }) {
             {status.next_run && (
               <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                 <Calendar className="inline h-3 w-3 mr-1" />
-                Next backup: {new Date(status.next_run).toLocaleString()}
+                Next backup: {formatDateTime(status.next_run, timezone)}
               </p>
             )}
           </div>
@@ -1235,7 +1237,7 @@ function AutomaticBackupSection({ settings, onSettingsChange }) {
                   <div className="min-w-0">
                     <p className="font-mono text-gray-700 dark:text-gray-300 truncate">{backup.filename}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {new Date(backup.created).toLocaleString()} · {(backup.size / 1024).toFixed(1)} KB ·{" "}
+                      {formatDateTime(backup.created, timezone)} · {(backup.size / 1024).toFixed(1)} KB ·{" "}
                       {backup.storage === "local" ? "This server" : backup.storage.toUpperCase()}
                     </p>
                   </div>
@@ -1290,7 +1292,7 @@ function BackupRestoreSection() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `pool-backup-${new Date().toISOString().split("T")[0]}.json`;
+      a.download = `pool-backup-${getTodayDate(timezone)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

@@ -23,6 +23,7 @@ from app.schemas.pool_schedule import (
 )
 from app.services.auth_service import get_current_user
 from app.services.settings_service import get_setting
+from app.services.time_service import to_local_naive
 
 router = APIRouter()
 
@@ -398,7 +399,14 @@ def create_override(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Create a schedule override for special occasions."""
+    """Create a schedule override for special occasions.
+
+    Times are the pool's wall-clock time. Browsers may send UTC ('...Z'); that is
+    converted to the configured timezone and stored naive, which is what the
+    open/closed status check compares against.
+    """
+    data.start_datetime = to_local_naive(db, data.start_datetime)
+    data.end_datetime = to_local_naive(db, data.end_datetime)
     if data.start_datetime >= data.end_datetime:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -450,6 +458,9 @@ def update_override(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Override not found")
 
     update_data = data.model_dump(exclude_unset=True)
+    for key in ("start_datetime", "end_datetime"):
+        if update_data.get(key) is not None:
+            update_data[key] = to_local_naive(db, update_data[key])
 
     # Validate time range
     start = update_data.get("start_datetime", override.start_datetime)

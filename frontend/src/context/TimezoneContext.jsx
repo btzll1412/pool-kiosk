@@ -55,6 +55,21 @@ export function formatDate(dateStr, timezone, options = {}) {
   return date.toLocaleDateString("en-US", { ...defaultOptions, ...options });
 }
 
+// Format a plain calendar date ("YYYY-MM-DD", no time, no zone) as MM/DD/YYYY.
+// Never route these through formatDate(): the browser would read them as UTC
+// midnight and show the previous day in US timezones.
+export function formatPlainDate(iso, options = {}) {
+  if (!iso) return "";
+  const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    ...options,
+  });
+}
+
 export function formatTime(dateStr, timezone, options = {}) {
   const date = parseUTCDate(dateStr);
   if (!date) return '';

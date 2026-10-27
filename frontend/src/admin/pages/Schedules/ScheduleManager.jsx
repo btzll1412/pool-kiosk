@@ -238,8 +238,10 @@ export default function ScheduleManager() {
       const data = {
         name: ovName,
         schedule_type: ovType,
-        start_datetime: new Date(ovStartDateTime).toISOString(),
-        end_datetime: new Date(ovEndDateTime).toISOString(),
+        // Pool wall-clock time, exactly as typed. The backend stores it in the
+        // configured timezone; sending UTC here used to shift overrides by 4-5 hours.
+        start_datetime: ovStartDateTime,
+        end_datetime: ovEndDateTime,
         notes: ovNotes || null,
         is_active: ovActive,
       };

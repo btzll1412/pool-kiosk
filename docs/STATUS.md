@@ -1210,6 +1210,26 @@ fixes it) and that the email field had no "." key.
 
 ---
 
+## Timezone audit + fixes (2026-10-27)
+
+Owner asked to confirm every time in the system follows the timezone setting. Audit: containers pinned
+`TZ=America/New_York`, setting `timezone=America/New_York`, APScheduler runs in Eastern (06:00 / 07:00 /
+21:00 / hourly), DB timestamps naive UTC, all report/check-in/swipe/transaction filters convert local day →
+UTC window. Fixed what did not:
+- **Schedule overrides** were off by 4–5 h: browser sent UTC (`toISOString`), backend stored it and compared
+  against naive local time. Now the admin sends the wall-clock string as typed and the backend normalizes any
+  aware datetime to the configured zone (`time_service.to_local_naive`) on create/update. No overrides existed yet.
+- **Transactions CSV export** (`/reports/export`) queried naive local days against UTC timestamps and printed
+  UTC times — now a local-day → UTC window with local `YYYY-MM-DD HH:MM:SS`.
+- **Plans page "Expires"** showed one day early (date-only string parsed as UTC midnight) → `formatPlainDate`
+  (new in `TimezoneContext`). Rule: never pass `YYYY-MM-DD` strings through `formatDate()`.
+- **Kiosk-errors window** starts at local midnight; **revenue/swims/export defaults** use the local today.
+- **Auto-charge "today"** (`process_due_charges`, `enable_auto_charge`, preview) now comes from the setting via
+  `app/services/time_service.py` (`local_tz/local_now/local_today/utc_bounds/to_local_naive`) instead of
+  `date.today()` — changing the timezone setting no longer needs a container TZ change for these.
+- Cosmetic: CSV filenames (check-ins, swipes, system backup) and backup times on Settings use the setting's zone.
+- Tests: `tests/test_timezones.py` (6). Suite 175. Clock-freezing tests patch `auto_charge_service.local_today` too.
+
 ## Item Sales page + guest phone on item sales (2026-10-27)
 
 **Problem:** a guest buying a "Misc" (item plan) at the kiosk typed their phone number, but item sales
@@ -1283,4 +1303,4 @@ Owner sells things that are not memberships (snacks, towels, lessons...) and wan
 
 ---
 
-## Last Updated: 2026-10-27 (Item Sales page, guest phone on item sales)
+## Last Updated: 2026-10-27 (Item Sales page; timezone audit + fixes)
