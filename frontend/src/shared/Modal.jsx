@@ -35,9 +35,9 @@ export default function Modal({ open, onClose, title, children, size = "md" }) {
     >
       <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm" />
       <div
-        className={`relative w-full ${widths[size]} rounded-xl bg-white shadow-2xl ring-1 ring-gray-900/5 animate-in fade-in zoom-in-95 dark:bg-gray-800 dark:ring-gray-700`}
+        className={`relative flex max-h-[calc(100vh-2rem)] w-full ${widths[size]} flex-col rounded-xl bg-white shadow-2xl ring-1 ring-gray-900/5 animate-in fade-in zoom-in-95 dark:bg-gray-800 dark:ring-gray-700`}
       >
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-gray-700">
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-gray-700">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
           <button
             onClick={onClose}
@@ -46,7 +46,9 @@ export default function Modal({ open, onClose, title, children, size = "md" }) {
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="px-6 py-4">{children}</div>
+        {/* Tall forms (Add Membership with payment options) scroll inside the dialog
+            instead of running off the bottom of the screen */}
+        <div className="min-h-0 overflow-y-auto px-6 py-4">{children}</div>
       </div>
     </div>
   );
