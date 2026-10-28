@@ -516,7 +516,7 @@ export default function GuestScreen({ goTo, goIdle, settings }) {
               size="xl"
               icon={Banknote}
               loading={loading}
-              disabled={parseFloat(cashAmount) < planPrice}
+              disabled={!(parseFloat(cashAmount) >= planPrice)}
               onClick={() => handlePay("cash")}
               className="mt-4 w-full"
             >

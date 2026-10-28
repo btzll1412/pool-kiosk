@@ -1249,6 +1249,11 @@ UTC window. Fixed what did not:
 - Cosmetic: CSV filenames (check-ins, swipes, system backup) and backup times on Settings use the setting's zone.
 - Tests: `tests/test_timezones.py` (6). Suite 175. Clock-freezing tests patch `auto_charge_service.local_today` too.
 
+## Kiosk guest cash crash fix (2026-10-28)
+- Guest cash step: "Confirm Payment" was enabled with an empty amount (`NaN < price` is false). Sent `cash_tendered: "NaN"` → 422 → the screen rendered the error list object in a toast → React #31 crash → error-boundary reload. Happened 2026-10-27 17:04 and 2026-10-28 11:05; neither guest was recorded.
+- Fixes: button disabled unless `parseFloat(amount) >= price`; `guestVisit` never sends a non-finite cash amount; kiosk axios interceptor flattens any non-string `detail` (FastAPI 422 lists) to text via `detailToText`, so no kiosk screen can crash on a validation error again.
+- Admin client (`api/client.js`) still passes `detail` through untouched — same latent risk there.
+
 ## Item Sales page + guest phone on item sales (2026-10-27)
 
 **Problem:** a guest buying a "Misc" (item plan) at the kiosk typed their phone number, but item sales
@@ -1322,4 +1327,4 @@ Owner sells things that are not memberships (snacks, towels, lessons...) and wan
 
 ---
 
-## Last Updated: 2026-10-27 (Item Sales page; timezone fixes; admin membership credit)
+## Last Updated: 2026-10-28 (Item Sales page; timezone fixes; admin membership credit)

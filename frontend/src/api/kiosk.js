@@ -11,6 +11,25 @@ const kiosk = axios.create({
   timeout: REQUEST_TIMEOUT_MS,
 });
 
+// FastAPI validation errors (422) arrive as a list of objects, not a string. Every
+// screen renders `detail` straight into a toast, and React crashes on an object —
+// so flatten it to plain text here, once, for all of them.
+export function detailToText(detail, fallback = "Something went wrong") {
+  if (detail == null || detail === "") return fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail.map((d) => {
+      if (typeof d === "string") return d;
+      const field = Array.isArray(d?.loc) ? d.loc.filter((x) => x !== "body").join(".") : "";
+      const msg = d?.msg || JSON.stringify(d);
+      return field ? `${field}: ${msg}` : msg;
+    });
+    return parts.join("; ") || fallback;
+  }
+  if (typeof detail === "object") return detail.msg || detail.message || detail.detail || JSON.stringify(detail);
+  return String(detail);
+}
+
 kiosk.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -18,6 +37,8 @@ kiosk.interceptors.response.use(
       error.isConnectionError = true;
       error.response = { status: 0, data: { detail: CONNECTION_MESSAGE } };
       reportKioskError(`Request failed: ${error.config?.method?.toUpperCase()} ${error.config?.url} — ${error.code || error.message}`);
+    } else if (error.response.data && typeof error.response.data === "object" && "detail" in error.response.data) {
+      error.response.data.detail = detailToText(error.response.data.detail);
     }
     return Promise.reject(error);
   },
@@ -199,7 +220,8 @@ export async function guestVisit(name, phone, payment_method, plan_id, cash_tend
     plan_id,
     ...guestItemFields(item),
   };
-  if (cash_tendered !== null) {
+  // An empty cash field gives NaN — never send that (the server rejects it with a 422)
+  if (cash_tendered !== null && Number.isFinite(Number(cash_tendered))) {
     payload.cash_tendered = String(cash_tendered);
   }
   const { data } = await kiosk.post("/guest", payload);
