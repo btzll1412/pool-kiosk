@@ -65,10 +65,12 @@ const SETTINGS_REFRESH_INTERVAL = 30000;
 const VERSION_CHECK_INTERVAL = 30000;
 
 // Get current bundle version from the page
+// Vite hashes use letters, digits, '-' and '_' — a pattern without the last two
+// misses builds like index-CYiDTC-f.js and the kiosk never auto-updates.
 function getCurrentBundleHash() {
   const scripts = document.querySelectorAll('script[src*="assets/index-"]');
   for (const script of scripts) {
-    const match = script.src.match(/index-([A-Za-z0-9]+)\.js/);
+    const match = script.src.match(/index-([A-Za-z0-9_-]+)\.js/);
     if (match) return match[1];
   }
   return null;
@@ -149,7 +151,7 @@ export default function KioskApp() {
           const html = await response.text();
 
           // Extract bundle hash from fetched HTML
-          const match = html.match(/index-([A-Za-z0-9]+)\.js/);
+          const match = html.match(/index-([A-Za-z0-9_-]+)\.js/);
           const newVersion = match ? match[1] : null;
 
           // Only reload if version actually changed
