@@ -3,7 +3,11 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+from app.models.checkin import Checkin, CheckinType
 from app.models.guest_visit import GuestVisit
+from app.models.member import Member
+from app.models.member_price_override import MemberPriceOverride
+from app.models.swipe import Swipe, SwipeOutcome, SwipeSource
 from app.models.membership import Membership
 from app.models.plan import Plan, PlanType
 from app.models.transaction import PaymentMethod
@@ -104,3 +108,34 @@ def test_tokenize_full_requires_cvv(client, admin_headers, member_with_pin):
         json={"card_number": "4111111111111111", "exp_date": "1230", "cvv": "12"},
     )
     assert bad_cvv.status_code == 422
+
+
+def test_permanent_delete_member_with_swipe_history(client, db, admin_headers, member_with_pin, single_swim_plan):
+    """Prod 2026-10-29: delete failed with a swipes FK violation. Swipes and price
+    overrides were added after the delete routine and it never learned about them."""
+    member = member_with_pin
+    checkin = Checkin(member_id=member.id, checkin_type=CheckinType.paid_single)
+    db.add(checkin)
+    db.flush()
+    swipe = Swipe(member_id=member.id, card_uid="0821498439", source=SwipeSource.card,
+                  outcome=SwipeOutcome.checked_in, checkin_id=checkin.id)
+    override = MemberPriceOverride(member_id=member.id, plan_id=single_swim_plan.id, custom_price=Decimal("1.00"))
+    db.add_all([swipe, override])
+    member.is_active = False
+    db.commit()
+
+    response = client.delete(f"/api/members/{member.id}/permanent", headers=admin_headers)
+    assert response.status_code == 200, response.text
+
+    db.expire_all()
+    assert db.get(Member, member.id) is None
+    assert db.get(MemberPriceOverride, override.id) is None
+    kept = db.get(Swipe, swipe.id)
+    assert kept is not None and kept.member_id is None and kept.checkin_id is None
+    assert kept.card_uid == "0821498439"
+
+
+def test_permanent_delete_requires_deactivation(client, db, admin_headers, member_with_pin):
+    response = client.delete(f"/api/members/{member_with_pin.id}/permanent", headers=admin_headers)
+    assert response.status_code == 400
+    assert db.get(Member, member_with_pin.id) is not None

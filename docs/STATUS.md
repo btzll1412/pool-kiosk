@@ -1249,6 +1249,10 @@ UTC window. Fixed what did not:
 - Cosmetic: CSV filenames (check-ins, swipes, system backup) and backup times on Settings use the setting's zone.
 - Tests: `tests/test_timezones.py` (6). Suite 175. Clock-freezing tests patch `auto_charge_service.local_today` too.
 
+## Permanent member delete: swipes + price overrides (2026-10-30)
+- `DELETE /api/members/{id}/permanent` 500'd (FK `swipes_member_id_fkey`) for any member who ever tapped at the kiosk — the routine predates the `swipes` and `member_price_overrides` tables. Seen in prod 2026-10-29 21:32 and 2026-10-30 08:55.
+- Fix: swipes are detached (member_id and checkin_id set NULL — the tap stays in swipe history as an anonymous event), price overrides deleted, then the member. Tests: `test_permanent_delete_member_with_swipe_history`, `test_permanent_delete_requires_deactivation`.
+
 ## Kiosk guest cash crash fix (2026-10-28)
 - Guest cash step: "Confirm Payment" was enabled with an empty amount (`NaN < price` is false). Sent `cash_tendered: "NaN"` → 422 → the screen rendered the error list object in a toast → React #31 crash → error-boundary reload. Happened 2026-10-27 17:04 and 2026-10-28 11:05; neither guest was recorded.
 - Fixes: button disabled unless `parseFloat(amount) >= price`; `guestVisit` never sends a non-finite cash amount; kiosk axios interceptor flattens any non-string `detail` (FastAPI 422 lists) to text via `detailToText`, so no kiosk screen can crash on a validation error again.
@@ -1327,4 +1331,4 @@ Owner sells things that are not memberships (snacks, towels, lessons...) and wan
 
 ---
 
-## Last Updated: 2026-10-28 (Item Sales page; timezone fixes; admin membership credit)
+## Last Updated: 2026-10-30 (Item Sales page; timezone fixes; admin membership credit)

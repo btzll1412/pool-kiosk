@@ -22,7 +22,9 @@ from app.models.membership import Membership
 from app.models.membership_freeze import MembershipFreeze
 from app.models.pending_terminal_payment import PendingTerminalPayment
 from app.models.plan import Plan
+from app.models.member_price_override import MemberPriceOverride
 from app.models.saved_card import SavedCard
+from app.models.swipe import Swipe
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.membership import SavedCardCreate, SavedCardResponse
@@ -248,25 +250,34 @@ def permanently_delete_member(
     # 3. Transaction references Member, Membership, SavedCard
     db.query(Transaction).filter(Transaction.member_id == member_id).delete()
 
-    # 4. Checkin references Member
+    # 4. Swipe references Member and Checkin. The kiosk tap itself stays in the swipe
+    #    history as an anonymous event; it just stops pointing at this person.
+    db.query(Swipe).filter(Swipe.member_id == member_id).update(
+        {Swipe.member_id: None, Swipe.checkin_id: None}, synchronize_session=False
+    )
+
+    # 5. Checkin references Member
     db.query(Checkin).filter(Checkin.member_id == member_id).delete()
 
-    # 5. Membership references Member
+    # 6. Membership references Member
     db.query(Membership).filter(Membership.member_id == member_id).delete()
 
-    # 6. SavedCard references Member
+    # 7. SavedCard references Member
     db.query(SavedCard).filter(SavedCard.member_id == member_id).delete()
 
-    # 7. Card references Member
+    # 8. Card references Member
     db.query(Card).filter(Card.member_id == member_id).delete()
 
-    # 8. PinLockout references Member
+    # 9. PinLockout references Member
     db.query(PinLockout).filter(PinLockout.member_id == member_id).delete()
 
-    # 9. ActivityLog may reference member as entity_id
+    # 10. MemberPriceOverride references Member
+    db.query(MemberPriceOverride).filter(MemberPriceOverride.member_id == member_id).delete()
+
+    # 11. ActivityLog may reference member as entity_id
     db.query(ActivityLog).filter(ActivityLog.entity_id == member_id).delete()
 
-    # 10. Delete the member
+    # 12. Delete the member
     db.delete(member)
     db.commit()
 
