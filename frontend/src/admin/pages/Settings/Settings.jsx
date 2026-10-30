@@ -785,6 +785,7 @@ function SettingField({ field, value, onChange, settings }) {
 }
 
 function AutomaticBackupSection({ settings, onSettingsChange }) {
+  const timezone = useTimezone();
   const [status, setStatus] = useState(null);
   const [backups, setBackups] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1278,6 +1279,7 @@ function AutomaticBackupSection({ settings, onSettingsChange }) {
 }
 
 function BackupRestoreSection() {
+  const timezone = useTimezone();
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);

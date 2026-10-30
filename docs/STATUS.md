@@ -4,6 +4,17 @@
 
 ---
 
+## Settings → Backup tab crash + lost uploads (2026-10-30)
+
+- **Crash:** the 2026-10-27 timezone audit used `timezone` inside `AutomaticBackupSection` and
+  `BackupRestoreSection` without calling `useTimezone()` there (only the parent `Settings` had it).
+  Opening Settings → Backup threw `ReferenceError: timezone is not defined` and, with no admin
+  error boundary, blanked the whole admin until reload. Fixed by adding the hook to both components.
+- **Lost uploads:** `/app/uploads` (kiosk background image) lived only inside the backend container,
+  so every `compose build && up` wiped it; prod's background image 404'd after the 09:13 deploy.
+  Now host-mounted as `./uploads:/app/uploads` (gitignored). The owner must re-upload the
+  background once after this deploy.
+
 ## Current Phase: Phase 11 — Pool Scheduling
 
 ### Overall Progress

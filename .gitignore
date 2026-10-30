@@ -27,3 +27,6 @@ postgres_data/
 
 # Backups
 backups/
+
+# Uploaded files (kiosk background) — host-mounted into backend
+uploads/

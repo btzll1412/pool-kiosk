@@ -39,6 +39,8 @@ services:
       - backend_logs:/app/logs
       # Backups live on the host so they survive container rebuilds
       - ${BACKUP_DIR:-./backups}:/backups
+      # Uploaded files (kiosk background image) must survive container rebuilds too
+      - ./uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
