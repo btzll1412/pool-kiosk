@@ -2,9 +2,9 @@
 
 Background (2026-11-05): the admin "add card by number" form used the USAePay /customers API, which
 returns a 17-char payment-method key. Charging that key as a card number fails with
-"card number must be between 13 and 16 digits". USAePay can convert it to a chargeable card token
-(``cardref``) if we also know the customer key, which was never stored but was written to the
-backend log on every save::
+"card number must be between 13 and 16 digits". Such a card can still be charged with USAePay's
+``customer:sale`` command if we also know the customer key, which was never stored but was written
+to the backend log on every save::
 
     ... USAePay card stored via customer API: member=<uuid>, last4=<4>, customer=<custkey>
 
@@ -13,7 +13,8 @@ Usage (inside the backend container)::
     python -m app.scripts.repair_card_tokens            # dry run: show the plan, touch nothing
     python -m app.scripts.repair_card_tokens --apply    # perform the conversions
 
-Only read-only USAePay calls are made; nothing is charged.
+No USAePay calls are made; the token is rewritten to ``cust:<custkey>:<pmkey>`` (see
+``UsaepayPaymentAdapter.make_customer_token``) and ``charge_saved_card`` does the rest.
 """
 from __future__ import annotations
 
@@ -68,6 +69,8 @@ def main() -> int:
             return 2
         keys = customer_keys_from_logs(args.log_dir)
         bad = [c for c in db.query(SavedCard).all() if UsaepayPaymentAdapter.is_payment_method_key(c.processor_token)]
+        already = sum(1 for c in db.query(SavedCard).all() if UsaepayPaymentAdapter.parse_customer_token(c.processor_token))
+        logger.info("[REPAIR] already_customer_tokens=%d", already)
         logger.info("[REPAIR] saved_cards=%d payment_method_key_cards=%d log_matches=%d mode=%s",
                     db.query(SavedCard).count(), len(bad), len(keys), "APPLY" if args.apply else "DRY-RUN")
         ok = skipped = failed = 0
@@ -84,22 +87,16 @@ def main() -> int:
                         card.id, who, card.card_last4, card.processor_token[:4], cust, ts)
             if not args.apply:
                 continue
-            try:
-                cardref = adapter.convert_payment_method_key(cust, card.processor_token)
-            except Exception as exc:  # noqa: BLE001
-                logger.error("[REPAIR] FAIL card=%s member=%s last4=%s error=%s", card.id, who, card.card_last4, exc)
-                failed += 1
-                continue
             old = card.processor_token
-            card.processor_token = cardref
+            card.processor_token = UsaepayPaymentAdapter.make_customer_token(cust, old)
             log_activity(
                 db, None, "saved_card.token_repaired", "saved_card", card.id,
                 before={"token_format": "payment_method_key", "token_prefix": old[:4]},
-                after={"token_format": "cardref", "token_prefix": cardref[:4], "customer_key": cust},
-                note="Converted USAePay payment-method key to chargeable card token (repair_card_tokens)",
+                after={"token_format": "customer_token", "customer_key": cust, "pmkey_prefix": old[:4]},
+                note="Attached USAePay customer key so the card charges via customer:sale (repair_card_tokens)",
             )
             db.commit()
-            logger.info("[REPAIR] OK card=%s member=%s last4=%s token=%s…", card.id, who, card.card_last4, cardref[:4])
+            logger.info("[REPAIR] OK card=%s member=%s last4=%s token=cust:%s:%s…", card.id, who, card.card_last4, cust, old[:4])
             ok += 1
         logger.info("[REPAIR] DONE converted=%d failed=%d skipped=%d remaining_bad=%d", ok, failed, skipped,
                     sum(1 for c in db.query(SavedCard).all() if UsaepayPaymentAdapter.is_payment_method_key(c.processor_token)))

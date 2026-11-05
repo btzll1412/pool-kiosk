@@ -16,11 +16,18 @@
   `charge_saved_card` refuses payment-method keys with a plain "re-add this card" message instead of
   calling USAePay, and logs every decline with the processor's result code/error.
   `convert_payment_method_key(custkey, pmkey)` wraps `GET /customers/{c}/payment_methods/{p}/cardref`.
+- **Charging cards that live on a USAePay customer record:** USAePay's `cardref` conversion endpoint
+  returns an empty 200 on this account, so instead the adapter supports a self-describing token
+  `cust:<custkey>:<pmkey>` (`make_customer_token` / `parse_customer_token`) and `charge_saved_card`
+  runs `command: customer:sale` with `custkey` + `paymethod_key` for it. Bare payment-method keys are
+  refused with a "remove and re-add" message before any processor call.
 - **Repair of the 7 existing cards:** `python -m app.scripts.repair_card_tokens [--apply]` (run in the
   backend container) recovers each card's customer key from the backend log line
-  `card stored via customer API: member=…, last4=…, customer=…` (latest match wins), asks USAePay for
-  the cardref (read-only), swaps `processor_token`, and writes an `saved_card.token_repaired`
-  activity-log entry. Dry run by default.
+  `card stored via customer API: member=…, last4=…, customer=…` (latest match wins) and rewrites
+  `processor_token` to the `cust:` form — DB only, no processor calls — plus a
+  `saved_card.token_repaired` activity-log entry. Dry run by default. Applied on prod 2026-11-05.
+- **Admin UX:** turning auto-charge off on a saved card now opens a confirmation that names the plan,
+  the card, the member and the next scheduled charge date that will be skipped (MemberDetail.jsx).
 - Tests: `tests/test_usaepay_tokens.py` (httpx.Client faked).
 
 ## Admin list performance + structured perf logging (2026-11-05)

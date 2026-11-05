@@ -224,6 +224,8 @@ export default function MemberDetail() {
   // Auto-charge management
   const [showAutoChargeModal, setShowAutoChargeModal] = useState(false);
   const [autoChargeCard, setAutoChargeCard] = useState(null);
+  const [disableAutoChargeTarget, setDisableAutoChargeTarget] = useState(null); // saved card awaiting confirmation
+  const [disableAutoChargeLoading, setDisableAutoChargeLoading] = useState(false);
   const [autoChargePlanId, setAutoChargePlanId] = useState("");
   const [autoChargeLoading, setAutoChargeLoading] = useState(false);
   const [autoChargePreview, setAutoChargePreview] = useState(null);
@@ -599,14 +601,28 @@ export default function MemberDetail() {
     }
   };
 
-  const handleDisableAutoCharge = async (cardId) => {
+  const handleDisableAutoCharge = async () => {
+    if (!disableAutoChargeTarget) return;
+    setDisableAutoChargeLoading(true);
     try {
-      await disableCardAutoCharge(id, cardId);
-      toast.success("Auto-charge disabled");
+      await disableCardAutoCharge(id, disableAutoChargeTarget.id);
+      toast.success(`Auto-charge turned off for ${disableAutoChargeTarget.card_brand || "card"} **** ${disableAutoChargeTarget.card_last4}`);
+      setDisableAutoChargeTarget(null);
       load();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to disable auto-charge");
+    } finally {
+      setDisableAutoChargeLoading(false);
     }
+  };
+
+  // Spell out exactly what turning auto-charge off cancels, so nobody does it by accident.
+  const disableAutoChargeMessage = (sc) => {
+    if (!sc) return "";
+    const card = `${sc.card_brand || "Card"} **** ${sc.card_last4}`;
+    const plan = sc.auto_charge_plan_name || "the selected plan";
+    const next = sc.next_charge_date ? ` The next charge, scheduled for ${formatPlainDate(sc.next_charge_date)}, will NOT happen.` : "";
+    return `This stops the automatic billing of ${plan} to ${card} for ${member.first_name} ${member.last_name}.${next} Any plan already paid for stays active until it runs out; nothing is refunded. You can turn auto-charge back on later.`;
   };
 
   const handleAddMembership = async () => {
@@ -1405,7 +1421,7 @@ export default function MemberDetail() {
                     <div className="flex items-center gap-1">
                       {sc.auto_charge_enabled ? (
                         <button
-                          onClick={() => handleDisableAutoCharge(sc.id)}
+                          onClick={() => setDisableAutoChargeTarget(sc)}
                           className="rounded p-1 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors"
                           title="Disable auto-charge"
                         >
@@ -1955,6 +1971,17 @@ export default function MemberDetail() {
         title="Deactivate Member"
         message={`Are you sure you want to deactivate ${member.first_name} ${member.last_name}? They will no longer be able to check in.`}
         confirmLabel="Deactivate"
+      />
+
+      {/* Disable Auto-Charge Confirmation */}
+      <ConfirmDialog
+        open={disableAutoChargeTarget !== null}
+        onClose={() => setDisableAutoChargeTarget(null)}
+        onConfirm={handleDisableAutoCharge}
+        title="Turn Off Auto-Charge?"
+        message={disableAutoChargeMessage(disableAutoChargeTarget)}
+        confirmLabel="Turn Off Auto-Charge"
+        loading={disableAutoChargeLoading}
       />
 
       {/* Permanent Delete Confirmation */}

@@ -99,9 +99,23 @@ def test_charge_decline_returns_processor_message(adapter):
     assert result.success is False and result.message == "Card Declined (00)"
 
 
-def test_convert_payment_method_key_hits_cardref_endpoint(adapter):
-    FakeClient.payloads = [FakeResponse({"cardref": "jayu-e1rc-32in-m84z"})]
-    token = adapter.convert_payment_method_key("5brbvgv352yr4nmb", "dn02p95bn2f9bj7y8")
-    assert token == "jayu-e1rc-32in-m84z"
-    method, url, _ = FakeClient.calls[0]
-    assert method == "GET" and url.endswith("/customers/5brbvgv352yr4nmb/payment_methods/dn02p95bn2f9bj7y8/cardref")
+def test_customer_token_roundtrip():
+    tok = UsaepayPaymentAdapter.make_customer_token("5brbvgv352yr4nmb", "dn02p95bn2f9bj7y8")
+    assert tok == "cust:5brbvgv352yr4nmb:dn02p95bn2f9bj7y8"
+    assert UsaepayPaymentAdapter.parse_customer_token(tok) == ("5brbvgv352yr4nmb", "dn02p95bn2f9bj7y8")
+    assert UsaepayPaymentAdapter.parse_customer_token("tqb9-o076-tpfk-lb8l") is None
+    assert UsaepayPaymentAdapter.parse_customer_token("cust:broken") is None
+    assert not UsaepayPaymentAdapter.is_payment_method_key(tok)
+
+
+def test_charge_customer_token_runs_customer_sale(adapter):
+    FakeClient.payloads = [FakeResponse({"result_code": "A", "key": "txn777"})]
+    tok = UsaepayPaymentAdapter.make_customer_token("5brbvgv352yr4nmb", "dn02p95bn2f9bj7y8")
+    result = adapter.charge_saved_card(tok, Decimal("25.00"), "member-1", "Misc charge", customer_name="Suri K")
+    assert result.success and result.reference_id == "txn777"
+    method, url, body = FakeClient.calls[0]
+    assert method == "POST" and url.endswith("/transactions")
+    assert body["command"] == "customer:sale"
+    assert body["custkey"] == "5brbvgv352yr4nmb" and body["paymethod_key"] == "dn02p95bn2f9bj7y8"
+    assert body["amount"] == "25.00" and "creditcard" not in body
+    assert body["billing"] == {"name": "Suri K"}

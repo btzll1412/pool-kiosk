@@ -286,7 +286,7 @@ class UsaepayPaymentAdapter(BasePaymentAdapter):
         ``cc:save`` returns ``savedcard.key`` — the same kind of card token a sale with
         ``save_card`` returns, so it can be charged later via ``creditcard.number``.
         (Before 2026-11-05 this used the /customers API, whose payment-method key cannot be
-        charged that way; see ``is_payment_method_key`` / ``convert_payment_method_key``.)
+        charged that way; see ``is_payment_method_key`` / ``make_customer_token``.)
         """
         exp = exp_date.replace("/", "")
         last4 = card_number[-4:]
@@ -328,22 +328,27 @@ class UsaepayPaymentAdapter(BasePaymentAdapter):
             logger.exception("USAePay full card tokenization failed: member=%s", member_id)
             raise RuntimeError(f"USAePay connection failed: {exc}")
 
-    def convert_payment_method_key(self, customer_key: str, paymethod_key: str) -> str:
+    CUSTOMER_TOKEN_PREFIX = "cust:"
+
+    @classmethod
+    def make_customer_token(cls, customer_key: str, paymethod_key: str) -> str:
+        """Self-describing processor_token for a card that lives on a USAePay customer record.
+
+        Stored as ``cust:<custkey>:<pmkey>`` so every existing call site that passes
+        ``saved_card.processor_token`` keeps working; ``charge_saved_card`` recognises it and
+        runs a ``customer:sale`` instead of putting the key in ``creditcard.number``.
         """
-        Turn a customer payment-method key (old /customers tokenization) into a chargeable
-        card token via ``GET /customers/{custkey}/payment_methods/{pmkey}/cardref``.
-        Read-only on the USAePay side; nothing is charged.
-        """
-        url = f"{self.base_url}/customers/{customer_key}/payment_methods/{paymethod_key}/cardref"
-        with httpx.Client(timeout=30.0) as client:
-            response = client.get(url, headers=self._get_headers())
-            response.raise_for_status()
-            result = response.json()
-        cardref = result.get("cardref") or result.get("key") or ""
-        if not cardref:
-            raise RuntimeError(f"USAePay returned no cardref for pmkey {paymethod_key[:4]}…: {str(result)[:200]}")
-        logger.info("[USAEPAY cardref] customer=%s pmkey=%s… -> token=%s…", customer_key, paymethod_key[:4], cardref[:4])
-        return cardref
+        return f"{cls.CUSTOMER_TOKEN_PREFIX}{customer_key}:{paymethod_key}"
+
+    @classmethod
+    def parse_customer_token(cls, token: str | None) -> tuple[str, str] | None:
+        t = (token or "").strip()
+        if not t.startswith(cls.CUSTOMER_TOKEN_PREFIX):
+            return None
+        parts = t[len(cls.CUSTOMER_TOKEN_PREFIX):].split(":")
+        if len(parts) != 2 or not all(parts):
+            return None
+        return parts[0], parts[1]
 
     def charge_saved_card(
         self, token: str, amount: Decimal, member_id: str, description: str, customer_name: str | None = None
@@ -358,17 +363,33 @@ class UsaepayPaymentAdapter(BasePaymentAdapter):
                 message="This card was saved in an old format and cannot be charged. Remove it and add it again.",
             )
         try:
-            data = {
-                "command": "sale",
-                "amount": str(amount),
-                "description": description,
-                "creditcard": {
-                    "number": token,  # Card token goes in the number field
-                },
-                "custom_fields": {
-                    "member_id": member_id,
-                },
-            }
+            customer = self.parse_customer_token(token)
+            if customer:
+                # Card stored on a USAePay customer record -> charge the payment method by key
+                custkey, pmkey = customer
+                data = {
+                    "command": "customer:sale",
+                    "custkey": custkey,
+                    "paymethod_key": pmkey,
+                    "amount": str(amount),
+                    "description": description,
+                    "custom_fields": {"member_id": member_id},
+                }
+                logger.info("[USAEPAY saved-card] customer:sale member=%s amount=$%s customer=%s pmkey=%s…",
+                            member_id, amount, custkey, pmkey[:4])
+            else:
+                data = {
+                    "command": "sale",
+                    "amount": str(amount),
+                    "description": description,
+                    "creditcard": {
+                        "number": token,  # Card token goes in the number field
+                    },
+                    "custom_fields": {
+                        "member_id": member_id,
+                    },
+                }
+                logger.info("[USAEPAY saved-card] sale member=%s amount=$%s token=%s…", member_id, amount, (token or "")[:4])
             # Add billing info with customer name if provided
             if customer_name:
                 data["billing"] = {"name": customer_name}
