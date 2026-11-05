@@ -4,6 +4,25 @@
 
 ---
 
+## Saved cards typed into the admin were never chargeable (2026-11-05)
+
+- **Symptom:** charging a "card on file" (misc sale, membership, auto-charge) failed with USAePay's
+  "card number must be between 13 and 16 digits" for 7 of 24 saved cards.
+- **Cause:** `UsaepayPaymentAdapter.generate_card_token` (admin "add card by number") used the
+  `/customers` API, which returns a 17-char *payment-method key* (`dn02p95bn2f9bj7y8`). Only *card
+  tokens* (`tqb9-o076-tpfk-lb8l`, from a sale/authonly with `save_card`, kiosk, terminal) are valid
+  in `creditcard.number`. Shipped in 9991691 (2026-06-16); every typed-in card since was dead.
+- **Fix:** `generate_card_token` now uses `cc:save` → `savedcard.key` (a real card token).
+  `charge_saved_card` refuses payment-method keys with a plain "re-add this card" message instead of
+  calling USAePay, and logs every decline with the processor's result code/error.
+  `convert_payment_method_key(custkey, pmkey)` wraps `GET /customers/{c}/payment_methods/{p}/cardref`.
+- **Repair of the 7 existing cards:** `python -m app.scripts.repair_card_tokens [--apply]` (run in the
+  backend container) recovers each card's customer key from the backend log line
+  `card stored via customer API: member=…, last4=…, customer=…` (latest match wins), asks USAePay for
+  the cardref (read-only), swaps `processor_token`, and writes an `saved_card.token_repaired`
+  activity-log entry. Dry run by default.
+- Tests: `tests/test_usaepay_tokens.py` (httpx.Client faked).
+
 ## Admin list performance + structured perf logging (2026-11-05)
 
 - **Root cause of "slow admin":** `GET /api/checkins` loaded every check-in and guest visit and then

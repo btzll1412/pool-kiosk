@@ -257,63 +257,62 @@ class UsaepayPaymentAdapter(BasePaymentAdapter):
             logger.exception("USAePay tokenization failed: member=%s", member_id)
             raise RuntimeError(f"USAePay tokenization failed: {exc}")
 
+    # Token formats USAePay hands out:
+    #   card token ("cardref"): 4x4 groups, e.g. "tqb9-o076-tpfk-lb8l" -> valid in creditcard.number
+    #   payment-method key:     17 alnum chars, e.g. "dn02p95bn2f9bj7y8" -> belongs to a customer record,
+    #                           NOT valid in creditcard.number (USAePay answers "13 to 16 digits")
+    @staticmethod
+    def is_payment_method_key(token: str | None) -> bool:
+        t = (token or "").strip()
+        return len(t) == 17 and t.isalnum() and "-" not in t
+
+    @staticmethod
+    def _detect_brand(card_number: str) -> str:
+        if card_number.startswith("4"):
+            return "Visa"
+        if card_number.startswith("5"):
+            return "Mastercard"
+        if card_number.startswith("34") or card_number.startswith("37"):
+            return "Amex"
+        if card_number.startswith("6"):
+            return "Discover"
+        return "Card"
+
     def generate_card_token(self, card_number: str, exp_date: str, member_id: str, cvv: str = "") -> tuple[str, str, str]:
         """
-        Tokenize a card from full card details (number + expiry).
+        Tokenize a typed-in card with USAePay's ``cc:save`` command.
         Returns (token, last4, card_brand).
+
+        ``cc:save`` returns ``savedcard.key`` — the same kind of card token a sale with
+        ``save_card`` returns, so it can be charged later via ``creditcard.number``.
+        (Before 2026-11-05 this used the /customers API, whose payment-method key cannot be
+        charged that way; see ``is_payment_method_key`` / ``convert_payment_method_key``.)
         """
-        # Format expiry: input is MMYY, USAePay expects MMYY
         exp = exp_date.replace("/", "")
         last4 = card_number[-4:]
-
-        # Detect brand
-        if card_number.startswith("4"):
-            brand = "Visa"
-        elif card_number.startswith("5"):
-            brand = "Mastercard"
-        elif card_number.startswith("34") or card_number.startswith("37"):
-            brand = "Amex"
-        elif card_number.startswith("6"):
-            brand = "Discover"
-        else:
-            brand = "Card"
-
+        brand = self._detect_brand(card_number)
         try:
-            # Use USAePay customer API to store card without any charge
             data = {
-                "company": f"Member {member_id}",
-                "description": f"Pool kiosk member {member_id}",
-                "payment_methods": [
-                    {
-                        "method_type": "cc",
-                        "pay_type": "cc",
-                        "number": card_number,
-                        "expiration": exp,
-                        "cvc": cvv or "",
-                    }
-                ],
+                "command": "cc:save",
+                "creditcard": {
+                    "number": card_number,
+                    "expiration": exp,
+                    "cvc": cvv or "",
+                },
+                "custom_fields": {"member_id": member_id},
             }
-            url = f"{self.base_url}/customers"
-            with httpx.Client(timeout=30.0) as client:
-                response = client.post(url, json=data, headers=self._get_headers())
-                response.raise_for_status()
-                result = response.json()
+            logger.info("[USAEPAY cc:save] member=%s last4=%s brand=%s", member_id, last4, brand)
+            result = self._make_request("transactions", data)
 
-            # Extract the saved card token from customer record
-            customer_key = result.get("key", "")
-            payment_methods = result.get("payment_methods", [])
-
-            if payment_methods:
-                pm = payment_methods[0]
-                token = pm.get("key", customer_key)
-                resp_brand = pm.get("card_type", brand)
-            elif customer_key:
-                token = customer_key
-                resp_brand = brand
-            else:
-                raise RuntimeError("No token returned from USAePay")
-
-            logger.info("USAePay card stored via customer API: member=%s, last4=%s, customer=%s", member_id, last4, customer_key)
+            saved = result.get("savedcard") or {}
+            token = saved.get("key") or result.get("creditcard", {}).get("token", "")
+            if not token:
+                err = result.get("error") or result.get("result") or "No token returned from USAePay"
+                logger.error("[USAEPAY cc:save] FAILED member=%s last4=%s result_code=%s error=%s",
+                             member_id, last4, result.get("result_code"), err)
+                raise RuntimeError(f"Card save failed: {err}")
+            resp_brand = saved.get("type") or brand
+            logger.info("[USAEPAY cc:save] OK member=%s last4=%s brand=%s token=%s…", member_id, last4, resp_brand, token[:4])
             return token, last4, resp_brand
 
         except httpx.HTTPStatusError as exc:
@@ -329,16 +328,42 @@ class UsaepayPaymentAdapter(BasePaymentAdapter):
             logger.exception("USAePay full card tokenization failed: member=%s", member_id)
             raise RuntimeError(f"USAePay connection failed: {exc}")
 
+    def convert_payment_method_key(self, customer_key: str, paymethod_key: str) -> str:
+        """
+        Turn a customer payment-method key (old /customers tokenization) into a chargeable
+        card token via ``GET /customers/{custkey}/payment_methods/{pmkey}/cardref``.
+        Read-only on the USAePay side; nothing is charged.
+        """
+        url = f"{self.base_url}/customers/{customer_key}/payment_methods/{paymethod_key}/cardref"
+        with httpx.Client(timeout=30.0) as client:
+            response = client.get(url, headers=self._get_headers())
+            response.raise_for_status()
+            result = response.json()
+        cardref = result.get("cardref") or result.get("key") or ""
+        if not cardref:
+            raise RuntimeError(f"USAePay returned no cardref for pmkey {paymethod_key[:4]}…: {str(result)[:200]}")
+        logger.info("[USAEPAY cardref] customer=%s pmkey=%s… -> token=%s…", customer_key, paymethod_key[:4], cardref[:4])
+        return cardref
+
     def charge_saved_card(
         self, token: str, amount: Decimal, member_id: str, description: str, customer_name: str | None = None
     ) -> SavedCardChargeResult:
+        if self.is_payment_method_key(token):
+            logger.warning(
+                "[USAEPAY saved-card] REFUSED member=%s amount=$%s reason=payment_method_key_not_chargeable token=%s…",
+                member_id, amount, (token or "")[:4],
+            )
+            return SavedCardChargeResult(
+                success=False,
+                message="This card was saved in an old format and cannot be charged. Remove it and add it again.",
+            )
         try:
             data = {
                 "command": "sale",
                 "amount": str(amount),
                 "description": description,
                 "creditcard": {
-                    "number": token,  # Token goes in number field
+                    "number": token,  # Card token goes in the number field
                 },
                 "custom_fields": {
                     "member_id": member_id,
@@ -363,10 +388,22 @@ class UsaepayPaymentAdapter(BasePaymentAdapter):
                     message="Payment successful",
                 )
             else:
+                logger.warning(
+                    "[USAEPAY saved-card] DECLINED member=%s amount=$%s result_code=%s error=%s key=%s",
+                    member_id, amount, result_code, result.get("error"), transaction_key,
+                )
                 return SavedCardChargeResult(
                     success=False,
                     message=result.get("error", "Payment declined"),
                 )
+        except httpx.HTTPStatusError as exc:
+            try:
+                err = exc.response.json().get("error", str(exc))
+            except Exception:
+                err = str(exc)
+            logger.error("[USAEPAY saved-card] HTTP %s member=%s amount=$%s error=%s",
+                         exc.response.status_code, member_id, amount, err)
+            return SavedCardChargeResult(success=False, message=err)
         except httpx.RequestError as exc:
             logger.exception("USAePay saved card charge failed: member=%s, amount=$%s", member_id, amount)
             return SavedCardChargeResult(success=False, message=str(exc))
