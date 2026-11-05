@@ -12,6 +12,8 @@ from app.models.swipe import Swipe, SwipeOutcome
 from app.models.user import User
 from app.schemas.swipe import SwipeListResponse
 from app.services.auth_service import get_current_user
+from app.services.member_service import member_display_names
+from app.services.perf_log import StepTimer
 from app.services.settings_service import get_setting
 
 logger = logging.getLogger(__name__)
@@ -69,7 +71,10 @@ def list_swipes(
         query = query.filter(Swipe.created_at <= end_utc)
 
     filter_start, filter_end = _parse_hhmm(start_time), _parse_hhmm(end_time)
+    perf = StepTimer("swipes.list", page=page, per_page=per_page, search=search, outcome=outcome,
+                     start_date=start_date, end_date=end_date, start_time=start_time, end_time=end_time)
     swipes = query.order_by(Swipe.created_at.desc()).all()
+    perf.step("swipes_query", rows=len(swipes))
 
     if filter_start or filter_end:
         def in_window(swipe: Swipe) -> bool:
@@ -85,19 +90,24 @@ def list_swipes(
         if s.member_id:
             members.add(s.member_id)
 
+    perf.step("time_filter_and_counts", kept=total, unique_members=len(members))
     start = (page - 1) * per_page
+    page_swipes = swipes[start:start + per_page]
+    member_names = member_display_names(db, (s.member_id for s in page_swipes))
+    perf.step("member_names", members=len(member_names), returned=len(page_swipes))
+    perf.__exit__(None, None, None)
     items = [
         {
             "id": s.id,
             "member_id": s.member_id,
-            "member_name": f"{s.member.first_name} {s.member.last_name}" if s.member else None,
+            "member_name": member_names.get(s.member_id) if s.member_id else None,
             "card_uid": s.card_uid,
             "source": s.source,
             "outcome": s.outcome,
             "checkin_id": s.checkin_id,
             "created_at": s.created_at,
         }
-        for s in swipes[start:start + per_page]
+        for s in page_swipes
     ]
     return {
         "items": items, "total": total, "page": page, "per_page": per_page,

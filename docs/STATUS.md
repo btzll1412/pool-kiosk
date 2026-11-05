@@ -4,6 +4,28 @@
 
 ---
 
+## Admin list performance + structured perf logging (2026-11-05)
+
+- **Root cause of "slow admin":** `GET /api/checkins` loaded every check-in and guest visit and then
+  did 2+ lazy queries per row (member → 4 selectin relationships, membership → plan): ~7,800 queries
+  and 5.3 s per page view with ~1,000 check-ins (measured on a copy of prod data). Host RAM was a
+  separate, already-fixed issue.
+- **Fix:** bulk loads. `member_display_names()` (member_service) returns names for a set of ids in one
+  query without instantiating `Member`; check-ins eager-load memberships (`selectinload`, plans ride
+  along), guest plan prices are fetched in one `IN` query; swipes/transactions use the name map for
+  the page; members list fetches the page's active memberships in one query.
+  Result (prod data copy): check-ins 5.3 s / 7,766 q → 33 ms / 8 q; members 54 → 10 q; has_plan
+  217 → 10 q; swipes 147 → 4 q; transactions 77 → 6 q. API responses verified byte-identical before
+  and after across 14 filter/page variants. `tests/test_list_query_counts.py` guards a flat budget.
+  Remaining growth vector: check-ins/swipes still merge member + guest rows in Python (linear in
+  table size, ~0.3 s at 10k rows). Next step if needed: UNION in SQL and paginate there.
+- **Structured perf logging** (`app/services/perf_log.py`, logger `app.perf`, file `logs/perf.log`):
+  `[REQ] method= path= query= status= ms= queries= ip= ua=` per API request (WARNING + `slow=1` when
+  ≥ 1 s or 5xx; ip honours X-Forwarded-For), and `[PERF] op=<endpoint> ... steps=name:ms/rows,...
+  total_ms= queries=` from `StepTimer` inside the check-ins, swipes, transactions and members lists
+  (WARNING on any step ≥ 500 ms). Query counting is a per-request ContextVar fed by a SQLAlchemy
+  Engine-level `before_cursor_execute` listener.
+
 ## Settings → Backup tab crash + lost uploads (2026-10-30)
 
 - **Crash:** the 2026-10-27 timezone audit used `timezone` inside `AutomaticBackupSection` and
@@ -1342,4 +1364,4 @@ Owner sells things that are not memberships (snacks, towels, lessons...) and wan
 
 ---
 
-## Last Updated: 2026-10-30 (Item Sales page; timezone fixes; admin membership credit)
+## Last Updated: 2026-11-05 (Item Sales page; timezone fixes; admin membership credit)

@@ -4,7 +4,7 @@ from datetime import date, datetime, time
 import pytz
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,8 @@ from app.models.plan import Plan
 from app.models.user import User
 from app.schemas.checkin import CheckinListResponse, CheckinResponse, CheckinWithMemberResponse
 from app.services.auth_service import get_current_user
+from app.services.member_service import member_display_names
+from app.services.perf_log import StepTimer
 from app.services.settings_service import get_setting
 
 router = APIRouter()
@@ -86,6 +88,13 @@ def list_checkins(
     else:
         end_datetime = None
 
+    perf = StepTimer(
+        "checkins.list", page=page, per_page=per_page, search=search, start_date=start_date, end_date=end_date,
+        start_time=start_time, end_time=end_time, checkin_type=checkin_type, unique_only=unique_only,
+        include_guests=include_guests,
+    )
+    perf.step("parse_filters")
+
     # Collect all items (member check-ins + guest visits)
     all_items = []
 
@@ -145,21 +154,25 @@ def list_checkins(
                 (Checkin.checked_in_at == subquery.c.latest)
             )
 
-        checkins = query.all()
+        # One query for the check-ins, one for their memberships (plans ride along via
+        # selectin), one for member names. Previously this did 2+ queries PER ROW, which
+        # at ~1000 check-ins meant ~7,800 queries and a 5 s page load.
+        checkins = query.options(selectinload(Checkin.membership)).all()
+        perf.step("member_checkins_query", rows=len(checkins))
+        member_names = member_display_names(db, (c.member_id for c in checkins))
+        perf.step("member_names", members=len(member_names))
         for checkin in checkins:
             # Apply time-of-day filter
             if not passes_time_filter(checkin.checked_in_at):
                 continue
 
-            member = db.query(Member).filter(Member.id == checkin.member_id).first()
-            member_name = f"{member.first_name} {member.last_name}" if member else "Unknown"
+            member_name = member_names.get(checkin.member_id, "Unknown")
 
             # Get plan name from membership if available
             plan_name = None
-            if checkin.membership_id:
-                membership = db.query(Membership).filter(Membership.id == checkin.membership_id).first()
-                if membership and membership.plan:
-                    plan_name = membership.plan.name
+            membership = checkin.membership
+            if membership is not None and membership.plan:
+                plan_name = membership.plan.name
 
             all_items.append({
                 "id": checkin.id,
@@ -173,6 +186,8 @@ def list_checkins(
                 "notes": checkin.notes,
                 "is_guest": False,
             })
+
+        perf.step("member_rows_built", kept=len(all_items))
 
     # --- Guest Visits ---
     if include_guest_visits:
@@ -188,6 +203,12 @@ def list_checkins(
             guest_query = guest_query.filter(GuestVisit.created_at <= end_datetime)
 
         guests = guest_query.all()
+        perf.step("guest_visits_query", rows=len(guests))
+        guest_plan_ids = {g.plan_id for g in guests if g.plan_id}
+        guest_plan_prices = (
+            dict(db.query(Plan.id, Plan.price).filter(Plan.id.in_(guest_plan_ids)).all())
+            if guest_plan_ids else {}
+        )
         for guest in guests:
             # Apply time-of-day filter
             if not passes_time_filter(guest.created_at):
@@ -198,11 +219,10 @@ def list_checkins(
             notes = f"Paid ${guest.amount_paid} ({guest.payment_method.value})"
 
             # Calculate and show overpayment if any
-            if guest.plan_id:
-                plan = db.query(Plan).filter(Plan.id == guest.plan_id).first()
-                if plan and guest.amount_paid > plan.price:
-                    overpayment = guest.amount_paid - plan.price
-                    notes += f" - Overpaid ${overpayment:.2f}"
+            plan_price = guest_plan_prices.get(guest.plan_id) if guest.plan_id else None
+            if plan_price is not None and guest.amount_paid > plan_price:
+                overpayment = guest.amount_paid - plan_price
+                notes += f" - Overpaid ${overpayment:.2f}"
 
             all_items.append({
                 "id": guest.id,
@@ -216,6 +236,8 @@ def list_checkins(
                 "notes": notes,
                 "is_guest": True,
             })
+
+    perf.step("guest_rows_built")
 
     # Sort all items by date descending
     all_items.sort(key=lambda x: x["checked_in_at"], reverse=True)
@@ -231,6 +253,8 @@ def list_checkins(
 
     # Build response
     items = [CheckinWithMemberResponse(**item) for item in paginated_items]
+    perf.step("sort_paginate", total=total, unique_members=unique_members, returned=len(items))
+    perf.__exit__(None, None, None)
 
     return CheckinListResponse(
         items=items,

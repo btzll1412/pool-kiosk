@@ -47,6 +47,7 @@ from app.schemas.member import (
     PinResetRequest,
 )
 from app.services.report_service import is_membership_usable
+from app.services.perf_log import StepTimer
 from app.services.auth_service import get_current_user
 from app.services.member_service import (
     adjust_credit,
@@ -91,6 +92,8 @@ def list_members_endpoint(
     # For plan filtering, we need to fetch all matching members first, then filter
     # We'll fetch more than needed and do post-filtering for plan-based filters
     need_plan_filter = has_plan is not None or plan_id is not None
+    perf = StepTimer("members.list", page=page, per_page=per_page, search=search, is_active=is_active,
+                     has_credit=has_credit, has_plan=has_plan, plan_id=plan_id, joined_after=joined_after, joined_before=joined_before)
 
     if need_plan_filter:
         # Fetch all members matching non-plan filters (no pagination yet)
@@ -107,15 +110,25 @@ def list_members_endpoint(
             page=page, per_page=per_page
         )
 
+    # Active memberships for every member on the page in ONE query (plans ride along via
+    # selectin) instead of one query per member.
+    perf.step("members_query", rows=len(all_members))
+    memberships_by_member: dict[uuid.UUID, list[Membership]] = {}
+    member_ids = [m.id for m in all_members]
+    if member_ids:
+        for ms in (
+            db.query(Membership)
+            .filter(Membership.member_id.in_(member_ids), Membership.is_active == True)
+            .all()
+        ):
+            memberships_by_member.setdefault(ms.member_id, []).append(ms)
+
+    perf.step("memberships_query", memberships=sum(len(v) for v in memberships_by_member.values()))
+
     # Build response with active plans for each member
     all_items = []
     for member in all_members:
-        # Get active memberships for this member
-        all_memberships = (
-            db.query(Membership)
-            .filter(Membership.member_id == member.id, Membership.is_active == True)
-            .all()
-        )
+        all_memberships = memberships_by_member.get(member.id, [])
 
         # Filter to only truly usable memberships (not expired, has swims remaining)
         active_plans = []
@@ -168,6 +181,9 @@ def list_members_endpoint(
         items = all_items[start_idx:end_idx]
     else:
         items = all_items
+
+    perf.step("rows_built_and_filtered", total=total, returned=len(items))
+    perf.__exit__(None, None, None)
 
     return MemberListResponse(items=items, total=total, page=page, per_page=per_page)
 

@@ -56,6 +56,20 @@ def list_members(
     return items, total
 
 
+def member_display_names(db: Session, member_ids) -> dict[uuid.UUID, str]:
+    """Return {member_id: "First Last"} for the given ids in ONE query.
+
+    List endpoints use this instead of touching ``row.member`` per row: loading a
+    Member entity also fires its selectin relationships (cards, memberships,
+    saved cards, price overrides), so one lazy ``.member`` per row costs ~5 queries.
+    """
+    ids = [i for i in set(member_ids) if i is not None]
+    if not ids:
+        return {}
+    rows = db.query(Member.id, Member.first_name, Member.last_name).filter(Member.id.in_(ids)).all()
+    return {mid: f"{first} {last}" for mid, first, last in rows}
+
+
 def get_member(db: Session, member_id: uuid.UUID) -> Member:
     member = db.query(Member).filter(Member.id == member_id).first()
     if not member:

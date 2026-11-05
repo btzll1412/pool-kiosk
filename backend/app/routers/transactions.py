@@ -18,6 +18,8 @@ from app.schemas.transaction import (
     TransactionResponse,
 )
 from app.services.activity_service import log_activity
+from app.services.member_service import member_display_names
+from app.services.perf_log import StepTimer
 from app.services.auth_service import get_current_user
 from app.services.settings_service import get_setting
 
@@ -61,16 +63,23 @@ def list_transactions(
         end_utc = end_local.astimezone(pytz.UTC).replace(tzinfo=None)
         query = query.filter(Transaction.created_at <= end_utc)
 
+    perf = StepTimer("transactions.list", page=page, per_page=per_page, member_id=member_id,
+                     transaction_type=transaction_type, payment_method=payment_method, start_date=start_date, end_date=end_date)
     total = query.count()
+    perf.step("count", total=total)
     transactions = query.order_by(Transaction.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    perf.step("page_query", rows=len(transactions))
 
-    # Build response with member, plan, and card names
+    # Build response with member, plan, and card names (plan/saved_card are selectin-loaded
+    # in bulk; member names come from one query instead of one lazy load per row)
+    member_names = member_display_names(db, (tx.member_id for tx in transactions))
+    perf.step("member_names", members=len(member_names))
     items = []
     for tx in transactions:
         item = TransactionResponse(
             id=tx.id,
             member_id=tx.member_id,
-            member_name=f"{tx.member.first_name} {tx.member.last_name}" if tx.member else None,
+            member_name=member_names.get(tx.member_id) if tx.member_id else None,
             guest_name=tx.guest_name,
             transaction_type=tx.transaction_type,
             payment_method=tx.payment_method,
@@ -88,6 +97,8 @@ def list_transactions(
             created_at=tx.created_at,
         )
         items.append(item)
+    perf.step("rows_built", returned=len(items))
+    perf.__exit__(None, None, None)
 
     return TransactionListResponse(items=items, total=total, page=page, per_page=per_page)
 

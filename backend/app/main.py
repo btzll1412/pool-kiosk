@@ -42,6 +42,17 @@ payment_handler = logging.handlers.RotatingFileHandler(
 payment_handler.setLevel(logging.DEBUG)
 payment_handler.setFormatter(log_format)
 
+# Performance log: one structured line per API request + per-step breakdowns ([REQ]/[PERF])
+perf_handler = logging.handlers.RotatingFileHandler(
+    os.path.join(LOG_DIR, "perf.log"),
+    maxBytes=10*1024*1024,
+    backupCount=5,
+    encoding="utf-8"
+)
+perf_handler.setLevel(logging.INFO)
+perf_handler.setFormatter(log_format)
+logging.getLogger("app.perf").addHandler(perf_handler)
+
 # Configure root logger
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.DEBUG)
@@ -58,6 +69,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
+from app.services.perf_log import RequestTimingMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.orm import Session
@@ -257,6 +270,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+app.add_middleware(RequestTimingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
