@@ -19,6 +19,7 @@ engine in the process (prod Postgres and the sqlite test engine alike).
 from __future__ import annotations
 
 import logging
+import re
 import time
 from contextvars import ContextVar
 from typing import Any
@@ -134,6 +135,14 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "-"
 
 
+_SECRET_PARAM = re.compile(r"(?i)\b(pin|password|token|card_number|cvv)=[^&]*")
+
+
+def _mask_query(q: str) -> str | None:
+    """Never write secrets that arrive in a query string (the kiosk sends ?pin=) to the log."""
+    return _SECRET_PARAM.sub(lambda m: f"{m.group(1)}=***", q) if q else None
+
+
 def _short_ua(ua: str | None) -> str | None:
     if not ua:
         return None
@@ -162,7 +171,7 @@ class RequestTimingMiddleware(BaseHTTPMiddleware):
             fields = dict(
                 method=request.method,
                 path=path,
-                query=str(request.url.query) or None,
+                query=_mask_query(str(request.url.query)),
                 status=status,
                 ms=ms,
                 queries=query_count(),

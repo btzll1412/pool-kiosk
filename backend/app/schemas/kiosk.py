@@ -375,3 +375,8 @@ class KioskQuoteRequest(BillingChoice):
     member_id: uuid.UUID
     plan_id: uuid.UUID
 
+
+
+class AccountHistoryRequest(BaseModel):
+    member_id: uuid.UUID
+    pin: str

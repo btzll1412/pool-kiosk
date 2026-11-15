@@ -408,3 +408,10 @@ export async function cancelTerminalPayment(request_key) {
   const { data } = await kiosk.delete(`/terminal/cancel/${request_key}`);
   return data;
 }
+
+// Member's own plans, upcoming auto-charges, visits and payments ("My History").
+// POST so the PIN is sent in the body, never in the URL.
+export async function getAccountHistory(member_id, pin) {
+  const { data } = await kiosk.post("/account-history", { member_id, pin });
+  return data;
+}

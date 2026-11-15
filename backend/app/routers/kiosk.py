@@ -26,6 +26,7 @@ from datetime import timedelta
 from datetime import datetime
 from app.services.item_sale_service import clean_description, is_item_plan, resolve_item_amount, sale_note
 from app.schemas.kiosk import (
+    AccountHistoryRequest,
     BillingChoice,
     AccountPaymentRequest,
     KioskClientErrorRequest,
@@ -2366,3 +2367,24 @@ def cancel_terminal_payment(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to cancel payment",
         )
+
+
+# ==================== MEMBER ACCOUNT HISTORY ("My History") ====================
+
+@router.post("/account-history")
+@limiter.limit("15/minute")
+def account_history(data: AccountHistoryRequest, request: Request, db: Session = Depends(get_db)):
+    """Plans, upcoming auto-charges, visits and payments for one member. PIN required.
+
+    POST (not GET) so the PIN travels in the body and never lands in access/perf logs.
+    """
+    from app.services.account_history_service import build_account_history
+
+    verify_member_pin(db, data.member_id, data.pin)
+    result = build_account_history(db, data.member_id)
+    logger.info(
+        "[KIOSK HISTORY] member=%s plans=%d upcoming_charges=%d visits=%d payments=%d",
+        data.member_id, len(result["plans"]), len(result["upcoming_charges"]),
+        len(result["visits"]), len(result["payments"]),
+    )
+    return result

@@ -17,6 +17,7 @@ import StatusScreen from "./screens/StatusScreen";
 import GuestScreen from "./screens/GuestScreen";
 import PinScreen from "./screens/PinScreen";
 import ManageAccountScreen from "./screens/ManageAccountScreen";
+import HistoryScreen from "./screens/HistoryScreen";
 import FreezeScreen from "./screens/FreezeScreen";
 import SavedCardsScreen from "./screens/SavedCardsScreen";
 import AddCardScreen from "./screens/AddCardScreen";
@@ -48,6 +49,7 @@ const SCREENS = {
   guest: GuestScreen,
   pin: PinScreen,
   manage: ManageAccountScreen,
+  history: HistoryScreen,
   freeze: FreezeScreen,
   savedCards: SavedCardsScreen,
   addCard: AddCardScreen,

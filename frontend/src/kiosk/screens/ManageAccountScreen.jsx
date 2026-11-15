@@ -1,4 +1,4 @@
-import { ArrowLeft, CreditCard, DollarSign, ShoppingBag, User, Waves } from "lucide-react";
+import { ArrowLeft, CreditCard, DollarSign, History, ShoppingBag, User, Waves } from "lucide-react";
 import MemberCard from "../components/MemberCard";
 import KioskButton from "../components/KioskButton";
 
@@ -58,6 +58,16 @@ export default function ManageAccountScreen({ member, goTo, context }) {
                 </div>
               </div>
             )}
+
+            <KioskButton
+              variant="secondary"
+              size="lg"
+              icon={History}
+              onClick={() => goTo("history", { pin: context.pin })}
+              className="w-full"
+            >
+              My History
+            </KioskButton>
 
             <KioskButton
               variant="secondary"

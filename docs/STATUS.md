@@ -4,6 +4,23 @@
 
 ---
 
+## Kiosk "My History" (2026-11-15)
+
+- Manage My Account (PIN) → **My History** with three tabs: **My Plans** (every membership with
+  status active / frozen / starts later / used up / ended, dates, swims left, plus all upcoming
+  auto-charges with date, plan, member price and card), **Visits** (last 50 check-ins, local time,
+  guests, plus this-month / this-year counts) and **Payments** (last 50 transactions: what, amount,
+  how paid — card brand + last 4, cash, account balance, front desk — refunds marked).
+- Backend: `POST /api/kiosk/account-history {member_id, pin}` → `services/account_history_service.py`.
+  POST so the PIN never appears in a URL/log; rate limited 15/min; PIN lockout rules apply.
+  Deliberately omits admin notes, processor tokens and staff ids. `[PERF] op=kiosk.account_history`.
+- Purely additive: new screen `kiosk/screens/HistoryScreen.jsx`, one button in ManageAccountScreen,
+  one route in KioskApp. Tests: `tests/test_kiosk_history.py` (PIN, GET refused, member scoping,
+  no internal fields, empty member).
+- Also: request log (`perf.log`) now masks `pin=`/`password=`/`token=`/`card_number=`/`cvv=` in query
+  strings — the kiosk's saved-cards screen sends `?pin=` and three such lines had been logged on prod
+  (scrubbed at deploy).
+
 ## Saved cards typed into the admin were never chargeable (2026-11-05)
 
 - **Symptom:** charging a "card on file" (misc sale, membership, auto-charge) failed with USAePay's
@@ -1390,4 +1407,4 @@ Owner sells things that are not memberships (snacks, towels, lessons...) and wan
 
 ---
 
-## Last Updated: 2026-11-05 (Item Sales page; timezone fixes; admin membership credit)
+## Last Updated: 2026-11-15 (Item Sales page; timezone fixes; admin membership credit)
