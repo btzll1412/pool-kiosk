@@ -68,7 +68,10 @@ from app.schemas.kiosk import (
     TerminalPaymentInitResponse,
     TerminalPaymentStatusResponse,
     TerminalInfoResponse,
-    AddCreditKioskRequest,
+    TopUpCardRequest,
+    TopUpCashRequest,
+    TopUpManualCardRequest,
+    TopUpResponse,
 )
 from app.services.auto_charge_service import (
     charge_saved_card_now,
@@ -638,6 +641,12 @@ def get_kiosk_settings(request: Request, db: Session = Depends(get_db)):
         "senior_age_threshold": get_setting(db, "senior_age_threshold", "65"),
         "kiosk_ui_scale": get_setting(db, "kiosk_ui_scale", "normal"),
         "kiosk_reload_interval_seconds": get_setting(db, "kiosk_reload_interval_seconds", "30"),
+        # Add Money: max per top-up and the message shown above it (admin-editable)
+        "kiosk_topup_max": get_setting(db, "kiosk_topup_max", "500"),
+        "kiosk_topup_limit_message": get_setting(
+            db, "kiosk_topup_limit_message",
+            "Amounts over {limit} can't be added at the kiosk. Please contact support.",
+        ),
     }
 
 
@@ -1216,31 +1225,54 @@ def pay_split(data: SplitPaymentRequest, request: Request, db: Session = Depends
     )
 
 
-@router.post("/add-credit")
-@limiter.limit("10/minute")
-def add_credit_to_account(data: AddCreditKioskRequest, request: Request, db: Session = Depends(get_db)):
-    """Add money to a member's credit balance (used by unlimited members)."""
-    verify_member_pin(db, data.member_id, data.pin)
+# ==================== ADD MONEY (top-up) ====================
+# Credit is only added after a real payment. The old /add-credit endpoint credited any typed
+# amount with no payment at all and was removed on 2026-11-15.
 
-    member = db.query(Member).filter(Member.id == data.member_id).first()
+def _topup_member(db: Session, member_id: uuid.UUID, pin: str) -> Member:
+    verify_member_pin(db, member_id, pin)
+    member = db.query(Member).filter(Member.id == member_id).first()
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    return member
 
-    if data.amount <= 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount must be greater than zero")
 
-    member.credit_balance += data.amount
-    tx = Transaction(
-        member_id=data.member_id,
-        transaction_type=TransactionType.credit_add,
-        payment_method=PaymentMethod.cash,
-        amount=data.amount,
-        notes="Account top-up via kiosk",
-    )
-    db.add(tx)
-    db.commit()
-    logger.info("Credit added via kiosk: member=%s, amount=$%s", data.member_id, data.amount)
-    return {"message": f"${data.amount} added to account", "amount": str(data.amount)}
+def _topup_response(member: Member, tx: Transaction, amount: Decimal, how: str, card_saved: bool = False) -> TopUpResponse:
+    paid_debt = member.credit_balance - amount < 0
+    msg = (f"${amount:.2f} paid toward your balance ({how})." if paid_debt
+           else f"${amount:.2f} added to your account ({how}).")
+    if card_saved:
+        msg += " Card saved for future use."
+    return TopUpResponse(success=True, transaction_id=tx.id, amount_added=amount,
+                         credit_balance=member.credit_balance, card_saved=card_saved, message=msg)
+
+
+@router.post("/topup/cash", response_model=TopUpResponse)
+@limiter.limit("10/minute")
+def topup_cash_endpoint(data: TopUpCashRequest, request: Request, db: Session = Depends(get_db)):
+    from app.services.topup_service import topup_cash
+    member = _topup_member(db, data.member_id, data.pin)
+    tx, added = topup_cash(db, member, data.amount, data.description, data.amount_tendered)
+    return _topup_response(member, tx, added, "cash")
+
+
+@router.post("/topup/card", response_model=TopUpResponse)
+@limiter.limit("10/minute")
+def topup_card_endpoint(data: TopUpCardRequest, request: Request, db: Session = Depends(get_db)):
+    from app.services.topup_service import topup_saved_card
+    member = _topup_member(db, data.member_id, data.pin)
+    tx = topup_saved_card(db, member, data.amount, data.description, data.saved_card_id)
+    return _topup_response(member, tx, tx.amount, "card")
+
+
+@router.post("/topup/card/manual", response_model=TopUpResponse)
+@limiter.limit("10/minute")
+def topup_manual_card_endpoint(data: TopUpManualCardRequest, request: Request, db: Session = Depends(get_db)):
+    from app.services.topup_service import topup_manual_card
+    member = _topup_member(db, data.member_id, data.pin)
+    tx, saved = topup_manual_card(db, member, data.amount, data.description, data.card_number,
+                                  data.exp_date, data.cvv, data.save_card)
+    return _topup_response(member, tx, tx.amount, "card", card_saved=saved)
 
 
 @router.post("/pay/credit", response_model=PaymentResponse)

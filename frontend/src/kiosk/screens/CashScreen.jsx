@@ -3,11 +3,16 @@ import { ArrowLeft, Banknote } from "lucide-react";
 import toast from "react-hot-toast";
 import NumPad from "../components/NumPad";
 import KioskButton from "../components/KioskButton";
-import { payCash } from "../../api/kiosk";
+import { payCash, topupCash } from "../../api/kiosk";
 import { describeBilling, getBillingParams, getPurchasePrice } from "../utils/billing";
 
 export default function CashScreen({ member, goTo, goIdle, context, settings }) {
-  const plan = context.plan;
+  // Add Money ("top-up") reuses this screen: no plan, a fixed amount and a description.
+  // Only a top-up when Add Money sent us here (it clears plan); a plan purchase always wins.
+  const topup = context.topup && !context.plan ? context.topup : null;
+  const plan = topup
+    ? { id: "__topup__", name: `Add to account: ${topup.description}`, price: Number(topup.amount), plan_type: "topup" }
+    : context.plan;
   const pin = context.pin;
   const useCredit = context.useCredit || false;
   const creditAmount = Number(context.creditAmount || 0);
@@ -36,20 +41,24 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
     setLoading(true);
     try {
       // Always add overpayment to credit (wantsChange = false)
-      const data = await payCash(member.member_id, plan.id, amountNum, pin, false, useCredit, getBillingParams(plan, billing));
+      const data = topup
+        ? await topupCash(member.member_id, pin, topup.amount, topup.description, amountNum.toFixed(2))
+        : await payCash(member.member_id, plan.id, amountNum, pin, false, useCredit, getBillingParams(plan, billing));
 
       const amountStr = `${settings.currency}${amountNum.toFixed(2)}`;
       let message = (settings.cash_success_message || "Place {amount} in the cash box.").replace("{amount}", amountStr);
       if (data.credit_used > 0) {
         message = `${settings.currency}${Number(data.credit_used).toFixed(2)} credit applied.`;
       }
-      if (data.credit_added > 0) {
+      if (topup) {
+        message += ` ${settings.currency}${Number(data.amount_added).toFixed(2)} has been added to your account.`;
+      } else if (data.credit_added > 0) {
         message += ` ${settings.currency}${Number(data.credit_added).toFixed(2)} added to your account credit.`;
       }
 
       goTo("status", {
         statusType: "success",
-        statusTitle: "Payment Complete!",
+        statusTitle: topup ? "Money Added!" : "Payment Complete!",
         statusMessage: message,
       });
     } catch (err) {
@@ -63,13 +72,14 @@ export default function CashScreen({ member, goTo, goIdle, context, settings }) 
     goTo("payment");
     return null;
   }
+  const goBack = () => (topup ? goTo("addMoney", { pin }) : goTo("payment"));
 
   return (
     <div className="flex h-full flex-col bg-gray-50">
       <div className="flex items-center justify-between border-b border-gray-100 bg-white px-6 py-4">
         <button
           type="button"
-          onClick={() => goTo("payment")}
+          onClick={goBack}
           className="flex items-center gap-2 rounded-xl px-4 py-2 text-gray-500 transition-all hover:bg-gray-100 active:bg-gray-200"
         >
           <ArrowLeft className="h-5 w-5" />

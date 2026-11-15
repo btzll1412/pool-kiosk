@@ -79,6 +79,7 @@ export default function PaymentScreen({ member, goTo, context, settings }) {
       billing,
       pin: context.pin,
       useCredit: false,
+      topup: null,
       creditAmount: 0,
       adjustedPrice: null,
     });

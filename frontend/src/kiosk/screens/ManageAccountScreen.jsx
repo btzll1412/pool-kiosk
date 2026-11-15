@@ -103,7 +103,7 @@ export default function ManageAccountScreen({ member, goTo, context }) {
               variant={owesBalance ? "primary" : "secondary"}
               size="lg"
               icon={DollarSign}
-              onClick={() => goTo("addMoney", { pin: context.pin, returnTo: "manage" })}
+              onClick={() => goTo("addMoney", { pin: context.pin, returnTo: "manage", topup: null })}
               className="w-full"
             >
               {owesBalance ? "Pay Balance" : "Add Money"}

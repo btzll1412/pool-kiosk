@@ -4,6 +4,27 @@
 
 ---
 
+## Kiosk Add Money now requires a real payment (2026-11-15)
+
+- **Hole closed:** `POST /api/kiosk/add-credit` credited any typed amount (recorded as "cash") with no
+  payment step and no limit; "Pay full balance" zeroed debts the same way. 4 such top-ups on prod
+  ($681): ruchy sigal $175 (reversed 11-10 "mistake"), Faigy Grossman $145, Sarah Fischer $360,
+  owner's $1 test. Endpoint removed.
+- **New flow:** Add Money / Pay Balance → amount + "What is this for?" (required) → Cash or Card (the
+  normal Cash and Card screens in "top-up" mode). Account credit and charge-to-account are not
+  offered. Card = card on file, swipe, or typed card (optionally saved); credit only after processor
+  approval. Cash = cash-box honour system like plan purchases; all cash tendered goes on the account.
+- **Endpoints:** `POST /api/kiosk/topup/cash | /topup/card | /topup/card/manual` →
+  `services/topup_service.py`. PIN required, card must belong to the member, recorded as
+  `credit_add` with real method, description, processor reference, plus `credit.kiosk_topup`
+  activity entry and `[TOPUP]` log lines.
+- **Admin settings** (Settings → Kiosk Add Money): `kiosk_topup_max` (default 500) and
+  `kiosk_topup_limit_message` (default "Amounts over {limit} can't be added at the kiosk. Please
+  contact support."; `{limit}` → "$500.00"). Enforced on the server, shown on the kiosk.
+- Frontend guard: Cash/Card screens are in top-up mode only when `context.topup` is set AND no plan
+  is; plan purchase paths also clear `topup`.
+- Tests: `tests/test_kiosk_topup.py` (11); suite 214.
+
 ## Kiosk "My History" (2026-11-15)
 
 - Manage My Account (PIN) → **My History** with three tabs: **My Plans** (every membership with

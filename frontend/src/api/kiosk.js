@@ -354,11 +354,24 @@ export async function tokenizeCardFromFull(cardNumber, expDate, memberId, pin, f
   return data;
 }
 
-export async function addCredit(memberId, pin, amount) {
-  const { data } = await kiosk.post("/add-credit", {
-    member_id: memberId,
-    pin,
-    amount,
+// Add Money: credit is only added after a real cash or card payment.
+export async function topupCash(memberId, pin, amount, description, amountTendered) {
+  const { data } = await kiosk.post("/topup/cash", {
+    member_id: memberId, pin, amount, description, amount_tendered: amountTendered,
+  });
+  return data;
+}
+
+export async function topupCard(memberId, pin, amount, description, savedCardId) {
+  const { data } = await kiosk.post("/topup/card", {
+    member_id: memberId, pin, amount, description, saved_card_id: savedCardId,
+  });
+  return data;
+}
+
+export async function topupCardManual(memberId, pin, amount, description, cardNumber, expDate, cvv, saveCard) {
+  const { data } = await kiosk.post("/topup/card/manual", {
+    member_id: memberId, pin, amount, description, card_number: cardNumber, exp_date: expDate, cvv, save_card: saveCard,
   });
   return data;
 }

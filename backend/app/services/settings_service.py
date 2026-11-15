@@ -88,6 +88,8 @@ DEFAULT_SETTINGS = {
     "kiosk_overlay_text": "",
     "kiosk_locked": "false",
     "staff_exit_pin": "0000",
+    "kiosk_topup_max": "500",
+    "kiosk_topup_limit_message": "Amounts over {limit} can't be added at the kiosk. Please contact support.",
     "kiosk_lock_message": "Kiosk is currently unavailable. Please see staff.",
     "kiosk_bg_type": "gradient",
     "kiosk_bg_color": "#0284c7",

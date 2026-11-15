@@ -145,6 +145,15 @@ const settingGroups = [
     ],
   },
   {
+    title: "Kiosk Add Money",
+    description: "Limits for members adding money to their own account at the kiosk",
+    category: "kiosk",
+    fields: [
+      { key: "kiosk_topup_max", label: "Maximum per Add Money ($)", type: "number", helpText: "Largest amount a member can add in one go at the kiosk (cash or card). Default: 500" },
+      { key: "kiosk_topup_limit_message", label: "Over-Limit Message", type: "textarea", helpText: "Shown when someone tries to add more than the maximum. {limit} is replaced with the amount, e.g. $500.00" },
+    ],
+  },
+  {
     title: "Kiosk Hardware",
     description: "Hardware and exit settings",
     category: "kiosk",

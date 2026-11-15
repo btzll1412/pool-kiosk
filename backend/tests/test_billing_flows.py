@@ -177,7 +177,8 @@ def test_account_limit_is_enforced_and_no_limit_by_default(client, db, member_wi
 def test_adding_money_pays_off_the_balance(client, db, member_with_pin, seed_settings):
     member_with_pin.credit_balance = D("-50.00")
     db.commit()
-    resp = client.post("/api/kiosk/add-credit", json={"member_id": str(member_with_pin.id), "amount": "30.00", "pin": "1234"})
+    resp = client.post("/api/kiosk/topup/cash", json={"member_id": str(member_with_pin.id), "amount": "30.00", "pin": "1234",
+                                                     "description": "Balance payment", "amount_tendered": "30.00"})
     assert resp.status_code == 200, resp.text
     db.refresh(member_with_pin)
     assert member_with_pin.credit_balance == D("-20.00")

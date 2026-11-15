@@ -20,6 +20,7 @@ export default function CreditPartialScreen({ goTo, context, settings }) {
       billing,
       pin,
       useCredit: true,
+      topup: null,
       creditAmount: creditUsed,
       adjustedPrice: remainingDue,
     });

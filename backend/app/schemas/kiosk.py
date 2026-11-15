@@ -226,10 +226,36 @@ class TokenizeFullCardRequest(BaseModel):
     pin: str | None = None  # Optional for kiosk, not required for admin
 
 
-class AddCreditKioskRequest(BaseModel):
+class TopUpBase(BaseModel):
+    """Kiosk "Add Money": credit is only added after a real cash/card payment."""
     member_id: uuid.UUID
     pin: str
     amount: Decimal
+    description: str
+
+
+class TopUpCashRequest(TopUpBase):
+    amount_tendered: Decimal
+
+
+class TopUpCardRequest(TopUpBase):
+    saved_card_id: uuid.UUID
+
+
+class TopUpManualCardRequest(TopUpBase):
+    card_number: str
+    exp_date: str  # MMYY
+    cvv: str
+    save_card: bool = False
+
+
+class TopUpResponse(BaseModel):
+    success: bool
+    transaction_id: uuid.UUID
+    amount_added: Decimal
+    credit_balance: Decimal
+    card_saved: bool = False
+    message: str
 
 
 class HostedPaymentSessionResponse(BaseModel):

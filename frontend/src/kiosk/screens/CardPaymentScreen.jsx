@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { ArrowLeft, CreditCard, Keyboard, Star, CheckSquare, Square, Delete, XCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import KioskButton from "../components/KioskButton";
-import { getSavedCards, payCard, payCardManual, tokenizeCardFromSwipe } from "../../api/kiosk";
+import { getSavedCards, payCard, payCardManual, tokenizeCardFromSwipe, topupCard, topupCardManual } from "../../api/kiosk";
 import { describeBilling, getBillingParams, getPurchasePrice } from "../utils/billing";
 
 // Compact number pad
@@ -41,7 +41,12 @@ function NumberPad({ onKey, onBackspace, onClear }) {
 }
 
 export default function CardPaymentScreen({ member, goTo, context, settings }) {
-  const plan = context.plan;
+  // Add Money ("top-up") reuses this screen: no plan, a fixed amount and a description.
+  // Only a top-up when Add Money sent us here (it clears plan); a plan purchase always wins.
+  const topup = context.topup && !context.plan ? context.topup : null;
+  const plan = topup
+    ? { id: "__topup__", name: `Add to account: ${topup.description}`, price: Number(topup.amount), plan_type: "topup" }
+    : context.plan;
   const pin = context.pin;
   const useCredit = context.useCredit || false;
   const creditAmount = Number(context.creditAmount || 0);
@@ -165,16 +170,18 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
       // Tokenize the swiped card - returns SavedCardResponse with id field
       const tokenResult = await tokenizeCardFromSwipe(trackData, member.member_id, pin, saveCard ? "Swiped Card" : null);
       // Use the saved card to process payment
-      const payResult = await payCard(member.member_id, plan.id, pin, {
-        saved_card_id: tokenResult.id,
-        use_credit: useCredit,
-        ...getBillingParams(plan, billing),
-      });
+      const payResult = topup
+        ? await topupCard(member.member_id, pin, topup.amount, topup.description, tokenResult.id)
+        : await payCard(member.member_id, plan.id, pin, {
+            saved_card_id: tokenResult.id,
+            use_credit: useCredit,
+            ...getBillingParams(plan, billing),
+          });
       let message = payResult.message || "Card payment processed successfully.";
       if (payResult.credit_used > 0) {
         message = `${settings.currency}${Number(payResult.credit_used).toFixed(2)} credit applied. ` + message;
       }
-      goTo("status", { statusType: "success", statusTitle: "Payment Complete!", statusMessage: message });
+      goTo("status", { statusType: "success", statusTitle: topup ? "Money Added!" : "Payment Complete!", statusMessage: message });
     } catch (err) {
       const errorMsg = err.response?.data?.detail || "Payment failed. Please try again.";
       setPaymentError(errorMsg);
@@ -193,16 +200,18 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
     setLoading(true);
     setPaymentError(null);
     try {
-      const data = await payCard(member.member_id, plan.id, pin, {
-        saved_card_id: selectedCardId,
-        use_credit: useCredit,
-        ...getBillingParams(plan, billing),
-      });
+      const data = topup
+        ? await topupCard(member.member_id, pin, topup.amount, topup.description, selectedCardId)
+        : await payCard(member.member_id, plan.id, pin, {
+            saved_card_id: selectedCardId,
+            use_credit: useCredit,
+            ...getBillingParams(plan, billing),
+          });
       let message = data.message || "Card payment processed successfully.";
       if (data.credit_used > 0) {
         message = `${settings.currency}${Number(data.credit_used).toFixed(2)} credit applied. ` + message;
       }
-      goTo("status", { statusType: "success", statusTitle: "Payment Complete!", statusMessage: message });
+      goTo("status", { statusType: "success", statusTitle: topup ? "Money Added!" : "Payment Complete!", statusMessage: message });
     } catch (err) {
       const errorMsg = err.response?.data?.detail || "Payment failed. Please try again.";
       setPaymentError(errorMsg);
@@ -229,12 +238,14 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
     setLoading(true);
     setPaymentError(null);
     try {
-      const data = await payCardManual(member.member_id, plan.id, pin, cleanCardNumber, expDate, manualCvv, saveCard, useCredit, getBillingParams(plan, billing));
+      const data = topup
+        ? await topupCardManual(member.member_id, pin, topup.amount, topup.description, cleanCardNumber, expDate, manualCvv, saveCard)
+        : await payCardManual(member.member_id, plan.id, pin, cleanCardNumber, expDate, manualCvv, saveCard, useCredit, getBillingParams(plan, billing));
       let message = data.message || "Card payment processed successfully.";
       if (data.credit_used > 0) {
         message = `${settings.currency}${Number(data.credit_used).toFixed(2)} credit applied. ` + message;
       }
-      goTo("status", { statusType: "success", statusTitle: "Payment Complete!", statusMessage: message });
+      goTo("status", { statusType: "success", statusTitle: topup ? "Money Added!" : "Payment Complete!", statusMessage: message });
     } catch (err) {
       const errorMsg = err.response?.data?.detail || "Payment failed. Please try again.";
       setPaymentError(errorMsg);
@@ -252,6 +263,7 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
     goTo("payment");
     return null;
   }
+  const goBack = () => (topup ? goTo("addMoney", { pin }) : goTo("payment"));
 
   return (
     <div className="flex h-full flex-col bg-gray-50">
@@ -259,7 +271,7 @@ export default function CardPaymentScreen({ member, goTo, context, settings }) {
       <div className="flex items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
         <button
           type="button"
-          onClick={() => goTo("payment")}
+          onClick={goBack}
           className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-gray-500 hover:bg-gray-100"
         >
           <ArrowLeft className="h-4 w-4" />
